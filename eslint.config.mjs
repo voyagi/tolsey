@@ -1,0 +1,79 @@
+// Complexity budgets + cross-browser compat - the ESLint half of the repository gates.
+// MERGE these blocks into the product's existing flat config; do not blanket-replace it.
+//
+// Thresholds are HIGH (25) on purpose: a FLOOR, not a style nag. Measured on a real repo - at 15,
+// hand-written code (a scanner's main function, cyclo 28 / cognitive 40) tripped, which erodes trust. 25
+// (~2x the common 15) fires only on genuinely tangled functions. A hit = review/refactor the hotspot
+// or raise it for that one file WITH a written reason; never blanket-disable (that is itself a tell).
+import sonarjs from 'eslint-plugin-sonarjs';
+import compat from 'eslint-plugin-compat';
+import tseslint from 'typescript-eslint';
+import vitest from '@vitest/eslint-plugin';
+
+const tsParser = { parser: tseslint.parser, parserOptions: { ecmaVersion: 'latest', sourceType: 'module' } };
+
+// One glob, used by the complexity exemption AND the vacuity block below, so the set of "test
+// files" cannot drift between the rule that skips them and the rule that judges them.
+const TEST_FILES = ['**/*.{test,spec}.{ts,tsx,js,jsx,mjs,cjs}'];
+
+export default [
+  // Exclude config + build output from every floor. Test files are NOT globally ignored any
+  // more: a global ignore silently exempted them from every rule, including the vacuity rules
+  // below that exist precisely for them. They keep their complexity exemption (big describe/it
+  // trees legitimately get complex) via per-block ignores instead.
+  { ignores: ['**/*.config.{ts,js,mjs,cjs}', '**/{dist,build,coverage}/**'] },
+  // Complexity budgets - ALL source files. Only these two sonarjs/core rules (NOT the full
+  // sonarjs recommended set, which is a wide false-positive surface).
+  {
+    files: ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],
+    ignores: TEST_FILES,
+    languageOptions: { ...tsParser },
+    plugins: { sonarjs },
+    rules: {
+      complexity: ['error', 25],
+      'sonarjs/cognitive-complexity': ['error', 25],
+    },
+  },
+  // ANTI-VACUITY floor for test files (needs `npm i -D @vitest/eslint-plugin`; on a Jest
+  // product use eslint-plugin-jest, which carries the same two rules). Deliberately only these
+  // two, same philosophy as the single sonarjs rule above:
+  // - expect-expect: a test with no assertion passes forever, whatever the code does. That is
+  //   the mechanical core of "assertions that cannot fail".
+  // - no-identical-title: two tests sharing a title collapse in reports, so one of them is
+  //   never individually seen failing (the non-unique-label trap).
+  // NOT here on purpose: no-disabled-tests - `describe.skipIf` is how the fault-injection lane
+  // is DESIGNED to behave without a Toxiproxy, so banning skips would fight the scaffold itself.
+  {
+    files: TEST_FILES,
+    languageOptions: { ...tsParser },
+    plugins: { vitest },
+    rules: {
+      'vitest/expect-expect': 'error',
+      'vitest/no-identical-title': 'error',
+    },
+  },
+  // Cross-browser / Baseline gate - CLIENT/browser code ONLY. Run on Node/backend code it
+  // false-positives on Node-valid syntax (e.g. regex lookbehind "unsupported in Safari 13").
+  // EDIT these globs to the product's actual client entry points. Browserslist is read from
+  // package.json / .browserslistrc - set it to the product's real support target, and ALWAYS keep
+  // `not op_mini all` (see .browserslistrc): Opera Mini is in `defaults` but supports almost no
+  // modern API, so without excluding it compat false-positives on fetch/Promise/structuredClone in
+  // normal code (proven: 20 false hits on a real product, zero after the exclusion).
+  // The `**/*.{jsx,tsx}` catch-all assumes JSX/TSX = client UI (true for React). If the product
+  // has SERVER-side .tsx (rare), add it to `ignores` here so compat does not false-positive on it.
+  // COVERAGE GAP (proven 2026-06-25): a NON-.tsx browser file OUTSIDE the named dirs - e.g.
+  // src/{lib,utils,hooks,services}/*.ts calling fetch/structuredClone - is NOT checked by these
+  // globs and ships unverified. Add your product's real client dirs to the list above. It is NOT
+  // auto-broadened because Node 18+ exposes fetch/structuredClone as globals, so widening to a
+  // generic `lib/` would false-positive on a backend product. Smoke-test by linting one known
+  // client file and confirming compat actually runs on it.
+  {
+    files: ['**/{ui,client,components,pages,app}/**/*.{ts,tsx,js,jsx,mjs}', '**/*.{jsx,tsx}'],
+    // Tests run in Node, not in the browserslist target, so compat stays off them (this was
+    // previously implied by the global test ignore, now stated where it applies).
+    ignores: TEST_FILES,
+    languageOptions: { ...tsParser },
+    plugins: { compat },
+    rules: { 'compat/compat': 'error' },
+  },
+];

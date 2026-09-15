@@ -1,0 +1,122 @@
+# CI floor for the repository gates.
+# Runs the SAME `npm run gate` scripts as the local pre-commit hook = one source of truth, no drift.
+# Lean on purpose (PR + default-branch push only): public repos get unlimited Actions minutes, private
+# repos are metered, so do not add a schedule here.
+name: gates
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+# Least privilege: `npm ci` executes third-party postinstall scripts, so the job's GITHUB_TOKEN
+# must not carry write scopes. Nothing in this workflow writes to the repo.
+permissions:
+  contents: read
+# One run per ref: rapid PR pushes cancel their stale runs (metered minutes on private repos);
+# default-branch runs are never cancelled so main always gets a complete verdict.
+concurrency:
+  group: gates-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      # SHA-pinned: a tag is
+      # mutable, a commit SHA is not. Trailing comment names the tag the SHA was verified against
+      # (git ls-remote) so bumps stay reviewable. Update SHAs deliberately, never back to bare tags.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          # align with the product's .nvmrc / package.json engines.node; if it has a .nvmrc,
+          # prefer `node-version-file: '.nvmrc'` so CI and local never drift.
+          node-version: 20
+          cache: npm
+      # Swap `npm ci` + the `npm run` calls below for the product's package manager (pnpm/bun/yarn)
+      # if it does not use npm - this file hardcodes npm.
+      - run: npm ci
+      # Build first so the frontend size-limit gate has a bundle to measure. `--if-present` makes this
+      # a no-op on backend/CLI products with no build script (without a build, size-limit errors "no
+      # files found" and the gate fails for the wrong reason).
+      - run: npm run build --if-present
+      # Each gate is a FLOOR: green = no known violation, never "good". Taste/craft is NOT gated here
+      # (that belongs to code review). Do not "make the gate pass" by suppressing it.
+      #
+      # check-env-example.mjs runs INSIDE this chain (as `gate:env`) and deliberately has no step of
+      # its own: it reads tracked files and the index, so unlike the client-secret gate below it
+      # needs no build and is equally correct in the pre-commit hook. If it is missing from the
+      # chain the fix is to add `gate:env` to the `gate` script, never to add a step here, or the
+      # hook and CI stop running the same thing and that drift is what this file exists to prevent.
+      - run: npm run gate
+      # Client-secret gate, as its OWN step rather than inside `npm run gate`. It needs a BUILT
+      # bundle, and `gate` also runs in the pre-commit hook where none exists - there it would
+      # correctly report UNKNOWN (exit 2) and fail every commit, so it would be deleted within a
+      # day. Here a build always precedes it (the step above). This is the mechanical wiring: a
+      # prompt line telling a model to run the gate is the thing the gate itself argues against.
+      # If this exits 2 saying no bundle was found, the fix is almost never to delete the step. The
+      # gate auto-detects the common layouts, and a monorepo (packages/web/dist) or a custom outDir
+      # is found by NO fixed list, so PASS THE DIRECTORY: `node scripts/check-client-secrets.mjs
+      # packages/web/dist`. It accepts several. Delete this step ONLY on a product that genuinely
+      # ships no client bundle at all (a CLI, a pure backend) - a Next.js app or a monorepo package
+      # HAS one, and deleting the gate there removes it from exactly the products it protects.
+      - run: node scripts/check-client-secrets.mjs
+      # If the product has no separate test/lint workflow, swap the step above for
+      # `npm run verify:ship` (types -> FULL tests -> whole-repo lint -> gate) so CI enforces
+      # the same full surface the local ship step verifies. With a separate test workflow,
+      # keep `npm run gate` here to avoid running the suite twice.
+      #
+      # SECURITY FLOOR (trivy), on DEFAULT-BRANCH PUSHES ONLY. Not on pull_request on purpose:
+      # a frozen repo's Dependabot PRs would print its unpatched CVEs into public CI logs while
+      # nobody may merge the fix. Push-only keeps the verdict on what actually landed.
+      # The action runs with exit-code 0 and a JSON report; the VERDICT is the jq step below,
+      # which fails on HIGH/CRITICAL and fails LOUDLY on an empty or unparsable report - a scan
+      # that produced nothing must never read as a scan that found nothing.
+      - if: github.event_name == 'push'
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        env:
+          # Two DB mirrors: ghcr alone rate-limits cold caches into false failures.
+          TRIVY_DB_REPOSITORY: mirror.gcr.io/aquasec/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          format: json
+          output: trivy-vulns.json
+          exit-code: '0'
+          cache: 'true'
+      - if: github.event_name == 'push'
+        name: fail on HIGH/CRITICAL vulnerabilities
+        run: |
+          test -s trivy-vulns.json || { echo 'trivy produced no report - refusing to read that as clean'; exit 1; }
+          # `jq -e .` = valid JSON, nothing more. NOT `jq -e '.Results'`: trivy omits the Results
+          # key entirely on a scan with no targets (measured on 0.74.0, a no-lockfile directory),
+          # and -e treats that null as failure, so the stricter assertion fails a genuinely CLEAN
+          # repo. The count below already reads an absent key as zero via `.Results[]?`.
+          jq -e . trivy-vulns.json > /dev/null || { echo 'trivy report did not parse - refusing to read that as clean'; exit 1; }
+          count=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH" or .Severity=="CRITICAL")] | length' trivy-vulns.json)
+          echo "HIGH/CRITICAL vulnerabilities: $count"
+          if [ "$count" -gt 0 ]; then
+            jq -r '.Results[]? | .Target as $t | (.Vulnerabilities[]? | select(.Severity=="HIGH" or .Severity=="CRITICAL") | "\($t): \(.PkgName) \(.InstalledVersion) \(.VulnerabilityID) (\(.Severity))")' trivy-vulns.json
+            exit 1
+          fi
+      # LICENSE CENSUS, report-only: copyleft or UNKNOWN licenses are a decision, not an
+      # automatic failure, so this never gates - but the artifact must EXIST and be non-empty,
+      # or the census silently stopped running and kept reading as "no findings".
+      - if: github.event_name == 'push'
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: license
+          format: json
+          output: trivy-licenses.json
+          exit-code: '0'
+          cache: 'true'
+      - if: github.event_name == 'push'
+        name: assert the license census ran
+        run: |
+          test -s trivy-licenses.json || { echo 'license census produced no report'; exit 1; }
+          jq -e . trivy-licenses.json > /dev/null || { echo 'license census report did not parse'; exit 1; }
+      - if: github.event_name == 'push'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: license-census
+          path: trivy-licenses.json
