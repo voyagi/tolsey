@@ -15,7 +15,7 @@ Requirements: Node.js 22 or newer, npm.
 
 ```sh
 npm install
-cp .env.example .env
+cp .env.example .dev.vars
 npm run dev
 ```
 

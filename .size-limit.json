@@ -1,7 +1,7 @@
 [
   {
-    "name": "main bundle",
-    "path": "dist/**/*.js",
+    "name": "client bundle",
+    "path": "dist/client/assets/*.js",
     "limit": "150 kB"
   }
 ]

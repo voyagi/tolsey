@@ -13,6 +13,9 @@
     "**/*.test.*",
     "**/*.spec.*",
     "**/*.d.ts",
+    "**/package-lock.json",
+    "scripts/**",
+    "verify-ship.mjs",
     "**/*.md",
     "**/docs/**"
   ]

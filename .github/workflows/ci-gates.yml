@@ -28,7 +28,7 @@ jobs:
         with:
           # align with the product's .nvmrc / package.json engines.node; if it has a .nvmrc,
           # prefer `node-version-file: '.nvmrc'` so CI and local never drift.
-          node-version: 20
+          node-version: 22
           cache: npm
       # Swap `npm ci` + the `npm run` calls below for the product's package manager (pnpm/bun/yarn)
       # if it does not use npm - this file hardcodes npm.
