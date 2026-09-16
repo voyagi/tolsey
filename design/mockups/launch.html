@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tolsey: say the reading, keep the record</title>
+  <meta name="description" content="A food safety log for small restaurant kitchens that you fill in by voice. Each reading is judged against its rule, and a check with no number is refused.">
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="tokens.css">
+  <style>
+    .page { max-width: 1280px; margin: 0 auto; padding: 20px 24px 32px; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 18px 22px; }
+
+    .top { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; min-height: 44px; }
+    .wordmark { font-weight: 900; font-stretch: 80%; font-size: 1.5rem; letter-spacing: 0.06em; text-transform: uppercase; }
+    .top nav { margin-left: auto; display: flex; gap: 4px; }
+    .top nav a {
+      display: inline-flex; align-items: center; min-height: 44px; padding: 0 0.9rem;
+      font-family: var(--mono); font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--steel); text-decoration: none;
+    }
+    .top nav a:hover { color: var(--ink); box-shadow: inset 0 -3px 0 var(--ink); }
+
+    .title { grid-column: 1 / 9; margin: 6px 0 0; font-size: clamp(2.5rem, 5.4vw, 4.5rem); font-weight: 900; font-stretch: 75%; letter-spacing: 0.005em; line-height: 1.3; text-transform: uppercase; text-wrap: balance; }
+    .lede { grid-column: 9 / -1; align-self: end; margin: 0 0 12px; font-size: 1.1875rem; font-weight: 500; line-height: 1.45; }
+
+    .panel { background: var(--stock); box-shadow: var(--lift); }
+    .board-head { display: flex; align-items: baseline; gap: 18px; padding-bottom: 8px; border-bottom: 3px solid var(--ink); }
+    .board-head h2 { margin: 0; font-size: 1.75rem; font-weight: 900; font-stretch: 80%; letter-spacing: 0.02em; line-height: 1.3; text-transform: uppercase; }
+    .board-head .aside { margin-left: auto; }
+
+    /* The replay: the wall screen itself, a pass torn off a board of the captured run's steps. */
+    .pass { grid-column: 1 / 6; display: grid; grid-template-rows: auto 1fr auto; animation: tear 320ms var(--ease-out) both; }
+    @keyframes tear { from { transform: translateX(28px); opacity: 0; } to { transform: none; opacity: 1; } }
+    .seg { padding: 14px 22px; }
+    .seg + .seg { border-top: 2px dashed var(--hair); }
+    .seg--said p { margin: 0; }
+    .seg--said p + p { margin-top: 8px; }
+    .seg--said .label { display: block; margin-bottom: 2px; }
+    .seg--said q { font-size: 1.5rem; font-weight: 700; line-height: 1.3; letter-spacing: -0.01em; }
+    .seg--said .answer { font-size: 1.125rem; font-weight: 600; line-height: 1.35; }
+    .seg--main { display: grid; align-content: center; gap: 6px; }
+    .point { margin: 0; font-size: 2rem; font-weight: 800; font-stretch: 90%; line-height: 1.3; letter-spacing: -0.02em; }
+    .kind { margin: 0; }
+    .reading { margin: 0; font-family: var(--mono); font-size: 9.25rem; font-weight: 800; line-height: 0.9; letter-spacing: -0.04em; }
+    .reading small { font-size: 0.3em; font-weight: 700; letter-spacing: 0; vertical-align: 1.4em; margin-left: 0.08em; }
+    .verdict { justify-self: start; font-size: 2.5rem; padding: 0.1em 0.4em; letter-spacing: 0.04em; }
+    .todo { margin: 2px 0 0; font-size: 1.25rem; font-weight: 700; line-height: 1.3; }
+    .seg--cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 16px; }
+    .seg--cells .label { display: block; margin-bottom: 2px; }
+    .seg--cells b { display: block; font-family: var(--mono); font-size: 1rem; font-weight: 800; }
+
+    .replay { grid-column: 6 / -1; padding: 18px 24px 16px; display: grid; align-content: start; gap: 4px; }
+    table { width: 100%; border-collapse: collapse; }
+    caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    th { text-align: left; padding: 10px 12px 6px; }
+    th:first-child, td:first-child { padding-left: 8px; }
+    th:last-child, td:last-child { text-align: right; padding-right: 8px; }
+    td { padding: 0 12px; height: 58px; border-top: 1px solid var(--hair); vertical-align: middle; }
+    .t { font-family: var(--mono); font-size: 1.125rem; font-weight: 800; white-space: nowrap; }
+    .step {
+      width: 100%; min-height: 56px; display: grid; align-content: center; justify-items: start; text-align: left;
+      font: inherit; font-size: 1.1875rem; font-weight: 700; line-height: 1.3; padding: 0; border: 0; background: transparent; color: var(--ink); cursor: pointer;
+    }
+    .step small { font-size: 0.875rem; font-weight: 500; color: var(--steel); }
+    .step:hover { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 0.2em; }
+    tr[aria-current='step'] td { background: var(--row-alt); box-shadow: inset 0 3px 0 var(--ink), inset 0 -3px 0 var(--ink); }
+    tr[aria-current='step'] td:first-child { box-shadow: inset 0 3px 0 var(--ink), inset 0 -3px 0 var(--ink), inset 3px 0 0 var(--ink); }
+    tr[aria-current='step'] td:last-child { box-shadow: inset 0 3px 0 var(--ink), inset 0 -3px 0 var(--ink), inset -3px 0 0 var(--ink); }
+    .replay .status { font-size: 0.875rem; }
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+    .button {
+      display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 1.1rem;
+      font-family: var(--mono); font-size: 0.875rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; text-decoration: none;
+      border: 0; cursor: pointer; background: transparent; color: var(--ink); box-shadow: inset 0 0 0 2px var(--steel);
+    }
+    .button:hover { box-shadow: inset 0 0 0 3px var(--ink); }
+    .button[aria-pressed='true'], .button--main { background: var(--verdict); color: var(--on-verdict); box-shadow: inset 0 0 0 3px var(--verdict-edge); }
+    .button--main { margin-left: auto; }
+    .button--main:hover, .button[aria-pressed='true']:hover { background: var(--row-alt); color: var(--ink); box-shadow: inset 0 0 0 3px var(--ink); }
+
+    /* The argument: the same shift on the door clipboard and on the day sheet. */
+    .argument { grid-column: 1 / -1; margin: 34px 0 0; padding-bottom: 10px; border-bottom: 3px solid var(--ink); font-size: clamp(2rem, 4.2vw, 3.5rem); font-weight: 900; font-stretch: 75%; line-height: 1.3; text-transform: uppercase; text-wrap: balance; }
+    figure { margin: 0; }
+    .paper { grid-column: 1 / 6; padding: 20px 24px 18px; display: grid; gap: 12px; align-content: start; }
+    .sheet { grid-column: 6 / -1; padding: 20px 24px 18px; display: grid; gap: 12px; align-content: start; }
+    .paper h3, .sheet h3 { margin: 0; font-size: 1.375rem; font-weight: 800; font-stretch: 90%; line-height: 1.3; }
+    .paper-log { border-top: 2px solid var(--ink); }
+    .paper-log th { padding: 8px 6px 4px; }
+    .paper-log td { height: 44px; padding: 0 6px; border: 0; border-bottom: 1px solid var(--hair); font-family: 'Nanum Pen Script', var(--sans); font-size: 2rem; line-height: 1; vertical-align: bottom; text-align: left; }
+    .paper-log td.blank { color: transparent; }
+    .sheet td { height: 48px; }
+    .sheet .check { font-size: 1.0625rem; font-weight: 700; }
+    .sheet .r { font-family: var(--mono); font-size: 1.125rem; font-weight: 800; text-align: right; }
+    .sheet .r--none { font-size: 0.9375rem; font-weight: 600; font-style: italic; color: var(--steel); }
+    .sheet .status { font-size: 0.8125rem; }
+    .sheet tr.row--change td { background: var(--row-alt); }
+    figcaption { font-size: 0.9375rem; color: var(--steel); }
+
+    .try { grid-column: 1 / 8; margin-top: 16px; padding: 20px 24px 12px; }
+    .limits { grid-column: 8 / -1; margin-top: 16px; padding: 20px 24px 12px; }
+    .try ul, .limits ul { list-style: none; margin: 0; padding: 0; }
+    .try li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 16px; align-items: center; padding: 14px 0; border-top: 1px solid var(--hair); }
+    .try li:first-child, .limits li:first-child { border-top: 0; }
+    .try b { display: block; font-size: 1.1875rem; }
+    .limits li { padding: 12px 0; border-top: 1px solid var(--hair); font-size: 1rem; line-height: 1.45; color: var(--steel); }
+    .limits li b { color: var(--ink); }
+
+    .foot { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-top: 8px; color: var(--steel); font-size: 0.9375rem; }
+    .foot .theme-switch { margin-left: auto; }
+    .to-top { display: inline-flex; align-items: center; min-height: 44px; font-family: var(--mono); font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); }
+
+    @media (max-width: 900px) {
+      .page { grid-template-columns: minmax(0, 1fr); padding: 14px 16px 24px; gap: 16px; }
+      .top, .title, .lede, .pass, .replay, .argument, .paper, .sheet, .try, .limits, .foot { grid-column: 1; }
+      .top nav { display: none; }
+      .title { font-size: 2.5rem; }
+      .lede { margin: 0; font-size: 1.0625rem; }
+      .replay { order: 1; padding: 14px; }
+      .pass { order: 2; }
+      .argument, .paper, .sheet, .try, .limits, .foot { order: 3; }
+      .reading { font-size: 6.5rem; }
+      .verdict { font-size: 2rem; }
+      .seg--cells { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .board-head { flex-wrap: wrap; gap: 4px 12px; }
+      .board-head .aside { margin-left: 0; }
+      .replay thead { display: none; }
+      .replay td { height: auto; padding: 8px; }
+      .replay td.t { font-size: 1rem; vertical-align: top; padding-top: 12px; }
+      .replay tr { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); }
+      .sheet table, .sheet tbody { display: block; }
+      .sheet tr { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr) auto; align-items: center; border-top: 1px solid var(--hair); }
+      .sheet tr.row--change { background: var(--row-alt); }
+      .sheet td { height: auto; padding: 6px 4px; border: 0; }
+      .sheet tr td:last-child { grid-column: 2 / 4; text-align: left; padding-top: 0; }
+      .sheet .t { font-size: 1rem; }
+      .replay tr td:last-child { grid-column: 2; text-align: left; padding-top: 0; }
+      .replay tr[aria-current='step'] { background: var(--row-alt); outline: 3px solid var(--ink); outline-offset: -3px; }
+      .replay tr[aria-current='step'] td { box-shadow: none; }
+      .step { min-height: 44px; font-size: 1.0625rem; }
+      .button--main { margin-left: 0; width: 100%; }
+      .argument { margin-top: 20px; }
+      .paper-log td { font-size: 1.625rem; }
+      .sheet .check { font-size: 1rem; }
+      .try li { grid-template-columns: minmax(0, 1fr); }
+      .foot .theme-switch { margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <span class="wordmark" aria-hidden="true">Tolsey</span>
+      <nav aria-label="Main">
+        <a href="#replay">Replay</a>
+        <a href="record.html">Day sheet</a>
+        <a href="#try">Try it</a>
+      </nav>
+    </header>
+
+    <h1 class="title">Say the reading. Tolsey keeps the record.</h1>
+    <p class="lede">A food safety log for small kitchens, filled in by voice with gloves on. Every reading is judged against its rule as you say it, and a check with no number is refused.</p>
+
+    <article class="panel pass" aria-labelledby="pass-point" aria-live="polite">
+      <div class="seg seg--said">
+        <p><span class="label">Cook JT, 1:32 PM</span><q>Soup well is at 128.</q></p>
+        <p><span class="label">Tolsey</span><span class="answer">That is under 135. Reheat to 165 within the hour and tell me the new reading.</span></p>
+      </div>
+      <div class="seg seg--main">
+        <h2 class="point" id="pass-point">Soup well</h2>
+        <p class="kind label">Hot holding</p>
+        <p class="reading">128<small>°F</small></p>
+        <span class="status status--alert verdict">Out of range</span>
+        <p class="todo">Fix open: reheat to 165°F by 2:32 PM.</p>
+      </div>
+      <div class="seg seg--cells">
+        <div><span class="label">Rule</span><b>135°F or above</b></div>
+        <div><span class="label">Source</span><b>FDA 3-501.16</b></div>
+        <div><span class="label">By</span><b>JT</b></div>
+      </div>
+    </article>
+
+    <section class="panel replay" id="replay" aria-labelledby="replay-title">
+      <header class="board-head"><h2 id="replay-title">Replay, lunch shift</h2><span class="aside label">Step 2 of 6 &middot; a captured run</span></header>
+      <table>
+        <caption>Steps of the captured run, in time order</caption>
+        <thead><tr><th class="label">Time</th><th class="label">Said</th><th class="label">Verdict</th></tr></thead>
+        <tbody>
+          <tr><td class="t">11:02 AM</td><td><button class="step" type="button">&ldquo;The walk-in reads 38&rdquo;<small>Walk-in cooler, cold holding</small></button></td><td><span class="status status--word">In range</span></td></tr>
+          <tr aria-current="step"><td class="t">1:32 PM</td><td><button class="step" type="button">&ldquo;Soup well is at 128&rdquo;<small>Opens a fix, due 2:32 PM</small></button></td><td><span class="status status--alert">Out of range</span></td></tr>
+          <tr><td class="t">2:09 PM</td><td><button class="step" type="button">&ldquo;The reach-in is fine&rdquo;<small>No number, the check stays open</small></button></td><td><span class="status status--alert">Refused</span></td></tr>
+          <tr><td class="t">2:11 PM</td><td><button class="step" type="button">&ldquo;Reach-in reads 39&rdquo;<small>Closes the open check</small></button></td><td><span class="status status--word">In range</span></td></tr>
+          <tr><td class="t">2:20 PM</td><td><button class="step" type="button">&ldquo;Sandwich cooler is 40&rdquo;<small>Was due 2:00 PM</small></button></td><td><span class="status status--alert">Late 20 min</span></td></tr>
+          <tr><td class="t">2:26 PM</td><td><button class="step" type="button">&ldquo;Soup well is 168&rdquo;<small>Closes the fix, six minutes early</small></button></td><td><span class="status status--word">Fix closed</span></td></tr>
+        </tbody>
+      </table>
+      <div class="controls" role="group" aria-label="Replay controls">
+        <button class="button" type="button">Back</button>
+        <button class="button" type="button" aria-pressed="true">Play</button>
+        <button class="button" type="button">Next</button>
+        <a class="button button--main" href="record.html">Read the day sheet</a>
+      </div>
+    </section>
+
+    <h2 class="argument">A check without a number is not a check.</h2>
+
+    <figure class="panel paper">
+      <h3>The clipboard on the walk-in door</h3>
+      <div class="paper-log">
+        <table>
+          <thead><tr><th class="label" scope="col">Time</th><th class="label" scope="col">Unit</th><th class="label" scope="col">Temp</th><th class="label" scope="col">Init</th></tr></thead>
+          <tbody>
+            <tr><td>11am</td><td>walk in</td><td>38</td><td>MR</td></tr>
+            <tr><td>1:30</td><td>soup</td><td>ok</td><td>JT</td></tr>
+            <tr><td>2pm</td><td>reach in</td><td>fine</td><td>AK</td></tr>
+            <tr><td class="blank">.</td><td class="blank">.</td><td class="blank">.</td><td class="blank">.</td></tr>
+            <tr><td class="blank">.</td><td class="blank">.</td><td class="blank">.</td><td class="blank">.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <figcaption>A typed reconstruction of a common paper log for the same shift, not a photograph. Words where numbers belong, and the afternoon left blank.</figcaption>
+    </figure>
+
+    <figure class="panel sheet">
+      <h3>The day sheet Tolsey prints</h3>
+      <table>
+        <caption>The same shift on the day sheet</caption>
+        <tbody>
+          <tr class="row--change"><td class="t">1:32 PM</td><td class="check">Soup well</td><td class="r">128</td><td><span class="status status--alert">Out of range</span></td></tr>
+          <tr class="row--change"><td class="t">2:09 PM</td><td class="check">Reach-in, line 2</td><td class="r r--none">no number</td><td><span class="status status--alert">Refused</span></td></tr>
+          <tr><td class="t">2:11 PM</td><td class="check">Reach-in, line 2</td><td class="r">39</td><td><span class="status status--word">In range</span></td></tr>
+          <tr class="row--change"><td class="t">2:20 PM</td><td class="check">Sandwich cooler</td><td class="r">40</td><td><span class="status status--alert">Late 20 min</span></td></tr>
+          <tr><td class="t">2:26 PM</td><td class="check">Soup well, reheat</td><td class="r">168</td><td><span class="status status--word">Fix closed</span></td></tr>
+        </tbody>
+      </table>
+      <figcaption>Read from storage, not from what was said. Every line has its reading, rule and verdict.</figcaption>
+    </figure>
+
+    <section class="panel try" id="try" aria-labelledby="try-title">
+      <header class="board-head"><h2 id="try-title">Try it</h2><span class="aside label">No install, no key, no account</span></header>
+      <ul>
+        <li><div><b>The replay</b><span class="fine">A captured real run, step by step.</span></div><a class="button button--main" href="#replay">Open the replay</a></li>
+        <li><div><b>The video</b><span class="fine">Under three minutes.</span></div><span class="status status--quiet">Not posted yet</span></li>
+        <li><div><b>The code</b><span class="fine">The MCP server, the rules and the tests.</span></div><span class="status status--quiet">Public at submission</span></li>
+      </ul>
+    </section>
+
+    <aside class="panel limits" aria-labelledby="limits-title">
+      <header class="board-head"><h2 id="limits-title">Limits</h2></header>
+      <ul>
+        <li><b>The Alexa+ screen is simulated.</b> Alexa+ and its MCP Toolkit are US only. The server behind it is real and answers the MCP 2025-11-25 protocol.</li>
+        <li><b>The rules are FDA Food Code 2022 defaults.</b> State and county codes differ. Every value names its source.</li>
+        <li><b>No sensors.</b> Tolsey takes the checks a fridge sensor cannot: hot holding, cooling and receiving.</li>
+        <li><b>The demo kitchen is invented.</b> Its initials belong to nobody.</li>
+      </ul>
+    </aside>
+
+    <footer class="foot">
+      <span>A tolsey was the market town's record house.</span>
+      <div class="theme-switch" role="group" aria-label="Theme">
+        <button type="button" data-theme-choice="light">Light</button>
+        <button type="button" data-theme-choice="dark">Dark</button>
+        <button type="button" data-theme-choice="device">Device</button>
+      </div>
+      <a class="to-top" href="#replay">Back to the replay</a>
+    </footer>
+  </div>
+</body>
+</html>
