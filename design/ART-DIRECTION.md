@@ -61,7 +61,7 @@ Process: chosen by the owner from a dealt hand of directions, as the competitive
 
 Why: the studio's measured font list (thirteen products' served stylesheets, read 2026-08-21) puts Mona Sans first and reserves the mono for data the audience notices. On this board the data is the surface, so the mono earns its place as measurement, not costume. Personality is bought with width and weight, never a display face. A lint warning that Mona Sans is overused is overruled by that measured list.
 
-Scale on the wall screen (1280 by 800): the reading 160px mono, the board title 36px, board rows 22px with a 15px second line, the pass's point 32px, status blocks 15px mono uppercase, labels 12px mono. The cook reads the reading and the yellow from six feet; the shift lead reads the rows from three.
+Scale on the wall screen (1280 by 800): the temperature reading 148px mono (a countdown or a count 108px, so a temperature is always the largest figure), the pass's verdict block 40px mono, the board title 36px, board rows 22px with a 15px second line, the pass's point 32px, board status blocks 15px mono uppercase, labels 12px mono. The cook reads the reading, its verdict and the lit row from six feet; the shift lead reads the rows from three. What the cook said sits at 22px, below the verdict, because the cook already knows what they said.
 
 ## 4. Palette
 
@@ -91,7 +91,9 @@ Colour strategy: high-contrast neutrals plus one alert colour reserved for chang
 
 Measured contrast (WCAG ratios, computed 2026-09-16 by a script over these hex values): light ink on stock 19.46, ink on ground 15.53, steel on stock 5.82, steel on row-alt 5.29, steel on ground 4.65, black on alert 13.59, white on the verdict block 19.46. Dark: ink on stock 16.29, ink on ground 17.96, steel on stock 7.79, steel on row-alt 7.23, black on alert 13.59, black on the verdict block 17.96. The stock to ground step is only 1.25 light and 1.10 dark, which is why every panel carries a soft lifted shadow instead of a border.
 
-Colour is never the only signal. Every status block carries its word: IN RANGE, OUT OF RANGE, REFUSED, DUE, OVERDUE 14 MIN, FIX OPEN.
+Colour is never the only signal. Every status block carries its word: IN RANGE, OUT OF RANGE, REFUSED, NO NUMBER, DUE, OVERDUE 14 MIN, FIX OPEN.
+
+Weight follows need, measured after the critique of 2026-09-16: yellow alone is only 1.43 against white, the weakest block on a light board, while a filled black block is 19.46. So a yellow block always carries a 2px ink edge in light, a row that needs a hand now is lit yellow edge to edge with its status inverted (yellow word on a black block, 13.59), and a settled line on the board is its word alone. In dark the pass's verdict is a 3px white frame, not a filled white block, which glared at the close.
 
 ## 5. Structure
 
@@ -103,7 +105,9 @@ Colour is never the only signal. Every status block carries its word: IN RANGE, 
 
 **Skeleton, judge launch page (next unit).** Opens on the wall screen running the replay, not a hero banner. Then the clipboard beside the board for the same shift. Then the limits, stated plainly. Then the links to try it.
 
-**State vocabulary.** Due: an outlined block. Overdue, fix open, out of range, refused: a yellow block, held. In range: a black block. A row holding a change sits on the row-alt tint.
+**State vocabulary.** Due: a steel-framed block. Fix open, out of range, a refusal still open: a yellow block with an ink edge, held. Overdue, and a refused check with no number yet: the whole row lit yellow, its status a black block with a yellow word, until a number is logged. In range: the pass's verdict is a black block; on the board it is the word alone. A refusal that was retaken goes back to a steel frame. A row holding a change that is not late sits on the row-alt tint. On a phone the board comes before the pass, so what is late is the first thing read.
+
+**Every figure is worked out from the moment.** Relative times (14 min ago, in 18 min), overdue minutes, which checks are due and the boarded count all come from the clock of the moment shown, never typed in, so a frame can never disagree with itself.
 
 **Motion grammar.** Two authored moments. A new pass tears off the board (320ms, exponential ease-out, from the board side). Status cells flip in like a split-flap, top to bottom, 55ms apart. At phase 1 a row that changes rank moves in place, keeping its identity. Values snap, never count up. Reduced motion posts without movement.
 
@@ -151,5 +155,7 @@ It fits because Tolsey's core is a set of checks each due at a time, judged agai
 - The record code on a pass is a drawn stand-in; phase 1 decides what a record line's code encodes.
 - The real Alexa+ host's styling and CSP for MCP Apps cards are unknown; cards must hold up inside a frame that is not ours.
 - The clipboard photograph is not sourced yet.
+- The wall screen now tells the cook to say "wrong number" to fix a misheard reading. Phase 1 decides how a correction lands on the record (a new line that points at the one it corrects, never an edit in place) or the line comes out.
+- The one-hour reheat clock on a fix is a rule value, checked against the Food Code 2022 in phase 1 with the section numbers.
 - `record.html` and `launch.html` still carry the retired first direction; they are redone in the next unit.
-- The finish reviewer and the documenter have not run on this build yet.
+- The finish reviewer and the documenter have not run on this build yet. The critique ran on 2026-09-16 (25 of 40) and its findings are fixed in the wall screen.
