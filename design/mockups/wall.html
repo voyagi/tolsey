@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tolsey wall screen (mockup)</title>
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="tokens.css">
+  <style>
+    .screen {
+      width: 100%;
+      max-width: 1280px;
+      height: 800px;
+      overflow: hidden;
+      margin: 0 auto;
+      padding: 20px 24px 24px;
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      grid-template-rows: auto 1fr;
+      gap: 18px 22px;
+    }
+
+    .top { grid-column: 1 / -1; display: flex; align-items: center; gap: 22px; min-height: 44px; }
+    .wordmark { font-weight: 900; font-stretch: 80%; font-size: 1.5rem; letter-spacing: 0.06em; text-transform: uppercase; }
+    .site { font-family: var(--mono); font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--steel); }
+    .clock { margin-left: auto; font-family: var(--mono); font-size: 1.5rem; font-weight: 800; }
+    .control {
+      font-family: var(--mono); font-size: 0.8125rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+      min-height: 44px; padding: 0 1.1rem; border: 2px solid var(--ink); background: var(--ink); color: var(--stock); cursor: pointer;
+    }
+    .control:hover { background: var(--stock); color: var(--ink); }
+
+    /* The pass: the newest record line, segmented like a boarding pass, torn off the board. */
+    .pass {
+      background: var(--stock);
+      box-shadow: var(--lift);
+      display: grid;
+      grid-template-rows: auto 1fr auto auto;
+      animation: tear 320ms var(--ease-out) both;
+    }
+    @keyframes tear {
+      from { transform: translateX(28px); opacity: 0; }
+      to { transform: none; opacity: 1; }
+    }
+    .seg { padding: 15px 22px; }
+    .seg + .seg { border-top: 2px dashed var(--hair); }
+
+    .seg--said p { margin: 0; }
+    .seg--said p + p { margin-top: 10px; }
+    .seg--said .label { display: block; margin-bottom: 3px; }
+    .seg--said q { quotes: none; font-size: 1.75rem; font-weight: 700; line-height: 1.3; letter-spacing: -0.02em; }
+    .seg--said .answer { font-size: 1.375rem; font-weight: 600; line-height: 1.3; }
+    .seg--said .aside { font-size: 1.125rem; font-weight: 500; color: var(--steel); }
+
+    .seg--main { display: grid; align-content: center; gap: 8px; padding-top: 20px; }
+    .point { margin: 0; font-size: 2rem; font-weight: 800; font-stretch: 90%; line-height: 1.3; letter-spacing: -0.02em; }
+    .kind { margin: 0; }
+    .reading { margin: 4px 0 0; font-family: var(--mono); font-size: 9.25rem; font-weight: 800; line-height: 0.9; letter-spacing: -0.06em; }
+    .reading small { font-size: 0.3em; font-weight: 700; letter-spacing: 0; vertical-align: 1.5em; margin-left: 0.08em; }
+    .reading--words { font-size: 3.25rem; letter-spacing: -0.03em; line-height: 1; text-transform: uppercase; }
+    .reading--clock small { vertical-align: 1.35em; }
+    .seg--main .status { justify-self: start; font-size: 1.125rem; padding: 0.4em 0.7em; }
+    .todo { margin: 6px 0 0; font-size: 1.375rem; font-weight: 700; line-height: 1.3; }
+
+    .seg--cells { display: grid; grid-template-columns: 1.4fr 1.2fr 1fr 0.7fr; gap: 0 12px; padding-top: 14px; padding-bottom: 14px; }
+    .seg--cells .label { display: block; margin-bottom: 4px; }
+    .seg--cells b { display: block; font-family: var(--mono); font-size: 1rem; font-weight: 800; letter-spacing: -0.01em; white-space: nowrap; }
+
+    .seg--code { display: grid; grid-template-columns: 84px 1fr; gap: 16px; align-items: center; }
+    .scan { width: 84px; height: 84px; display: block; fill: var(--ink); }
+    .seg--code b { display: block; font-family: var(--mono); font-size: 1rem; font-weight: 800; margin: 2px 0 4px; }
+
+    /* The board: every check of the shift ranked by due time, then everything that boarded. */
+    .board { background: var(--stock); box-shadow: var(--lift); padding: 18px 24px 8px; display: grid; align-content: start; gap: 6px; min-width: 0; }
+    .board-head { display: flex; align-items: baseline; gap: 18px; padding-bottom: 8px; border-bottom: 3px solid var(--ink); }
+    .board-head h1, .board-head h2 { margin: 0; font-weight: 900; font-stretch: 80%; letter-spacing: 0.02em; text-transform: uppercase; }
+    .board-head h1 { font-size: 2.25rem; }
+    .board-head h2 { font-size: 1.625rem; }
+    .board-head .label { margin-left: auto; }
+    .board-head--second { margin-top: 18px; }
+
+    table { width: 100%; border-collapse: collapse; }
+    caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    th { text-align: left; padding: 10px 8px 6px; }
+    th:first-child, td:first-child { padding-left: 4px; }
+    th:last-child, td:last-child { text-align: right; padding-right: 4px; }
+    td { padding: 8px 8px; border-top: 1px solid var(--hair); vertical-align: middle; }
+    tr.row--change td { background: var(--row-alt); }
+    .t { font-family: var(--mono); font-size: 1.375rem; font-weight: 800; white-space: nowrap; }
+    .t small { display: block; font-size: 0.75rem; font-weight: 700; color: var(--steel); letter-spacing: 0.06em; text-transform: uppercase; }
+    .check { font-size: 1.375rem; font-weight: 700; font-stretch: 95%; line-height: 1.3; letter-spacing: -0.01em; }
+    .check small { display: block; font-size: 0.9375rem; font-weight: 500; font-stretch: 100%; color: var(--steel); margin-top: 2px; }
+    .r { font-family: var(--mono); font-size: 0.9375rem; font-weight: 600; color: var(--steel); white-space: nowrap; }
+    .rows--boarded td { padding: 7px 8px; }
+    .rows--boarded .t { font-size: 1.125rem; }
+    .rows--boarded .check { font-size: 1.125rem; }
+    .rows--boarded .r { font-size: 1.125rem; font-weight: 800; color: var(--ink); }
+    .rows--boarded .r.r--none { font-weight: 600; color: var(--steel); font-style: italic; }
+    .rows--boarded .status { font-size: 0.8125rem; }
+    tr.row--newest .check { font-weight: 800; }
+
+    /* The split-flap: every status cell flips in once, top to bottom, when the board is posted. */
+    .flip { display: inline-block; transform-origin: 50% 0; animation: flap 360ms var(--ease-out) both; animation-delay: calc(var(--i, 0) * 55ms); backface-visibility: hidden; }
+    @keyframes flap {
+      from { transform: rotateX(-88deg); opacity: 0.2; }
+      to { transform: none; opacity: 1; }
+    }
+
+    [data-state]:not(.is-active) { display: none !important; }
+    tr[hidden] { display: none; }
+
+    @media (max-width: 900px) {
+      .screen { height: auto; overflow: visible; padding: 14px 16px 24px; grid-template-columns: 1fr; gap: 16px; }
+      .top { flex-wrap: wrap; gap: 10px 14px; }
+      .clock { margin-left: 0; order: 1; }
+      .theme-switch { margin-left: auto; }
+      .control { width: 100%; order: 3; }
+      .reading { font-size: 6.5rem; }
+      .seg--cells { grid-template-columns: 1fr 1fr; gap: 12px; }
+      .board { padding: 14px 14px 6px; }
+      .board-head h1, .board-head h2 { font-size: 1.375rem; }
+      .board-head .label { display: none; }
+      th.rule, td.rule { display: none; }
+      .t, .check { font-size: 1.125rem; }
+      .check small { font-size: 0.875rem; }
+      .status { font-size: 0.8125rem; }
+    }
+  </style>
+</head>
+<body>
+  <main class="screen" aria-label="Kitchen wall screen, demo kitchen">
+    <header class="top">
+      <span class="wordmark">Tolsey</span>
+      <span class="site">Demo kitchen &middot; Lunch shift</span>
+      <time class="clock" id="clock">2:14 PM</time>
+      <div class="theme-switch" role="group" aria-label="Theme">
+        <button type="button" data-theme-choice="light">Light</button>
+        <button type="button" data-theme-choice="dark">Dark</button>
+        <button type="button" data-theme-choice="device">Device</button>
+      </div>
+      <button class="control" type="button">Log by hand</button>
+    </header>
+
+    <!-- State: a reading logged, in range (2:14 PM) -->
+    <article class="pass" data-state="logged" aria-live="polite">
+      <div class="seg seg--said">
+        <p><span class="label">MR said</span><q>The walk-in reads 38.</q></p>
+        <p><span class="label">Tolsey</span><span class="answer">Logged. Walk-in at 38, in range.</span></p>
+        <p class="aside">The sandwich cooler is 14 minutes late.</p>
+      </div>
+      <div class="seg seg--main">
+        <p class="point">Walk-in cooler</p>
+        <p class="kind label">Cold holding</p>
+        <p class="reading">38<small>°F</small></p>
+        <span class="status">In range</span>
+      </div>
+      <div class="seg seg--cells">
+        <div><span class="label">Rule</span><b>41°F or below</b></div>
+        <div><span class="label">Source</span><b>FDA 3-501.16</b></div>
+        <div><span class="label">Time</span><b>2:14 PM</b></div>
+        <div><span class="label">By</span><b>MR</b></div>
+      </div>
+      <div class="seg seg--code">
+        <svg class="scan" viewBox="0 0 13 13" role="img" aria-label="Record code, sample" data-seed="0916-1414-WI-38"></svg>
+        <div><span class="label">Record</span><b>0916-1414-WI-38</b><span class="fine">Sample code, decided at phase 1.</span></div>
+      </div>
+    </article>
+
+    <!-- State: out of range, corrective action open (2:14 PM) -->
+    <article class="pass" data-state="action" aria-live="polite">
+      <div class="seg seg--said">
+        <p><span class="label">JT said, 1:32 PM</span><q>Soup well is at 128.</q></p>
+        <p><span class="label">Tolsey</span><span class="answer">That is under 135. Reheat to 165 within the hour and tell me the new reading.</span></p>
+      </div>
+      <div class="seg seg--main">
+        <p class="point">Soup well</p>
+        <p class="kind label">Hot holding &middot; fix open</p>
+        <p class="reading reading--clock" role="timer" aria-label="18 minutes left">18<small>min</small></p>
+        <span class="status status--alert">Fix open &middot; due 2:32 PM</span>
+        <p class="todo">Reheat to 165°F, then log the new reading.</p>
+      </div>
+      <div class="seg seg--cells">
+        <div><span class="label">Read</span><b>128°F at 1:32 PM</b></div>
+        <div><span class="label">Rule</span><b>135°F or above</b></div>
+        <div><span class="label">Closes at</span><b>165°F</b></div>
+        <div><span class="label">By</span><b>JT</b></div>
+      </div>
+      <div class="seg seg--code">
+        <svg class="scan" viewBox="0 0 13 13" role="img" aria-label="Record code, sample" data-seed="0916-1332-SW-128"></svg>
+        <div><span class="label">Record</span><b>0916-1332-SW-128</b><span class="fine">Opened 1:32 PM. Closes when a reading of 165°F or above is logged.</span></div>
+      </div>
+    </article>
+
+    <!-- State: a check with no number, refused (2:09 PM) -->
+    <article class="pass" data-state="refused" aria-live="polite">
+      <div class="seg seg--said">
+        <p><span class="label">AK said</span><q>The reach-in is fine.</q></p>
+        <p><span class="label">Tolsey</span><span class="answer">I need a number. What does the reach-in read?</span></p>
+        <p class="aside">The check stays open until you say one.</p>
+      </div>
+      <div class="seg seg--main">
+        <p class="point">Reach-in, line 2</p>
+        <p class="kind label">Cold holding</p>
+        <p class="reading reading--words">No number</p>
+        <span class="status status--alert">Refused &middot; still open</span>
+      </div>
+      <div class="seg seg--cells">
+        <div><span class="label">Rule</span><b>41°F or below</b></div>
+        <div><span class="label">Source</span><b>FDA 3-501.16</b></div>
+        <div><span class="label">Time</span><b>2:09 PM</b></div>
+        <div><span class="label">By</span><b>AK</b></div>
+      </div>
+      <div class="seg seg--code">
+        <svg class="scan" viewBox="0 0 13 13" role="img" aria-label="Record code, sample" data-seed="0916-1409-R2-REFUSED"></svg>
+        <div><span class="label">Record</span><b>0916-1409-R2-REFUSED</b><span class="fine">A check is logged only with a reading. The refusal is on the record.</span></div>
+      </div>
+    </article>
+
+    <!-- State: shift handover (2:14 PM) -->
+    <article class="pass" data-state="handover" aria-live="polite">
+      <div class="seg seg--said">
+        <p><span class="label">MR said</span><q>Hand over to dinner.</q></p>
+        <p><span class="label">Tolsey</span><span class="answer">Seven readings, one out of range. One fix open, one check overdue.</span></p>
+      </div>
+      <div class="seg seg--main">
+        <p class="point">Lunch to dinner</p>
+        <p class="kind label">Handover &middot; 2:14 PM</p>
+        <p class="reading reading--clock">1<small>fix open</small></p>
+        <span class="status status--alert">Soup well &middot; due 2:32 PM</span>
+        <p class="todo">Dinner shift owns the soup well now. Sandwich cooler is 14 minutes overdue.</p>
+      </div>
+      <div class="seg seg--cells">
+        <div><span class="label">Readings</span><b>7, 1 out of range</b></div>
+        <div><span class="label">Refused</span><b>1, then taken</b></div>
+        <div><span class="label">Overdue</span><b>1</b></div>
+        <div><span class="label">From</span><b>MR</b></div>
+      </div>
+      <div class="seg seg--code">
+        <svg class="scan" viewBox="0 0 13 13" role="img" aria-label="Record code, sample" data-seed="0916-1414-HANDOVER"></svg>
+        <div><span class="label">Record</span><b>0916-1414-HANDOVER</b><span class="fine">The handover is a record line too. Dinner reads it before the first check.</span></div>
+      </div>
+    </article>
+
+    <section class="board">
+      <header class="board-head"><h1>Due now</h1><span class="label">Ranked by due time</span></header>
+      <table>
+        <caption>Checks due, ranked by due time</caption>
+        <thead><tr><th class="label">Due</th><th class="label">Check</th><th class="label rule">Rule</th><th class="label">Status</th></tr></thead>
+        <tbody>
+          <tr class="row--change"><td class="t">2:00 PM<small>14 min ago</small></td><td class="check">Sandwich cooler<small>Cold holding</small></td><td class="r rule">41°F or below</td><td><span class="status status--alert flip" style="--i:0">Overdue 14 min</span></td></tr>
+          <tr class="row--change"><td class="t">2:32 PM<small>in 18 min</small></td><td class="check">Soup well, reheat<small>Fix open since 1:32 PM</small></td><td class="r rule">165°F or above</td><td><span class="status status--alert flip" style="--i:1">Fix open</span></td></tr>
+          <tr><td class="t">3:00 PM<small>in 46 min</small></td><td class="check">Rice, cooling stage 2<small>Started 12:05 PM</small></td><td class="r rule">41°F by 6:05 PM</td><td><span class="status status--quiet flip" style="--i:2">Due</span></td></tr>
+          <tr><td class="t">6:14 PM</td><td class="check">Walk-in cooler<small>Cold holding, every 4 hours</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" style="--i:3">Due</span></td></tr>
+        </tbody>
+      </table>
+
+      <header class="board-head board-head--second"><h2>Boarded this shift</h2><span class="label">Newest 4 of 7, 1 fix open</span></header>
+      <table class="rows--boarded">
+        <caption>Checks logged this shift, newest first</caption>
+        <tbody>
+          <tr class="row--newest" data-at="854"><td class="t">2:14 PM</td><td class="check">Walk-in cooler<small>Cold holding</small></td><td class="r rule">38°F</td><td><span class="status flip" style="--i:5">In range</span></td></tr>
+          <tr data-at="851"><td class="t">2:11 PM</td><td class="check">Reach-in, line 2<small>Cold holding, retaken</small></td><td class="r rule">39°F</td><td><span class="status flip" style="--i:6">In range</span></td></tr>
+          <tr data-at="849"><td class="t">2:09 PM</td><td class="check">Reach-in, line 2<small>&ldquo;The reach-in is fine&rdquo;</small></td><td class="r rule r--none">no number</td><td><span class="status status--quiet flip" style="--i:7">Refused</span></td></tr>
+          <tr class="row--change" data-at="812"><td class="t">1:32 PM</td><td class="check">Soup well<small>Hot holding</small></td><td class="r rule">128°F</td><td><span class="status status--alert flip" style="--i:8">Out of range</span></td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+  <script>
+    // Each state is a moment in the shift: its clock, and only the rows boarded by then.
+    const moments = { logged: 854, action: 854, refused: 849, handover: 854 };
+    const state = new URLSearchParams(location.search).get('state') || 'logged';
+    const now = moments[state] ?? moments.logged;
+    document.querySelectorAll(`[data-state="${state}"]`).forEach((el) => el.classList.add('is-active'));
+    const hours = Math.floor(now / 60);
+    document.getElementById('clock').textContent = `${hours > 12 ? hours - 12 : hours}:${String(now % 60).padStart(2, '0')} PM`;
+    document.querySelectorAll('tr[data-at]').forEach((row) => {
+      row.hidden = Number(row.dataset.at) > now;
+    });
+
+    // The scan block is a stand-in drawn from the record id, so it is the same every load and never random art.
+    document.querySelectorAll('.scan[data-seed]').forEach((svg) => {
+      let h = 2166136261;
+      for (const ch of svg.dataset.seed) {
+        h ^= ch.charCodeAt(0);
+        h = Math.imul(h, 16777619) >>> 0;
+      }
+      const cells = [];
+      for (let y = 0; y < 13; y += 1) {
+        for (let x = 0; x < 13; x += 1) {
+          h ^= h << 13; h >>>= 0; h ^= h >>> 17; h ^= h << 5; h >>>= 0;
+          const finder = (x < 3 && y < 3) || (x > 9 && y < 3) || (x < 3 && y > 9);
+          if (finder || (h & 1)) cells.push(`<rect x="${x}" y="${y}" width="1" height="1"/>`);
+        }
+      }
+      svg.innerHTML = cells.join('');
+    });
+  </script>
+</body>
+</html>

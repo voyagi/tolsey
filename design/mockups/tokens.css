@@ -1,0 +1,189 @@
+/* Tolsey design tokens: the gate board. Values and contrast figures: design/ART-DIRECTION.md. */
+/* Self-hosted: no visitor request goes to a font CDN. Mona Sans, JetBrains Mono and Nanum Pen Script, all SIL Open Font License. */
+@font-face {
+  font-family: 'Mona Sans';
+  font-style: normal;
+  font-weight: 200 900;
+  font-stretch: 75% 125%;
+  font-display: swap;
+  src: url('fonts/mona-sans-latin.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('fonts/jetbrains-mono-latin.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Nanum Pen Script';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/nanum-pen-latin.woff2') format('woff2');
+}
+
+:root {
+  color-scheme: light;
+  --ground: #e3e6e9;
+  --stock: #ffffff;
+  --row-alt: #f3f4f6;
+  --ink: #0b0d10;
+  --steel: #5f666d;
+  --hair: rgb(11 13 16 / 0.18);
+  --alert: #ffd400;
+  --on-alert: #0b0d10;
+  --verdict: #0b0d10;
+  --on-verdict: #ffffff;
+  --focus: #0b0d10;
+  --lift: 0 8px 24px rgb(11 13 16 / 0.14);
+
+  --sans: 'Mona Sans', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --ground: #0b0d10;
+  --stock: #15191e;
+  --row-alt: #1b2026;
+  --ink: #f4f6f8;
+  --steel: #a6adb5;
+  --hair: rgb(244 246 248 / 0.16);
+  --alert: #ffd400;
+  --on-alert: #0b0d10;
+  --verdict: #f4f6f8;
+  --on-verdict: #0b0d10;
+  --focus: #ffd400;
+  --lift: 0 8px 24px rgb(0 0 0 / 0.55);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--sans);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  background: var(--ground);
+  -webkit-text-size-adjust: 100%;
+  scrollbar-color: var(--steel) transparent;
+  caret-color: var(--alert);
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  line-height: 1.35;
+}
+
+::selection {
+  background: var(--alert);
+  color: var(--on-alert);
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+a {
+  color: inherit;
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: 2px;
+}
+
+/* Labels: the board's column heads and every field name on a pass. */
+.label {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--steel);
+}
+
+/* Figures: times, temperatures, counts. Mono, always tabular. */
+.figure {
+  font-family: var(--mono);
+  font-weight: 800;
+}
+
+/* Status blocks: a verdict is a black block, a change holds the one alert colour until it is dealt with. */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.3em 0.6em;
+  font-family: var(--mono);
+  font-size: 0.9375rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: var(--verdict);
+  color: var(--on-verdict);
+}
+.status--alert {
+  background: var(--alert);
+  color: var(--on-alert);
+}
+.status--quiet {
+  background: transparent;
+  color: var(--ink);
+  box-shadow: inset 0 0 0 2px var(--hair);
+}
+
+.fine {
+  font-size: 0.875rem;
+  color: var(--steel);
+}
+
+/* Theme switch: Light, Dark, Device. */
+.theme-switch {
+  display: inline-flex;
+  border: 2px solid var(--ink);
+  background: var(--stock);
+}
+.theme-switch button {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  min-height: 40px;
+  padding: 0 0.9rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.theme-switch button + button {
+  border-left: 2px solid var(--ink);
+}
+.theme-switch button[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--stock);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
