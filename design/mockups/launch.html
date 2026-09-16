@@ -31,6 +31,9 @@
     /* The replay: the wall screen itself, a pass torn off a board of the captured run's steps. */
     .pass { grid-column: 1 / 6; display: grid; grid-template-rows: auto 1fr auto; animation: tear 320ms var(--ease-out) both; }
     @keyframes tear { from { transform: translateX(28px); opacity: 0; } to { transform: none; opacity: 1; } }
+    /* Stacked, the pass tears off vertically from the side the replay board sits on, and never widens the page. */
+    @keyframes tear-up { from { transform: translateY(28px); opacity: 0; } to { transform: none; opacity: 1; } }
+    @keyframes tear-down { from { transform: translateY(-28px); opacity: 0; } to { transform: none; opacity: 1; } }
     .seg { padding: 14px 22px; }
     .seg + .seg { border-top: 2px dashed var(--hair); }
     .seg--said p { margin: 0; }
@@ -43,8 +46,10 @@
     .kind { margin: 0; }
     .reading { margin: 0; font-family: var(--mono); font-size: 9.25rem; font-weight: 800; line-height: 0.9; letter-spacing: -0.04em; }
     .reading small { font-size: 0.3em; font-weight: 700; letter-spacing: 0; vertical-align: 1.4em; margin-left: 0.08em; }
+    .reading--words { font-size: 3.25rem; letter-spacing: -0.03em; line-height: 1.3; text-transform: uppercase; }
     .verdict { justify-self: start; font-size: 2.5rem; padding: 0.1em 0.4em; letter-spacing: 0.04em; }
     .todo { margin: 2px 0 0; font-size: 1.25rem; font-weight: 700; line-height: 1.3; }
+    .todo[hidden] { display: none; }
     .seg--cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 16px; }
     .seg--cells .label { display: block; margin-bottom: 2px; }
     .seg--cells b { display: block; font-family: var(--mono); font-size: 1rem; font-weight: 800; }
@@ -109,6 +114,12 @@
     .foot .theme-switch { margin-left: auto; }
     .to-top { display: inline-flex; align-items: center; min-height: 44px; font-family: var(--mono); font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); }
 
+    /* Under 1100 wide a five-column pass is too narrow for its verdict block, so the pass and the replay each take a row. */
+    @media (max-width: 1099px) {
+      .pass, .replay { grid-column: 1 / -1; }
+      .pass { animation-name: tear-up; }
+    }
+
     @media (max-width: 900px) {
       .page { grid-template-columns: minmax(0, 1fr); padding: 14px 16px 24px; gap: 16px; }
       .top, .title, .lede, .pass, .replay, .argument, .paper, .sheet, .try, .limits, .foot { grid-column: 1; }
@@ -116,9 +127,10 @@
       .title { font-size: 2.5rem; }
       .lede { margin: 0; font-size: 1.0625rem; }
       .replay { order: 1; padding: 14px; }
-      .pass { order: 2; }
+      .pass { order: 2; animation-name: tear-down; }
       .argument, .paper, .sheet, .try, .limits, .foot { order: 3; }
       .reading { font-size: 6.5rem; }
+      .reading--words { font-size: 2.5rem; }
       .verdict { font-size: 2rem; }
       .seg--cells { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .board-head { flex-wrap: wrap; gap: 4px 12px; }
@@ -180,7 +192,7 @@
     </article>
 
     <section class="panel replay" id="replay" aria-labelledby="replay-title">
-      <header class="board-head"><h2 id="replay-title">Replay, lunch shift</h2><span class="aside label">Step 2 of 6 &middot; a captured run</span></header>
+      <header class="board-head"><h2 id="replay-title">Replay, lunch shift</h2><span class="aside label"><span id="replay-step">Step 2 of 6</span> &middot; a captured run</span></header>
       <table>
         <caption>Steps of the captured run, in time order</caption>
         <thead><tr><th class="label">Time</th><th class="label">Said</th><th class="label">Verdict</th></tr></thead>
@@ -190,13 +202,13 @@
           <tr><td class="t">2:09 PM</td><td><button class="step" type="button">&ldquo;The reach-in is fine&rdquo;<small>No number, the check stays open</small></button></td><td><span class="status status--alert">Refused</span></td></tr>
           <tr><td class="t">2:11 PM</td><td><button class="step" type="button">&ldquo;Reach-in reads 39&rdquo;<small>Closes the open check</small></button></td><td><span class="status status--word">In range</span></td></tr>
           <tr><td class="t">2:20 PM</td><td><button class="step" type="button">&ldquo;Sandwich cooler is 40&rdquo;<small>Was due 2:00 PM</small></button></td><td><span class="status status--alert">Late 20 min</span></td></tr>
-          <tr><td class="t">2:26 PM</td><td><button class="step" type="button">&ldquo;Soup well is 168&rdquo;<small>Closes the fix, six minutes early</small></button></td><td><span class="status status--word">Fix closed</span></td></tr>
+          <tr><td class="t">2:26 PM</td><td><button class="step" type="button">&ldquo;Soup well is 168&rdquo;<small>Closes the fix, six minutes early</small></button></td><td><span class="status status--word">In range</span></td></tr>
         </tbody>
       </table>
       <div class="controls" role="group" aria-label="Replay controls">
-        <button class="button" type="button">Back</button>
-        <button class="button" type="button" aria-pressed="true">Play</button>
-        <button class="button" type="button">Next</button>
+        <button class="button" type="button" data-replay="back">Back</button>
+        <button class="button" type="button" data-replay="play" aria-pressed="false">Play</button>
+        <button class="button" type="button" data-replay="next">Next</button>
         <a class="button button--main" href="record.html">Read the day sheet</a>
       </div>
     </section>
@@ -229,7 +241,7 @@
           <tr class="row--change"><td class="t">2:09 PM</td><td class="check">Reach-in, line 2</td><td class="r r--none">no number</td><td><span class="status status--alert">Refused</span></td></tr>
           <tr><td class="t">2:11 PM</td><td class="check">Reach-in, line 2</td><td class="r">39</td><td><span class="status status--word">In range</span></td></tr>
           <tr class="row--change"><td class="t">2:20 PM</td><td class="check">Sandwich cooler</td><td class="r">40</td><td><span class="status status--alert">Late 20 min</span></td></tr>
-          <tr><td class="t">2:26 PM</td><td class="check">Soup well, reheat</td><td class="r">168</td><td><span class="status status--word">Fix closed</span></td></tr>
+          <tr><td class="t">2:26 PM</td><td class="check">Soup well, reheat</td><td class="r">168</td><td><span class="status status--word">In range</span></td></tr>
         </tbody>
       </table>
       <figcaption>Read from storage, not from what was said. Every line has its reading, rule and verdict.</figcaption>
@@ -247,15 +259,15 @@
     <aside class="panel limits" aria-labelledby="limits-title">
       <header class="board-head"><h2 id="limits-title">Limits</h2></header>
       <ul>
-        <li><b>The Alexa+ screen is simulated.</b> Alexa+ and its MCP Toolkit are US only. The server behind it is real and answers the MCP 2025-11-25 protocol.</li>
+        <li><b>The Alexa+ screen is simulated.</b> Amazon lists the Alexa+ MCP Toolkit as available in the United States. The server behind the screen is real and answers the MCP 2025-11-25 protocol.</li>
         <li><b>The rules are FDA Food Code 2022 defaults.</b> State and county codes differ. Every value names its source.</li>
-        <li><b>No sensors.</b> Tolsey takes the checks a fridge sensor cannot: hot holding, cooling and receiving.</li>
+        <li><b>No sensors.</b> Every check is taken by voice, including the ones a fridge sensor cannot take: hot holding, cooling and receiving.</li>
         <li><b>The demo kitchen is invented.</b> Its initials belong to nobody.</li>
       </ul>
     </aside>
 
     <footer class="foot">
-      <span>A tolsey was the market town's record house.</span>
+      <span>A tolsey was the building where a market town took its tolls and held its market court.</span>
       <div class="theme-switch" role="group" aria-label="Theme">
         <button type="button" data-theme-choice="light">Light</button>
         <button type="button" data-theme-choice="dark">Dark</button>
@@ -264,5 +276,71 @@
       <a class="to-top" href="#replay">Back to the replay</a>
     </footer>
   </div>
+  <script>
+    // The replay mockup: choosing a step, Back, Next or Play posts that step's pass. The steps are the day sheet's own lines.
+    const steps = [
+      { by: 'MR', at: '11:02 AM', said: 'The walk-in reads 38.', answer: 'Logged. Walk-in at 38, in range.', point: 'Walk-in cooler', kind: 'Cold holding', reading: '38', alert: false, verdict: 'In range', todo: '', rule: '41°F or below', source: 'FDA 3-501.16' },
+      { by: 'JT', at: '1:32 PM', said: 'Soup well is at 128.', answer: 'That is under 135. Reheat to 165 within the hour and tell me the new reading.', point: 'Soup well', kind: 'Hot holding', reading: '128', alert: true, verdict: 'Out of range', todo: 'Fix open: reheat to 165°F by 2:32 PM.', rule: '135°F or above', source: 'FDA 3-501.16' },
+      { by: 'AK', at: '2:09 PM', said: 'The reach-in is fine.', answer: 'I need a number. What does the reach-in read?', point: 'Reach-in, line 2', kind: 'Cold holding', reading: 'No number', alert: true, verdict: 'Refused', todo: 'The check stays open until a number is said.', rule: '41°F or below', source: 'FDA 3-501.16' },
+      { by: 'AK', at: '2:11 PM', said: 'Reach-in reads 39.', answer: 'Logged. Reach-in at 39, in range. That closes the open check.', point: 'Reach-in, line 2', kind: 'Cold holding', reading: '39', alert: false, verdict: 'In range', todo: '', rule: '41°F or below', source: 'FDA 3-501.16' },
+      { by: 'MR', at: '2:20 PM', said: 'Sandwich cooler is 40.', answer: 'Logged. Sandwich cooler at 40, in range, 20 minutes late.', point: 'Sandwich cooler', kind: 'Cold holding', reading: '40', alert: true, verdict: 'Late 20 min', todo: 'It was due at 2:00 PM.', rule: '41°F or below', source: 'FDA 3-501.16' },
+      { by: 'JT', at: '2:26 PM', said: 'Soup well is 168.', answer: 'Logged. Soup well at 168. The fix is closed, six minutes early.', point: 'Soup well', kind: 'Hot holding, reheat', reading: '168', alert: false, verdict: 'In range', todo: 'Fix closed on time.', rule: '165°F or above', source: 'FDA 3-403.11' },
+    ];
+    const rows = [...document.querySelectorAll('#replay tbody tr')];
+    const pass = document.querySelector('.pass');
+    const playButton = document.querySelector('[data-replay="play"]');
+    let current = Math.max(0, rows.findIndex((row) => row.getAttribute('aria-current') === 'step'));
+    let timer = null;
+
+    const show = (index) => {
+      current = Math.max(0, Math.min(steps.length - 1, index));
+      const step = steps[current];
+      rows.forEach((row, i) => {
+        if (i === current) row.setAttribute('aria-current', 'step');
+        else row.removeAttribute('aria-current');
+      });
+      document.getElementById('replay-step').textContent = `Step ${current + 1} of ${steps.length}`;
+      pass.querySelector('.seg--said .label').textContent = `Cook ${step.by}, ${step.at}`;
+      pass.querySelector('q').textContent = step.said;
+      pass.querySelector('.answer').textContent = step.answer;
+      pass.querySelector('.point').textContent = step.point;
+      pass.querySelector('.kind').textContent = step.kind;
+      const reading = pass.querySelector('.reading');
+      const isNumber = /^\d+$/.test(step.reading);
+      reading.classList.toggle('reading--words', !isNumber);
+      reading.firstChild.nodeValue = step.reading;
+      reading.querySelector('small').hidden = !isNumber;
+      const verdict = pass.querySelector('.verdict');
+      verdict.textContent = step.verdict;
+      verdict.classList.toggle('status--alert', step.alert);
+      const todo = pass.querySelector('.todo');
+      todo.textContent = step.todo;
+      todo.hidden = !step.todo;
+      const [rule, source, by] = pass.querySelectorAll('.seg--cells b');
+      rule.textContent = step.rule;
+      source.textContent = step.source;
+      by.textContent = step.by;
+      pass.getAnimations().forEach((animation) => { animation.cancel(); animation.play(); });
+    };
+
+    const stop = () => {
+      clearInterval(timer);
+      timer = null;
+      playButton.setAttribute('aria-pressed', 'false');
+    };
+
+    rows.forEach((row, i) => row.querySelector('.step').addEventListener('click', () => { stop(); show(i); }));
+    document.querySelector('[data-replay="back"]').addEventListener('click', () => { stop(); show(current - 1); });
+    document.querySelector('[data-replay="next"]').addEventListener('click', () => { stop(); show(current + 1); });
+    playButton.addEventListener('click', () => {
+      if (timer) { stop(); return; }
+      if (current === steps.length - 1) show(0);
+      playButton.setAttribute('aria-pressed', 'true');
+      timer = setInterval(() => {
+        if (current === steps.length - 1) { stop(); return; }
+        show(current + 1);
+      }, 2500);
+    });
+  </script>
 </body>
 </html>

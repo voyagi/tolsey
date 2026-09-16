@@ -46,6 +46,11 @@
       from { transform: translateX(28px); opacity: 0; }
       to { transform: none; opacity: 1; }
     }
+    /* Stacked under the board, the pass tears off downward, from the board's side, and never widens the page. */
+    @keyframes tear-down {
+      from { transform: translateY(-28px); opacity: 0; }
+      to { transform: none; opacity: 1; }
+    }
     .seg { padding: 12px 22px; }
     .seg + .seg { border-top: 2px dashed var(--hair); }
 
@@ -66,7 +71,9 @@
     .reading--count { font-size: 6.75rem; }
     .reading--words { font-size: 3.25rem; letter-spacing: -0.03em; line-height: 1.3; text-transform: uppercase; }
     .verdict { justify-self: start; font-size: 2.5rem; padding: 0.1em 0.4em; letter-spacing: 0.04em; }
-    .verdicts { display: grid; gap: 6px; justify-items: start; }
+    .verdicts { display: grid; gap: 6px; }
+    /* Each open item reads like a board row: the check in words, then its short status block. */
+    .verdicts p { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 1.125rem; font-weight: 700; line-height: 1.3; }
     .verdicts .status { font-size: 1.0625rem; }
     .todo { margin: 2px 0 0; font-size: 1.25rem; font-weight: 700; line-height: 1.3; }
 
@@ -122,17 +129,29 @@
     [data-state]:not(.is-active) { display: none !important; }
     tr[hidden] { display: none !important; }
 
+    /* The two columns are sized for the 1280 by 800 wall screen. Anything narrower stacks and scrolls instead of
+       cutting the board off, and the board leads: what is late comes before the newest pass. */
+    @media (max-width: 1279px) {
+      .screen { height: auto; overflow: visible; grid-template-columns: minmax(0, 1fr); }
+      .board { order: 1; overflow: visible; }
+      .pass { order: 2; overflow: visible; animation-name: tear-down; }
+    }
+
     @media (max-width: 900px) {
-      .screen { height: auto; overflow: visible; padding: 14px 16px 24px; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+      .screen { padding: 14px 16px 24px; gap: 16px; }
       .top { flex-wrap: wrap; gap: 10px 14px; }
       .clock { margin-left: 0; order: 1; }
       .theme-switch { margin-left: auto; order: 2; }
       .control { width: 100%; order: 3; }
-      /* On a phone the board leads: what is late comes before the newest pass. */
-      .board { order: 1; overflow: visible; padding: 14px 14px 6px; }
-      .pass { order: 2; overflow: visible; }
+      .board { padding: 14px 14px 6px; }
       .reading { font-size: 6.5rem; }
+      .reading--count { font-size: 4.75rem; }
+      .reading--words { font-size: 2.5rem; }
       .seg--main .verdict { font-size: 2rem; }
+      /* A record code or a handover line never pushes the pass past a phone's width. */
+      .seg--code { grid-template-columns: 48px minmax(0, 1fr); }
+      .scan { width: 48px; height: 48px; }
+      .seg--code b { font-size: 0.8125rem; overflow-wrap: anywhere; }
       .board-head { flex-wrap: wrap; gap: 4px 12px; }
       .board-head h2 { font-size: 1.75rem; }
       .board-head h3 { font-size: 1.5rem; }
@@ -180,7 +199,7 @@
       <div class="seg seg--said">
         <p><span class="label">Cook MR</span><q>The walk-in reads 38.</q></p>
         <p><span class="label">Tolsey</span><span class="answer">Logged. Walk-in at 38, in range. Say &ldquo;wrong number&rdquo; to fix it.</span></p>
-        <p class="note note--lit">Sandwich cooler is 14 min overdue.</p>
+        <p class="note note--lit">Sandwich cooler is <span data-mins-since="840">14</span> min overdue.</p>
       </div>
       <div class="seg seg--main">
         <h2 class="point" id="pass-logged">Walk-in cooler</h2>
@@ -209,7 +228,7 @@
       <div class="seg seg--main">
         <h2 class="point" id="pass-action">Soup well</h2>
         <p class="kind label">Hot holding</p>
-        <p class="reading reading--count">18<small>min</small></p>
+        <p class="reading reading--count"><span data-mins-to="872">18</span><small>min</small></p>
         <span class="status status--alert verdict">Fix open</span>
         <p class="todo">Reheat to 165°F, then say the new reading.</p>
       </div>
@@ -261,8 +280,8 @@
         <p class="kind label">Handover &middot; 2:14 PM</p>
         <p class="reading reading--count">2<small>open</small></p>
         <div class="verdicts">
-          <span class="status status--alert">Sandwich cooler &middot; 14 min late</span>
-          <span class="status status--alert">Soup well &middot; fix due 2:32 PM</span>
+          <p>Sandwich cooler <span class="status status--alert">Overdue <span data-mins-since="840">14</span> min</span></p>
+          <p>Soup well <span class="status status--alert">Fix open, due 2:32 PM</span></p>
         </div>
         <p class="todo">Dinner owns both. Sandwich cooler first.</p>
       </div>
@@ -322,10 +341,18 @@
 
     const clockText = (minutes) => {
       const hours = Math.floor(minutes / 60);
-      const shown = hours > 12 ? hours - 12 : hours;
+      const shown = hours % 12 || 12;
       return `${shown}:${String(minutes % 60).padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
     };
     document.getElementById('clock').textContent = clockText(now);
+
+    // Minutes on a pass come from the same clock: data-mins-since counts up from a time, data-mins-to counts down to one.
+    document.querySelectorAll('[data-mins-since]').forEach((el) => { el.textContent = String(now - Number(el.dataset.minsSince)); });
+    document.querySelectorAll('[data-mins-to]').forEach((el) => { el.textContent = String(Number(el.dataset.minsTo) - now); });
+    // A row's printed time is its own due or logged minute, so the words and the ranking can never disagree.
+    document.querySelectorAll('tr[data-due], tr[data-at]').forEach((row) => {
+      row.querySelector('.t').firstChild.nodeValue = clockText(Number(row.dataset.due ?? row.dataset.at));
+    });
 
     const relative = (diff) => {
       if (diff < 0) return `${-diff} min ago`;
@@ -356,7 +383,7 @@
         setStatus(status, 'No number', 'status--alert');
       } else if (row.dataset.kind === 'fix') {
         row.classList.add(diff < 0 ? 'row--lit' : 'row--change');
-        setStatus(status, diff < 0 ? `Fix late ${-diff} min` : 'Fix open', 'status--alert');
+        setStatus(status, diff < 0 ? `Fix overdue ${-diff} min` : 'Fix open', 'status--alert');
       } else if (diff < 0) {
         row.classList.add('row--lit');
         setStatus(status, `Overdue ${-diff} min`, 'status--alert');
