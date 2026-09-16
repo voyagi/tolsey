@@ -1,0 +1,72 @@
+{
+  "name": "tolsey",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A food safety log for small restaurant kitchens that you fill in by voice.",
+  "author": "voyagi",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "types:worker": "wrangler types",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "gate:complexity": "eslint .",
+    "gate:dup": "jscpd .",
+    "gate:deps": "depcruise src --config .dependency-cruiser.cjs",
+    "gate:size": "vite build && size-limit",
+    "gate:types": "wrangler types && tsc -p tsconfig.app.json && tsc -p tsconfig.worker.json && tsc -p tsconfig.test.json && tsc -p tsconfig.node.json",
+    "gate:dead": "node scripts/check-dead.mjs",
+    "gate:repo": "node scripts/check-goals.mjs && node scripts/check-tracked-gitignore.mjs && node scripts/check-hookspath.mjs && node scripts/check-license.mjs && node scripts/check-git-identity.mjs && node scripts/check-artifact-metadata.mjs && node scripts/check-privacy-accountability.mjs && node scripts/check-ai-act.mjs && node scripts/check-icon-decision.mjs",
+    "gate:env": "node scripts/check-env-example.mjs",
+    "gate:tsconfig": "node scripts/check-tsconfig-coverage.mjs",
+    "gate:artifacts": "node scripts/check-ship-artifacts.mjs",
+    "gate:precommit": "eslint . && jscpd . && npm run gate:env && npm run gate:tsconfig && npm run gate:artifacts",
+    "gate": "npm run gate:artifacts && npm run gate:tsconfig &&npm run gate:types && npm run gate:complexity && npm run gate:dup && npm run gate:deps && npm run gate:env && npm run gate:size",
+    "verify:ship": "node verify-ship.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^4.6.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.50.0",
+    "@size-limit/file": "^13.1.0",
+    "@stryker-mutator/core": "^10.0.0",
+    "@stryker-mutator/vitest-runner": "^10.0.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.1.0",
+    "@vitest/eslint-plugin": "^1.6.0",
+    "dependency-cruiser": "^18.2.0",
+    "eslint": "^10.9.0",
+    "eslint-plugin-compat": "^7.0.2",
+    "eslint-plugin-sonarjs": "^4.2.0",
+    "fast-check": "^4.10.0",
+    "jscpd": "^5.2.0",
+    "knip": "^6.30.0",
+    "schema-dts": "^2.0.0",
+    "size-limit": "^13.1.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.69.0",
+    "vite": "^8.2.0",
+    "vitest": "^5.0.0",
+    "wrangler": "^4.120.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "workerd@1.20260911.1": true
+  },
+  "overrides": {
+    "qs": "^6.16.0"
+  }
+}

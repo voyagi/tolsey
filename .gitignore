@@ -3,6 +3,7 @@ dist/
 coverage/
 reports/
 .wrangler/
+worker-configuration.d.ts
 .stryker-tmp/
 .env
 .env.*

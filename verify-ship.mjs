@@ -94,7 +94,7 @@ const STEPS = [
   { name: 'tests', cmd: 'npm test' },           // FULL suite, one-shot
   { name: 'lint',  cmd: 'npm run lint' },       // WHOLE-repo lint
   { name: 'gate',  cmd: 'npm run gate' },       // committed gate chain (floors)
-  { name: 'repo', cmd: 'npm run gate:repo', script: 'gate:repo', appliesWhen: 'the repo-hygiene gates (goals, gitignore, hookspath, license, identity, artifact metadata, compliance, icon decision, human-todo classification) are installed with their gate:repo script' },
+  { name: 'repo', cmd: 'npm run gate:repo', script: 'gate:repo', appliesWhen: 'the repo-hygiene gates (goals, gitignore, hookspath, license, identity, artifact metadata, compliance, icon decision) are installed with their gate:repo script' },
   { name: 'build', cmd: 'npm run build --if-present' },
   { name: 'coverage', cmd: 'npm run test:coverage', script: 'test:coverage', appliesWhen: 'a test:coverage script with floors exists' },
   { name: 'e2e', cmd: 'npm run test:e2e', script: 'test:e2e', appliesWhen: 'a test:e2e script exists' },
