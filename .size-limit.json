@@ -2,6 +2,6 @@
   {
     "name": "client bundle",
     "path": "dist/client/assets/*.js",
-    "limit": "150 kB"
+    "limit": "80 kB"
   }
 ]
