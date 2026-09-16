@@ -46,6 +46,9 @@ jobs:
       # chain the fix is to add `gate:env` to the `gate` script, never to add a step here, or the
       # hook and CI stop running the same thing and that drift is what this file exists to prevent.
       - run: npm run gate
+      # `gate` never runs the test suite, and this is the only workflow, so the tests get their own
+      # step or a broken /mcp endpoint still leaves pull-request CI green.
+      - run: npm test
       # Client-secret gate, as its OWN step rather than inside `npm run gate`. It needs a BUILT
       # bundle, and `gate` also runs in the pre-commit hook where none exists - there it would
       # correctly report UNKNOWN (exit 2) and fail every commit, so it would be deleted within a

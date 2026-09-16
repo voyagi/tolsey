@@ -6,11 +6,12 @@ const env: WorkerEnv = {
   ALLOWED_HOSTNAMES: 'localhost',
 };
 
-function initializeRequest(host: string): Request {
+function initializeRequest(host: string, origin?: string): Request {
   return new Request(`http://${host}/mcp`, {
     method: 'POST',
     headers: {
       host,
+      ...(origin ? { origin } : {}),
       'content-type': 'application/json',
       accept: 'application/json, text/event-stream',
     },
@@ -47,6 +48,17 @@ describe('worker /mcp endpoint', () => {
   it('refuses a request whose Host is not on the allowlist', async () => {
     const response = await worker.fetch(initializeRequest('attacker.example'), env);
     expect(response.status).toBeGreaterThanOrEqual(400);
+  });
+
+  it('accepts a browser request whose full Origin has an allowed hostname and a port', async () => {
+    // The allowlist holds bare hostnames; the SDK compares the Origin's hostname, not the whole origin.
+    const response = await worker.fetch(initializeRequest('localhost', 'http://localhost:5173'), env);
+    expect(response.status).toBe(200);
+  });
+
+  it('refuses a browser request from an Origin whose hostname is not on the allowlist', async () => {
+    const response = await worker.fetch(initializeRequest('localhost', 'https://attacker.example'), env);
+    expect(response.status).toBe(403);
   });
 
   it('hands every other path to the static assets', async () => {
