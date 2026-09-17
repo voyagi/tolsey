@@ -215,7 +215,9 @@ a {
   *::after {
     animation-duration: 0.01ms !important;
     animation-delay: 0ms !important;
-    transition-duration: 0.01ms !important;
-    transition-delay: 0ms !important;
+    /* 0s, not a sliver: transitions apply to every property unless told otherwise, so any duration above zero turns
+       every style change into a transition, and a script reading layout in the same task gets the old sizes. */
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
   }
 }

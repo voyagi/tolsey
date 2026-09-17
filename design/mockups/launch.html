@@ -29,7 +29,8 @@
     .board-head .aside { margin-left: auto; }
 
     /* The replay: the wall screen itself, a pass torn off a board of the captured run's steps. */
-    .pass { grid-column: 1 / 6; display: grid; grid-template-rows: auto 1fr auto; animation: tear 320ms var(--ease-out) both; }
+    /* One column no wider than the pass, so a long block on it wraps instead of widening every segment. */
+    .pass { grid-column: 1 / 6; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; container-type: inline-size; animation: tear 320ms var(--ease-out) both; }
     @keyframes tear { from { transform: translateX(28px); opacity: 0; } to { transform: none; opacity: 1; } }
     /* Stacked, the pass tears off vertically from the side the replay board sits on, and never widens the page. */
     @keyframes tear-up { from { transform: translateY(28px); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -47,7 +48,8 @@
     .reading { margin: 0; font-family: var(--mono); font-size: 9.25rem; font-weight: 800; line-height: 0.9; letter-spacing: -0.04em; }
     .reading small { font-size: 0.3em; font-weight: 700; letter-spacing: 0; vertical-align: 1.4em; margin-left: 0.08em; }
     .reading--words { font-size: 3.25rem; letter-spacing: -0.03em; line-height: 1.3; text-transform: uppercase; }
-    .verdict { justify-self: start; font-size: 2.5rem; padding: 0.1em 0.4em; letter-spacing: 0.04em; }
+    /* The verdict keeps one line wherever it fits; with large browser text on a phone it wraps between words. */
+    .verdict { justify-self: start; font-size: 2.5rem; padding: 0.1em 0.4em; letter-spacing: 0.04em; white-space: normal; }
     .todo { margin: 2px 0 0; font-size: 1.25rem; font-weight: 700; line-height: 1.3; }
     .todo[hidden] { display: none; }
     .seg--cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 16px; }
@@ -161,11 +163,19 @@
       .sheet .check { font-size: 1rem; }
       .try li { grid-template-columns: minmax(0, 1fr); }
       .foot .theme-switch { margin-left: 0; }
+      /* Every status wraps between words rather than pushing past a phone's width at large browser text. */
+      .status { white-space: normal; }
     }
 
     /* Under 360 wide the OUT OF RANGE block, which never wraps, is wider than the pass at 2rem. */
     @media (max-width: 359px) {
       .verdict { font-size: 1.625rem; }
+    }
+
+    /* A number cannot wrap. Where the pass is too narrow for three digits and the unit (a phone at large browser text
+       or zoom), the reading steps down; em here is the pass's own text size, so the step follows the browser setting. */
+    @container (max-width: 16.25em) {
+      .reading:not(.reading--words) { font-size: 5.25rem; }
     }
   </style>
 </head>
@@ -304,7 +314,7 @@
     let current = Math.max(0, rows.findIndex((row) => row.getAttribute('aria-current') === 'step'));
     let timer = null;
 
-    const show = (index) => {
+    const show = (index, bringIntoView = false) => {
       current = Math.max(0, Math.min(steps.length - 1, index));
       const step = steps[current];
       rows.forEach((row, i) => {
@@ -335,7 +345,12 @@
       by.textContent = step.by;
       // One sentence per step for a screen reader, instead of every field of the pass announced on its own.
       document.getElementById('replay-live').textContent = `Step ${current + 1} of ${steps.length}, ${step.at}: ${step.point}, ${isNumber ? `${step.reading}°F` : step.reading}, ${step.verdict}.`;
-      pass.getAnimations().forEach((animation) => { animation.cancel(); animation.play(); });
+      // The tear restarts once reveal() has measured: cancelled, the pass sits where it settles, not on the tear's
+      // first frame, which is shifted 28px even under reduced motion.
+      const tear = pass.getAnimations();
+      tear.forEach((animation) => animation.cancel());
+      if (bringIntoView) reveal();
+      tear.forEach((animation) => animation.play());
     };
 
     const stop = () => {
@@ -345,30 +360,24 @@
     };
 
     // Stacked, the pass sits above or below the replay, so a tapped step can change a pass that is out of sight.
-    // Bring it into view then, without moving a page where the verdict already shows.
-    // Positions come from layout, not from the screen: show() has just restarted the tear, and its first frame shifts
-    // the pass 28px, even under reduced motion.
-    const pageTop = (el) => {
-      let top = 0;
-      for (let node = el; node; node = node.offsetParent) top += node.offsetTop;
-      return top;
-    };
+    // Bring it into view then, without moving a page where the verdict already shows. Boxes on the screen count every
+    // ancestor's border and offset, which a sum of offsetTop values misses.
     const reveal = () => {
-      const verdict = pass.querySelector('.verdict');
-      const verdictTop = pageTop(verdict);
-      const viewTop = window.scrollY;
-      const viewBottom = viewTop + window.innerHeight;
-      if (verdictTop >= viewTop && verdictTop + verdict.offsetHeight <= viewBottom) return;
+      const view = window.innerHeight;
+      const verdict = pass.querySelector('.verdict').getBoundingClientRect();
+      if (verdict.top >= 0 && verdict.bottom <= view) return;
       // A pass that fits comes wholly into view. A pass taller than the screen (a phone held sideways) brings in its
       // verdict instead, with the reading just above it: lined up by the pass's own top edge, the verdict would stay
       // below the fold.
-      const [top, height] = pass.offsetHeight <= window.innerHeight ? [pageTop(pass), pass.offsetHeight] : [verdictTop, verdict.offsetHeight];
-      const y = top + height > viewBottom ? top + height - window.innerHeight : top;
+      const box = pass.getBoundingClientRect();
+      const target = box.height <= view ? box : verdict;
+      // Whole pixels, rounded away from the edge it lines up with, so no fraction of the box hangs off the screen.
+      const by = target.bottom > view ? Math.ceil(target.bottom - view) : Math.floor(target.top);
       const instant = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      window.scrollTo({ top: y, behavior: instant ? 'auto' : 'smooth' });
+      window.scrollTo({ top: window.scrollY + by, behavior: instant ? 'auto' : 'smooth' });
     };
 
-    rows.forEach((row, i) => row.querySelector('.step').addEventListener('click', () => { stop(); show(i); reveal(); }));
+    rows.forEach((row, i) => row.querySelector('.step').addEventListener('click', () => { stop(); show(i, true); }));
     document.querySelector('[data-replay="back"]').addEventListener('click', () => { stop(); show(current - 1); });
     document.querySelector('[data-replay="next"]').addEventListener('click', () => { stop(); show(current + 1); });
     playButton.addEventListener('click', () => {
