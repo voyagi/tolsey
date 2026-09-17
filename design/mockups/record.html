@@ -34,7 +34,8 @@
     .where { margin: 6px 0 0; font-size: 1.0625rem; line-height: 1.4; color: var(--steel); }
     .tally { display: grid; grid-template-columns: repeat(5, auto); gap: 0; margin: 0; }
     .tally div { padding: 0 18px; }
-    .tally div + div { border-left: 2px dashed var(--hair); }
+    /* The dashed divider only falls between two unlit cells; :where keeps the weight the resets below rely on. */
+    .tally div:where(:not(.is-change)) + div:where(:not(.is-change)) { border-left: 2px dashed var(--hair); }
     .tally div:first-child { padding-left: 0; }
     .tally dt { font-family: var(--mono); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--steel); }
     .tally dd { margin: 2px 0 0; font-family: var(--mono); font-size: 1.375rem; font-weight: 800; white-space: nowrap; }
@@ -139,10 +140,13 @@
     }
 
     /* Under 360 wide a row of three tally cells, two of them lit, is wider than the sheet: two to a row. The third and
-       fifth cells start a row, and the fourth (lit) follows the third with its gap back. */
+       fifth cells start a row, and the fourth follows the third again: the gap beside a lit cell, or the divider and
+       inset between two unlit ones. */
     @media screen and (max-width: 359px) {
       .tally { grid-template-columns: repeat(2, auto); }
       .tally div:nth-child(4) { margin-left: 8px; }
+      .tally div:nth-child(4):not(.is-change) { padding-left: 18px; }
+      .tally div:nth-child(3):not(.is-change) + div:not(.is-change) { margin-left: 0; border-left: 2px dashed var(--hair); }
       .tally div:nth-child(odd) { border-left: 0; margin-left: 0; }
       .tally div:nth-child(odd):not(.is-change) { padding-left: 0; }
     }
