@@ -6,14 +6,17 @@
   const KEY = 'tolsey-theme';
   const root = document.documentElement;
   const osDark = window.matchMedia('(prefers-color-scheme: dark)');
+  const CHOICES = ['light', 'dark', 'device'];
   let choice = 'device';
   try {
-    choice = localStorage.getItem(KEY) || 'device';
+    // Only a known choice is used: a stale or edited value would press no button and ignore the OS.
+    const stored = localStorage.getItem(KEY);
+    if (CHOICES.includes(stored)) choice = stored;
   } catch {
-    choice = 'device';
+    // Storage blocked: Device.
   }
   const forced = new URLSearchParams(location.search).get('theme');
-  if (forced === 'light' || forced === 'dark' || forced === 'device') choice = forced;
+  if (CHOICES.includes(forced)) choice = forced;
 
   function apply() {
     const resolved = choice === 'device' ? (osDark.matches ? 'dark' : 'light') : choice;

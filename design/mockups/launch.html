@@ -155,6 +155,11 @@
       .try li { grid-template-columns: minmax(0, 1fr); }
       .foot .theme-switch { margin-left: 0; }
     }
+
+    /* Under 360 wide the OUT OF RANGE block, which never wraps, is wider than the pass at 2rem. */
+    @media (max-width: 359px) {
+      .verdict { font-size: 1.625rem; }
+    }
   </style>
 </head>
 <body>
@@ -338,9 +343,10 @@
       if (timer) { stop(); return; }
       if (current === steps.length - 1) show(0);
       playButton.setAttribute('aria-pressed', 'true');
+      // Play lets go on the tick that posts the last step, not a tick later.
       timer = setInterval(() => {
-        if (current === steps.length - 1) { stop(); return; }
         show(current + 1);
+        if (current === steps.length - 1) stop();
       }, 2500);
     });
   </script>
