@@ -85,11 +85,11 @@ Colour strategy: high-contrast neutrals plus one alert colour reserved for chang
 | ground | `#0B0D10` | the wall |
 | stock | `#15191E` | board and pass |
 | row-alt | `#1B2026` | a row holding a change |
-| ink | `#F4F6F8` | text, rules, the verdict block (black text on it) |
+| ink | `#F4F6F8` | text, rules, the verdict frame |
 | steel | `#A6ADB5` | labels and second lines |
 | alert | `#FFD400` | the held change, black text |
 
-Measured contrast (WCAG ratios, computed 2026-09-16 by a script over these hex values): light ink on stock 19.46, ink on ground 15.53, steel on stock 5.82, steel on row-alt 5.29, steel on ground 4.65, black on alert 13.59, white on the verdict block 19.46. Dark: ink on stock 16.29, ink on ground 17.96, steel on stock 7.79, steel on row-alt 7.23, black on alert 13.59, black on the verdict block 17.96. The stock to ground step is only 1.25 light and 1.10 dark, which is why every panel carries a soft lifted shadow instead of a border.
+Measured contrast (WCAG ratios, computed 2026-09-16 by a script over these hex values): light ink on stock 19.46, ink on ground 15.53, steel on stock 5.82, steel on row-alt 5.29, steel on ground 4.65, black on alert 13.59, white on the verdict block 19.46. Dark: ink on stock 16.29, ink on ground 17.96, steel on stock 7.79, steel on row-alt 7.23, black on alert 13.59, the verdict frame (ink on stock) 16.29. The stock to ground step is only 1.25 light and 1.10 dark, which is why every panel carries a soft lifted shadow instead of a border.
 
 Colour is never the only signal. Every status block carries its word: IN RANGE, OUT OF RANGE, REFUSED, NO NUMBER, DUE, OVERDUE 14 MIN, LATE 20 MIN, COOLING, FIX OPEN, FIX OVERDUE 5 MIN, CLOSED ON TIME.
 
@@ -105,9 +105,9 @@ Weight follows need, measured after the critique of 2026-09-16: yellow alone is 
 
 **Skeleton, judge launch page.** A one-line title and a one-sentence lede, then the pass beside the replay board in the same first screen at 1280 by 800: the product itself, never a hero banner. The replay opens on its out-of-range step and plays only when asked. Then the argument line, with the door clipboard beside the day sheet for the same shift. Then how to try it, beside the limits stated plainly.
 
-**State vocabulary.** Due: a steel-framed block. Fix open, out of range, a refusal still open: a yellow block with an ink edge, held. Overdue, and a refused check with no number yet: the whole row lit yellow, its status a black block with a yellow word, until a number is logged. In range: the pass's verdict is a black block; on the board it is the word alone. A refusal that was retaken goes back to a steel frame. Overdue and late are two moments of one check: OVERDUE while it is still open past its time, LATE on the line once a number is logged after its time. A reading's verdict is about the reading (a reheat that closes a fix is IN RANGE), and the fix carries its own status (FIX OPEN, FIX OVERDUE, CLOSED ON TIME). A row holding a change that is not overdue sits on the row-alt tint. On a phone the board comes before the pass, so what is late is the first thing read.
+**State vocabulary.** Due: a steel-framed block. Fix open, out of range, a refusal still open: a yellow block with an ink edge, held. Overdue, and a refused check with no number yet: the whole row lit yellow, its status a black block with a yellow word, until a number is logged. In range: the pass's verdict is a black block; on the board it is the word alone. A refusal that was retaken goes back to a steel frame. Overdue and late are two moments of one check: OVERDUE while it is still open past its time, LATE on the line once a number is logged after its time. A reading's verdict is about the reading (a reheat that closes a fix is IN RANGE), and the fix carries its own status (FIX OPEN, FIX OVERDUE, CLOSED ON TIME). A row holding a change that is not overdue sits on the row-alt tint. On a phone the board comes before the pass, so what is late is the first thing read. The day sheet is history, not a live board: a line that needed a hand (out of range, refused, late) keeps its yellow block after it is dealt with, because the inspector reads the exceptions first, and the fix line or the retaken reading after it shows how it was dealt with.
 
-**Every time figure is worked out from the moment.** Printed due and logged times, relative times (14 min ago, in 18 min), overdue and countdown minutes on the board and on the pass, which checks are due and the boarded count all come from the clock of the moment shown, never typed in. The handover pass's counts (readings, out of range, refused, overdue) are still typed in the mockup and were checked against the board line by line. Phase 1 computes them from the record.
+**Every time figure is worked out from the moment.** Printed due and logged times, relative times (14 min ago, in 18 min), overdue and countdown minutes on the board and on the pass, which checks are due and the boarded count all come from the clock of the moment shown, never typed in. Two things are still typed in the mockup and were checked against the board line by line: the handover pass's counts (readings, out of range, refused, overdue) and the clock times printed on a pass itself (when it was said, when a fix opened and when it is due). Phase 1 computes both from the record.
 
 **Motion grammar.** Two authored moments. A new pass tears off the board (320ms, exponential ease-out, from the board side). Status cells flip in like a split-flap, top to bottom, 55ms apart. At phase 1 a row that changes rank moves in place, keeping its identity. Values snap, never count up. Reduced motion posts without movement.
 
@@ -151,7 +151,7 @@ It fits because Tolsey's core is a set of checks each due at a time, judged agai
 
 ## 11. Open
 
-- Food Code section numbers in the mockups are placeholders until phase 1 reads each value from the Food Code 2022.
+- Food Code values in the mockups are placeholders until phase 1 reads each one from the Food Code 2022. The four section numbers the day sheet cites were matched to their titles on 2026-09-17 through Washington's WAC 246-215, which adopts the Food Code: 3-202.11 receiving, 3-403.11 reheating for hot holding, 3-501.14 cooling, 3-501.16 hot and cold holding. Receiving has an exception phase 1 must model: a food whose distribution law sets another temperature, milk named among them, may be received at that temperature, so a flat 41°F rule on a dairy delivery can fail a legal one.
 - The record code on a pass is a drawn stand-in; phase 1 decides what a record line's code encodes.
 - The real Alexa+ host's styling and CSP for MCP Apps cards are unknown; cards must hold up inside a frame that is not ours.
 - The clipboard photograph is not sourced yet.
