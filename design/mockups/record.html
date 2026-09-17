@@ -147,9 +147,13 @@
       .top, .foot { display: none; }
       .page { padding: 0; max-width: none; }
       .sheet { padding: 0; }
+      /* On a Letter page the tally goes under the title, so the title keeps one line. */
+      .sheet-head { grid-template-columns: minmax(0, 1fr); }
       .sheet-head h1 { font-size: 1.75rem; }
       td { padding-top: 5px; padding-bottom: 5px; }
       tr, .cooling { break-inside: avoid; }
+      /* A fix line never starts a page: it prints under the reading that opened it. */
+      tr.fix { break-before: avoid; }
       .cooling { grid-template-columns: minmax(0, 1fr) 15rem; margin-top: 18px; }
       @page { size: letter; margin: 0.5in; }
     }
