@@ -85,7 +85,7 @@
     /* Forced colours keep borders and underlines, not the shadows and fills that mark these (see tokens.css). */
     @media (forced-colors: active) {
       .button { border: 2px solid ButtonText; }
-      .button[aria-pressed='true'] { text-decoration: underline 3px; text-underline-offset: 0.35em; }
+      .button[aria-pressed='true'] { text-decoration-line: underline; text-decoration-thickness: 3px; text-underline-offset: 0.35em; }
       tr[aria-current='step'] td { border-top: 3px solid Highlight; border-bottom: 3px solid Highlight; }
     }
 
@@ -108,6 +108,7 @@
 
     .try { grid-column: 1 / 8; margin-top: 16px; padding: 20px 24px 12px; }
     .limits { grid-column: 8 / -1; margin-top: 16px; padding: 20px 24px 12px; }
+    /* Unmarked lists keep role="list" in the markup: Safari drops a list's role once its markers are removed. */
     .try ul, .limits ul { list-style: none; margin: 0; padding: 0; }
     .try li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 16px; align-items: center; padding: 14px 0; border-top: 1px solid var(--hair); }
     .try li:first-child, .limits li:first-child { border-top: 0; }
@@ -260,7 +261,7 @@
 
     <section class="panel try" id="try" aria-labelledby="try-title">
       <header class="board-head"><h2 id="try-title">Try it</h2><span class="aside label">No install, no key, no account</span></header>
-      <ul>
+      <ul role="list">
         <li><div><b>The replay</b><span class="fine">A captured real run, step by step.</span></div><a class="button button--main" href="#replay">Open the replay</a></li>
         <li><div><b>The video</b><span class="fine">Under three minutes.</span></div><span class="status status--quiet">Not posted yet</span></li>
         <li><div><b>The code</b><span class="fine">The MCP server, the rules and the tests.</span></div><span class="status status--quiet">Public at submission</span></li>
@@ -269,7 +270,7 @@
 
     <aside class="panel limits" aria-labelledby="limits-title">
       <header class="board-head"><h2 id="limits-title">Limits</h2></header>
-      <ul>
+      <ul role="list">
         <li><b>The Alexa+ screen is simulated.</b> Amazon lists the Alexa+ MCP Toolkit as available in the United States. The server behind the screen is real and answers the MCP 2025-11-25 protocol.</li>
         <li><b>The rules are FDA Food Code 2022 defaults.</b> State and county codes differ. Every value names its source.</li>
         <li><b>No sensors.</b> Every check is taken by voice, including the ones a fridge sensor cannot take: hot holding, cooling and receiving.</li>
@@ -345,11 +346,26 @@
 
     // Stacked, the pass sits above or below the replay, so a tapped step can change a pass that is out of sight.
     // Bring it into view then, without moving a page where the verdict already shows.
+    // Positions come from layout, not from the screen: show() has just restarted the tear, and its first frame shifts
+    // the pass 28px, even under reduced motion.
+    const pageTop = (el) => {
+      let top = 0;
+      for (let node = el; node; node = node.offsetParent) top += node.offsetTop;
+      return top;
+    };
     const reveal = () => {
-      const verdict = pass.querySelector('.verdict').getBoundingClientRect();
-      if (verdict.top >= 0 && verdict.bottom <= window.innerHeight) return;
+      const verdict = pass.querySelector('.verdict');
+      const verdictTop = pageTop(verdict);
+      const viewTop = window.scrollY;
+      const viewBottom = viewTop + window.innerHeight;
+      if (verdictTop >= viewTop && verdictTop + verdict.offsetHeight <= viewBottom) return;
+      // A pass that fits comes wholly into view. A pass taller than the screen (a phone held sideways) brings in its
+      // verdict instead, with the reading just above it: lined up by the pass's own top edge, the verdict would stay
+      // below the fold.
+      const [top, height] = pass.offsetHeight <= window.innerHeight ? [pageTop(pass), pass.offsetHeight] : [verdictTop, verdict.offsetHeight];
+      const y = top + height > viewBottom ? top + height - window.innerHeight : top;
       const instant = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      pass.scrollIntoView({ block: 'nearest', behavior: instant ? 'auto' : 'smooth' });
+      window.scrollTo({ top: y, behavior: instant ? 'auto' : 'smooth' });
     };
 
     rows.forEach((row, i) => row.querySelector('.step').addEventListener('click', () => { stop(); show(i); reveal(); }));

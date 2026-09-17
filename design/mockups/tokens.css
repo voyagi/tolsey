@@ -202,7 +202,9 @@ a {
     border: 2px solid CanvasText;
   }
   .theme-switch button[aria-pressed='true'] {
-    text-decoration: underline 3px;
+    /* Longhands: Safari drops a text-decoration shorthand that carries a thickness. */
+    text-decoration-line: underline;
+    text-decoration-thickness: 3px;
     text-underline-offset: 0.35em;
   }
 }

@@ -86,6 +86,7 @@
     .chart .hit { fill: transparent; }
     .chart .hit:hover + .point { r: 8; }
     .chart .value { fill: var(--ink); font-family: var(--mono); font-size: 14px; font-weight: 800; }
+    /* Unmarked lists keep role="list" in the markup: Safari drops a list's role once its markers are removed. */
     .stages { list-style: none; margin: 0; padding: 0; display: grid; align-content: start; }
     .stages li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 12px 0; border-top: 1px solid var(--hair); }
     .stages li:first-child { border-top: 0; }
@@ -155,7 +156,7 @@
        screen styles, and :nth-child(n) outweighs the tally's divider resets, so no later rule takes a side away. */
     @media (forced-colors: active) {
       .control, .tally div.is-change:nth-child(n) { border: 2px solid ButtonText; }
-      .top nav a[aria-current='page'] { text-decoration: underline 3px; text-underline-offset: 0.35em; }
+      .top nav a[aria-current='page'] { text-decoration-line: underline; text-decoration-thickness: 3px; text-underline-offset: 0.35em; }
     }
 
     @media print {
@@ -172,7 +173,8 @@
       .sheet-head h1 { font-size: 1.75rem; }
       td { padding-top: 5px; padding-bottom: 5px; }
       tr, .cooling { break-inside: avoid; }
-      /* A fix line never starts a page: it prints under the reading that opened it. */
+      /* A fix line prints under the reading that opened it, not alone at the top of a page. Only Chrome and Edge honour
+         avoid on a row; Firefox and Safari accept it and still break there (ART-DIRECTION section 11). */
       tr.fix { break-before: avoid; }
       .cooling { grid-template-columns: minmax(0, 1fr) 15rem; margin-top: 18px; }
       @page { size: letter; margin: 0.5in; }
@@ -272,7 +274,7 @@
           <text class="value" x="206" y="206">68</text>
           <text class="value" x="540" y="224">40</text>
         </svg>
-        <ol class="stages">
+        <ol class="stages" role="list">
           <li><b>Stage 1 met</b><span class="status status--word">In range</span><span class="fine">68 at 1:58 PM, 7 minutes before the limit.</span></li>
           <li><b>Stage 2 met</b><span class="status status--word">In range</span><span class="fine">40 at 5:40 PM, 25 minutes before the limit.</span></li>
         </ol>
