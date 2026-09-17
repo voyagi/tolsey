@@ -82,6 +82,12 @@
     .button[aria-pressed='true'], .button--main { background: var(--verdict); color: var(--on-verdict); box-shadow: inset 0 0 0 3px var(--verdict-edge); }
     .button--main { margin-left: auto; }
     .button--main:hover, .button[aria-pressed='true']:hover { background: var(--row-alt); color: var(--ink); box-shadow: inset 0 0 0 3px var(--ink); }
+    /* Forced colours keep borders and underlines, not the shadows and fills that mark these (see tokens.css). */
+    @media (forced-colors: active) {
+      .button { border: 2px solid ButtonText; }
+      .button[aria-pressed='true'] { text-decoration: underline 3px; text-underline-offset: 0.35em; }
+      tr[aria-current='step'] td { border-top: 3px solid Highlight; border-bottom: 3px solid Highlight; }
+    }
 
     /* The argument: the same shift on the door clipboard and on the day sheet. */
     .argument { grid-column: 1 / -1; margin: 34px 0 0; padding-bottom: 10px; border-bottom: 3px solid var(--ink); font-size: clamp(2rem, 4.2vw, 3.5rem); font-weight: 900; font-stretch: 75%; line-height: 1.3; text-transform: uppercase; text-wrap: balance; }
@@ -311,7 +317,8 @@
       pass.querySelector('.point').textContent = step.point;
       pass.querySelector('.kind').textContent = step.kind;
       const reading = pass.querySelector('.reading');
-      const isNumber = /^\d+$/.test(step.reading);
+      // A freezer reads below zero and a probe reads tenths: both are numbers, only words like No number are not.
+      const isNumber = /^-?\d+(\.\d)?$/.test(step.reading);
       reading.classList.toggle('reading--words', !isNumber);
       reading.firstChild.nodeValue = step.reading;
       reading.querySelector('small').hidden = !isNumber;

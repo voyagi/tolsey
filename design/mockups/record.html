@@ -26,6 +26,11 @@
       background: var(--verdict); color: var(--on-verdict); box-shadow: inset 0 0 0 3px var(--verdict-edge);
     }
     .control:hover { background: var(--row-alt); color: var(--ink); box-shadow: inset 0 0 0 3px var(--ink); }
+    /* Forced colours keep borders and underlines, not the shadows and fills that mark these (see tokens.css). */
+    @media (forced-colors: active) {
+      .control, .tally .is-change { border: 2px solid ButtonText; }
+      .top nav a[aria-current='page'] { text-decoration: underline 3px; text-underline-offset: 0.35em; }
+    }
 
     /* The sheet: the whole day as one board, every line a pass laid flat. */
     .sheet { background: var(--stock); box-shadow: var(--lift); padding: 26px 30px 24px; }

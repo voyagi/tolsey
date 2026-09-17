@@ -195,6 +195,18 @@ a {
   white-space: nowrap;
 }
 
+/* Windows contrast themes (forced colours) drop backgrounds and box shadows, the only marks on a status block and on
+   the pressed theme. Borders and underlines are kept, so they carry those marks there. */
+@media (forced-colors: active) {
+  .status:not(.status--word) {
+    border: 2px solid CanvasText;
+  }
+  .theme-switch button[aria-pressed='true'] {
+    text-decoration: underline 3px;
+    text-underline-offset: 0.35em;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
