@@ -343,7 +343,16 @@
       playButton.setAttribute('aria-pressed', 'false');
     };
 
-    rows.forEach((row, i) => row.querySelector('.step').addEventListener('click', () => { stop(); show(i); }));
+    // Stacked, the pass sits above or below the replay, so a tapped step can change a pass that is out of sight.
+    // Bring it into view then, without moving a page where the verdict already shows.
+    const reveal = () => {
+      const verdict = pass.querySelector('.verdict').getBoundingClientRect();
+      if (verdict.top >= 0 && verdict.bottom <= window.innerHeight) return;
+      const instant = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      pass.scrollIntoView({ block: 'nearest', behavior: instant ? 'auto' : 'smooth' });
+    };
+
+    rows.forEach((row, i) => row.querySelector('.step').addEventListener('click', () => { stop(); show(i); reveal(); }));
     document.querySelector('[data-replay="back"]').addEventListener('click', () => { stop(); show(current - 1); });
     document.querySelector('[data-replay="next"]').addEventListener('click', () => { stop(); show(current + 1); });
     playButton.addEventListener('click', () => {
