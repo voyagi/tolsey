@@ -172,7 +172,7 @@
     <h1 class="title">Say the reading. Tolsey keeps the record.</h1>
     <p class="lede">A food safety log for small kitchens, filled in by voice with gloves on. Every reading is judged against its rule as you say it, and a check with no number is refused.</p>
 
-    <article class="panel pass" aria-labelledby="pass-point" aria-live="polite">
+    <article class="panel pass" aria-labelledby="pass-point">
       <div class="seg seg--said">
         <p><span class="label">Cook JT, 1:32 PM</span><q>Soup well is at 128.</q></p>
         <p><span class="label">Tolsey</span><span class="answer">That is under 135. Reheat to 165 within the hour and tell me the new reading.</span></p>
@@ -211,6 +211,7 @@
         <button class="button" type="button" data-replay="next">Next</button>
         <a class="button button--main" href="record.html">Read the day sheet</a>
       </div>
+      <p class="visually-hidden" id="replay-live" aria-live="polite"></p>
     </section>
 
     <h2 class="argument">A check without a number is not a check.</h2>
@@ -283,8 +284,8 @@
       { by: 'JT', at: '1:32 PM', said: 'Soup well is at 128.', answer: 'That is under 135. Reheat to 165 within the hour and tell me the new reading.', point: 'Soup well', kind: 'Hot holding', reading: '128', alert: true, verdict: 'Out of range', todo: 'Fix open: reheat to 165°F by 2:32 PM.', rule: '135°F or above', source: 'FDA 3-501.16' },
       { by: 'AK', at: '2:09 PM', said: 'The reach-in is fine.', answer: 'I need a number. What does the reach-in read?', point: 'Reach-in, line 2', kind: 'Cold holding', reading: 'No number', alert: true, verdict: 'Refused', todo: 'The check stays open until a number is said.', rule: '41°F or below', source: 'FDA 3-501.16' },
       { by: 'AK', at: '2:11 PM', said: 'Reach-in reads 39.', answer: 'Logged. Reach-in at 39, in range. That closes the open check.', point: 'Reach-in, line 2', kind: 'Cold holding', reading: '39', alert: false, verdict: 'In range', todo: '', rule: '41°F or below', source: 'FDA 3-501.16' },
-      { by: 'MR', at: '2:20 PM', said: 'Sandwich cooler is 40.', answer: 'Logged. Sandwich cooler at 40, in range, 20 minutes late.', point: 'Sandwich cooler', kind: 'Cold holding', reading: '40', alert: true, verdict: 'Late 20 min', todo: 'It was due at 2:00 PM.', rule: '41°F or below', source: 'FDA 3-501.16' },
-      { by: 'JT', at: '2:26 PM', said: 'Soup well is 168.', answer: 'Logged. Soup well at 168. The fix is closed, six minutes early.', point: 'Soup well', kind: 'Hot holding, reheat', reading: '168', alert: false, verdict: 'In range', todo: 'Fix closed on time.', rule: '165°F or above', source: 'FDA 3-403.11' },
+      { by: 'DS', at: '2:20 PM', said: 'Sandwich cooler is 40.', answer: 'Logged. Sandwich cooler at 40, in range, 20 minutes late.', point: 'Sandwich cooler', kind: 'Cold holding', reading: '40', alert: true, verdict: 'Late 20 min', todo: 'It was due at 2:00 PM.', rule: '41°F or below', source: 'FDA 3-501.16' },
+      { by: 'DS', at: '2:26 PM', said: 'Soup well is 168.', answer: 'Logged. Soup well at 168. The fix is closed, six minutes early.', point: 'Soup well', kind: 'Hot holding, reheat', reading: '168', alert: false, verdict: 'In range', todo: 'Fix closed on time.', rule: '165°F or above', source: 'FDA 3-403.11' },
     ];
     const rows = [...document.querySelectorAll('#replay tbody tr')];
     const pass = document.querySelector('.pass');
@@ -320,6 +321,8 @@
       rule.textContent = step.rule;
       source.textContent = step.source;
       by.textContent = step.by;
+      // One sentence per step for a screen reader, instead of every field of the pass announced on its own.
+      document.getElementById('replay-live').textContent = `Step ${current + 1} of ${steps.length}, ${step.at}: ${step.point}, ${isNumber ? `${step.reading}°F` : step.reading}, ${step.verdict}.`;
       pass.getAnimations().forEach((animation) => { animation.cancel(); animation.play(); });
     };
 

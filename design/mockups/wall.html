@@ -185,7 +185,7 @@
       <h1 class="visually-hidden">Tolsey wall screen, demo kitchen</h1>
       <span class="wordmark" aria-hidden="true">Tolsey</span>
       <span class="site">Demo kitchen &middot; Oct 20 &middot; Lunch</span>
-      <time class="clock" id="clock">2:14 PM</time>
+      <time class="clock" id="clock" datetime="14:14">2:14 PM</time>
       <div class="theme-switch" role="group" aria-label="Theme">
         <button type="button" data-theme-choice="light">Light</button>
         <button type="button" data-theme-choice="dark">Dark</button>
@@ -305,10 +305,10 @@
         <tbody id="due">
           <tr data-due="840" data-kind="check"><td class="t">2:00 PM<small data-rel></small></td><td class="check">Sandwich cooler<small>Cold holding</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
           <tr data-due="845" data-kind="refused" data-from="849" data-until="851"><td class="t">2:05 PM<small data-rel></small></td><td class="check">Reach-in, line 2<small>Said &ldquo;fine&rdquo; at 2:09 PM, no number yet</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>No number</span></td></tr>
-          <tr data-due="854" data-kind="check" data-until="854"><td class="t">2:14 PM<small data-rel></small></td><td class="check">Walk-in cooler<small>Cold holding, every 4 hours</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
+          <tr data-due="854" data-kind="check" data-until="854"><td class="t">2:14 PM<small data-rel></small></td><td class="check">Walk-in cooler<small>Cold holding, lunch check</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
           <tr data-due="872" data-kind="fix" data-from="812"><td class="t">2:32 PM<small data-rel></small></td><td class="check">Soup well, reheat<small>Fix open since 1:32 PM</small></td><td class="r rule">165°F or above</td><td><span class="status status--quiet flip" data-status>Fix open</span></td></tr>
           <tr data-due="900" data-kind="check"><td class="t">3:00 PM<small data-rel></small></td><td class="check">Rice, cooling stage 2<small>Started 12:05 PM</small></td><td class="r rule">41°F by 6:05 PM</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
-          <tr data-due="1094" data-kind="check" data-from="854"><td class="t">6:14 PM<small data-rel></small></td><td class="check">Walk-in cooler<small>Cold holding, every 4 hours</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
+          <tr data-due="1300" data-kind="check" data-from="854"><td class="t">9:40 PM<small data-rel></small></td><td class="check">Walk-in cooler<small>Cold holding, closing check</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
         </tbody>
       </table>
 
@@ -335,8 +335,10 @@
   <script>
     // Each state is a moment in the shift. Everything on the board is worked out from that moment's clock.
     const moments = { logged: 854, action: 854, refused: 849, handover: 854 };
-    const state = new URLSearchParams(location.search).get('state') || 'logged';
-    const now = moments[state] ?? moments.logged;
+    // Only a known moment is used: anything else in the query would blank the pass or break the selector below.
+    const asked = new URLSearchParams(location.search).get('state');
+    const state = Object.hasOwn(moments, asked) ? asked : 'logged';
+    const now = moments[state];
     document.querySelectorAll(`[data-state="${state}"]`).forEach((el) => el.classList.add('is-active'));
 
     const clockText = (minutes) => {
@@ -344,7 +346,9 @@
       const shown = hours % 12 || 12;
       return `${shown}:${String(minutes % 60).padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
     };
-    document.getElementById('clock').textContent = clockText(now);
+    const clock = document.getElementById('clock');
+    clock.textContent = clockText(now);
+    clock.dateTime = `${String(Math.floor(now / 60)).padStart(2, '0')}:${String(now % 60).padStart(2, '0')}`;
 
     // Minutes on a pass come from the same clock: data-mins-since counts up from a time, data-mins-to counts down to one.
     document.querySelectorAll('[data-mins-since]').forEach((el) => { el.textContent = String(now - Number(el.dataset.minsSince)); });
