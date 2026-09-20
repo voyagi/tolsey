@@ -378,7 +378,10 @@
       if (diff < 0) return `${-diff} min ago`;
       if (diff === 0) return 'now';
       if (diff < 60) return `in ${diff} min`;
-      return `in ${Math.floor(diff / 60)} hr`;
+      // An hour figure that drops its minutes reads as exact and is not: the 9:40 PM check, 446 minutes off, said 7 hr.
+      const hours = Math.floor(diff / 60);
+      const minutes = diff % 60;
+      return minutes ? `in ${hours} hr ${minutes} min` : `in ${hours} hr`;
     };
 
     let flipIndex = 0;
