@@ -32,8 +32,12 @@
     .control:hover { background: var(--row-alt); color: var(--ink); box-shadow: inset 0 0 0 3px var(--ink); }
     @media (forced-colors: active) { .control { border: 2px solid ButtonText; } }
 
-    /* The pass: the newest record line, segmented like a boarding pass, torn off the board. */
+    /* The pass: the newest record line, segmented like a boarding pass, torn off the board.
+       The board leads in the markup at every width, so a screen reader and the tab ring meet what is late first,
+       which CSS order cannot do. On the wall's two columns the pass is placed back to the left by column. */
     .pass {
+      grid-column: 1;
+      grid-row: 2;
       min-width: 0;
       min-height: 0;
       overflow-x: auto;
@@ -92,7 +96,7 @@
     .seg--code b { display: block; font-family: var(--mono); font-size: 0.9375rem; font-weight: 800; margin: 1px 0 2px; }
 
     /* The board: every check of the shift ranked by due time, then everything that boarded. */
-    .board { min-width: 0; min-height: 0; overflow-x: auto; background: var(--stock); box-shadow: var(--lift); padding: 18px 24px 8px; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 4px; }
+    .board { grid-column: 2; grid-row: 2; min-width: 0; min-height: 0; overflow-x: auto; background: var(--stock); box-shadow: var(--lift); padding: 18px 24px 8px; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 4px; }
     .board-head { display: flex; align-items: baseline; gap: 18px; padding-bottom: 8px; border-bottom: 3px solid var(--ink); }
     .board-head h2, .board-head h3 { margin: 0; font-weight: 900; font-stretch: 80%; letter-spacing: 0.02em; line-height: 1.3; text-transform: uppercase; }
     .board-head h2 { font-size: 2.25rem; }
@@ -136,11 +140,11 @@
     tr[hidden] { display: none !important; }
 
     /* The two columns are sized for the 1280 by 800 wall screen. Anything narrower stacks and scrolls instead of
-       cutting the board off, and the board leads: what is late comes before the newest pass. */
+       cutting the board off, and the stack simply follows the markup: the board, then the newest pass. */
     @media (max-width: 1279px) {
       .screen { min-height: 0; grid-template-columns: minmax(0, 1fr); }
-      .board { order: 1; overflow: visible; }
-      .pass { order: 2; overflow: visible; animation-name: tear-down; }
+      .board, .pass { grid-column: 1; grid-row: auto; overflow: visible; }
+      .pass { animation-name: tear-down; }
     }
 
     @media (max-width: 900px) {
@@ -207,6 +211,40 @@
       <button class="control" type="button">Log by hand</button>
     </header>
 
+    <section class="board" aria-labelledby="board-due">
+      <header class="board-head"><h2 id="board-due">Due now</h2><span class="aside hint">Say a check and its number: &ldquo;the walk-in reads 38&rdquo;.</span></header>
+      <table>
+        <caption>Checks due, ranked by due time</caption>
+        <thead><tr><th class="label" scope="col">Due</th><th class="label" scope="col">Check</th><th class="label rule" scope="col">Rule</th><th class="label" scope="col">Status</th></tr></thead>
+        <tbody id="due">
+          <tr data-due="840" data-kind="check"><td class="t">2:00 PM<small data-rel></small></td><td class="check">Sandwich cooler<small>Cold holding</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
+          <tr data-due="845" data-kind="refused" data-from="849" data-until="851" hidden><td class="t">2:05 PM<small data-rel></small></td><td class="check">Reach-in, line 2<small>Said &ldquo;fine&rdquo; at 2:09 PM, no number yet</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>No number</span></td></tr>
+          <tr data-due="854" data-kind="check" data-until="854" hidden><td class="t">2:14 PM<small data-rel></small></td><td class="check">Walk-in cooler<small>Cold holding, lunch check</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
+          <tr data-due="872" data-kind="fix" data-from="812"><td class="t">2:32 PM<small data-rel></small></td><td class="check">Soup well, reheat<small>Fix open since 1:32 PM</small></td><td class="r rule">165°F or above</td><td><span class="status status--quiet flip" data-status>Fix open</span></td></tr>
+          <tr data-due="900" data-kind="check"><td class="t">3:00 PM<small data-rel></small></td><td class="check">Rice, cooling stage 2<small>Started 12:05 PM</small></td><td class="r rule">41°F by 6:05 PM</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
+          <tr data-due="1300" data-kind="check" data-from="854"><td class="t">9:40 PM<small data-rel></small></td><td class="check">Walk-in cooler<small>Cold holding, closing check</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
+        </tbody>
+      </table>
+
+      <header class="board-head board-head--second"><h3>Boarded this shift</h3><span class="aside label" id="boarded-count">Newest 4 of 12</span></header>
+      <table class="rows--boarded">
+        <caption>Checks logged this shift, newest first</caption>
+        <tbody id="boarded">
+          <tr class="row--newest" data-at="854"><td class="t">2:14 PM</td><td class="check">Walk-in cooler<small>Cold holding</small></td><td class="r reading-cell">38°F</td><td><span class="status status--word flip">In range</span></td></tr>
+          <tr data-at="851"><td class="t">2:11 PM</td><td class="check">Reach-in, line 2<small>Cold holding, retaken</small></td><td class="r reading-cell">39°F</td><td><span class="status status--word flip">In range</span></td></tr>
+          <tr data-at="849" data-open-until="851"><td class="t">2:09 PM</td><td class="check">Reach-in, line 2<small>&ldquo;The reach-in is fine&rdquo;</small></td><td class="r reading-cell r--none">no number</td><td><span class="status status--quiet flip" data-status>Refused</span></td></tr>
+          <tr data-at="838"><td class="t">1:58 PM</td><td class="check">Rice<small>Cooling, stage 1</small></td><td class="r reading-cell">68°F</td><td><span class="status status--word flip">In range</span></td></tr>
+          <tr class="row--change" data-at="812" hidden><td class="t">1:32 PM</td><td class="check">Soup well<small>Hot holding</small></td><td class="r reading-cell">128°F</td><td><span class="status status--alert flip">Out of range</span></td></tr>
+          <tr data-at="725" hidden><td class="t">12:05 PM</td><td class="check">Rice<small>Cooling starts</small></td><td class="r reading-cell">135°F</td><td><span class="status status--quiet flip">Cooling</span></td></tr>
+          <tr data-at="700" hidden><td class="t">11:40 AM</td><td class="check">Delivery, chicken<small>Receiving</small></td><td class="r reading-cell">36°F</td><td><span class="status status--word flip">In range</span></td></tr>
+          <tr data-at="662" hidden><td class="t">11:02 AM</td><td class="check">Walk-in cooler<small>Cold holding</small></td><td class="r reading-cell">38°F</td><td><span class="status status--word flip">In range</span></td></tr>
+          <tr data-at="555" hidden><td class="t">9:15 AM</td><td class="check">Delivery, dairy<small>Receiving</small></td><td class="r reading-cell">40°F</td><td><span class="status status--word flip">In range</span></td></tr>
+          <tr data-at="418" hidden><td class="t">6:58 AM</td><td class="check">Reach-in, line 2<small>Cold holding</small></td><td class="r reading-cell">40°F</td><td><span class="status status--word flip">In range</span></td></tr>
+          <tr data-at="415" hidden><td class="t">6:55 AM</td><td class="check">Reach-in, line 1<small>Cold holding</small></td><td class="r reading-cell">39°F</td><td><span class="status status--word flip">In range</span></td></tr>
+          <tr data-at="412" hidden><td class="t">6:52 AM</td><td class="check">Walk-in cooler<small>Cold holding</small></td><td class="r reading-cell">37°F</td><td><span class="status status--word flip">In range</span></td></tr>
+        </tbody>
+      </table>
+    </section>
     <!-- State: a reading logged, in range (2:14 PM). Active in the markup, so the page reads as this moment with no script. -->
     <article class="pass is-active" data-state="logged" aria-labelledby="pass-logged">
       <div class="seg seg--said">
@@ -309,41 +347,6 @@
         <div><span class="label">Record</span><b>1020-1414-HANDOVER</b><span class="fine">The handover is a record line too.</span></div>
       </div>
     </article>
-
-    <section class="board" aria-labelledby="board-due">
-      <header class="board-head"><h2 id="board-due">Due now</h2><span class="aside hint">Say a check and its number: &ldquo;the walk-in reads 38&rdquo;.</span></header>
-      <table>
-        <caption>Checks due, ranked by due time</caption>
-        <thead><tr><th class="label" scope="col">Due</th><th class="label" scope="col">Check</th><th class="label rule" scope="col">Rule</th><th class="label" scope="col">Status</th></tr></thead>
-        <tbody id="due">
-          <tr data-due="840" data-kind="check"><td class="t">2:00 PM<small data-rel></small></td><td class="check">Sandwich cooler<small>Cold holding</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
-          <tr data-due="845" data-kind="refused" data-from="849" data-until="851" hidden><td class="t">2:05 PM<small data-rel></small></td><td class="check">Reach-in, line 2<small>Said &ldquo;fine&rdquo; at 2:09 PM, no number yet</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>No number</span></td></tr>
-          <tr data-due="854" data-kind="check" data-until="854" hidden><td class="t">2:14 PM<small data-rel></small></td><td class="check">Walk-in cooler<small>Cold holding, lunch check</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
-          <tr data-due="872" data-kind="fix" data-from="812"><td class="t">2:32 PM<small data-rel></small></td><td class="check">Soup well, reheat<small>Fix open since 1:32 PM</small></td><td class="r rule">165°F or above</td><td><span class="status status--quiet flip" data-status>Fix open</span></td></tr>
-          <tr data-due="900" data-kind="check"><td class="t">3:00 PM<small data-rel></small></td><td class="check">Rice, cooling stage 2<small>Started 12:05 PM</small></td><td class="r rule">41°F by 6:05 PM</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
-          <tr data-due="1300" data-kind="check" data-from="854"><td class="t">9:40 PM<small data-rel></small></td><td class="check">Walk-in cooler<small>Cold holding, closing check</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
-        </tbody>
-      </table>
-
-      <header class="board-head board-head--second"><h3>Boarded this shift</h3><span class="aside label" id="boarded-count">Newest 4 of 12</span></header>
-      <table class="rows--boarded">
-        <caption>Checks logged this shift, newest first</caption>
-        <tbody id="boarded">
-          <tr class="row--newest" data-at="854"><td class="t">2:14 PM</td><td class="check">Walk-in cooler<small>Cold holding</small></td><td class="r reading-cell">38°F</td><td><span class="status status--word flip">In range</span></td></tr>
-          <tr data-at="851"><td class="t">2:11 PM</td><td class="check">Reach-in, line 2<small>Cold holding, retaken</small></td><td class="r reading-cell">39°F</td><td><span class="status status--word flip">In range</span></td></tr>
-          <tr data-at="849" data-open-until="851"><td class="t">2:09 PM</td><td class="check">Reach-in, line 2<small>&ldquo;The reach-in is fine&rdquo;</small></td><td class="r reading-cell r--none">no number</td><td><span class="status status--quiet flip" data-status>Refused</span></td></tr>
-          <tr data-at="838"><td class="t">1:58 PM</td><td class="check">Rice<small>Cooling, stage 1</small></td><td class="r reading-cell">68°F</td><td><span class="status status--word flip">In range</span></td></tr>
-          <tr class="row--change" data-at="812" hidden><td class="t">1:32 PM</td><td class="check">Soup well<small>Hot holding</small></td><td class="r reading-cell">128°F</td><td><span class="status status--alert flip">Out of range</span></td></tr>
-          <tr data-at="725" hidden><td class="t">12:05 PM</td><td class="check">Rice<small>Cooling starts</small></td><td class="r reading-cell">135°F</td><td><span class="status status--quiet flip">Cooling</span></td></tr>
-          <tr data-at="700" hidden><td class="t">11:40 AM</td><td class="check">Delivery, chicken<small>Receiving</small></td><td class="r reading-cell">36°F</td><td><span class="status status--word flip">In range</span></td></tr>
-          <tr data-at="662" hidden><td class="t">11:02 AM</td><td class="check">Walk-in cooler<small>Cold holding</small></td><td class="r reading-cell">38°F</td><td><span class="status status--word flip">In range</span></td></tr>
-          <tr data-at="555" hidden><td class="t">9:15 AM</td><td class="check">Delivery, dairy<small>Receiving</small></td><td class="r reading-cell">40°F</td><td><span class="status status--word flip">In range</span></td></tr>
-          <tr data-at="418" hidden><td class="t">6:58 AM</td><td class="check">Reach-in, line 2<small>Cold holding</small></td><td class="r reading-cell">40°F</td><td><span class="status status--word flip">In range</span></td></tr>
-          <tr data-at="415" hidden><td class="t">6:55 AM</td><td class="check">Reach-in, line 1<small>Cold holding</small></td><td class="r reading-cell">39°F</td><td><span class="status status--word flip">In range</span></td></tr>
-          <tr data-at="412" hidden><td class="t">6:52 AM</td><td class="check">Walk-in cooler<small>Cold holding</small></td><td class="r reading-cell">37°F</td><td><span class="status status--word flip">In range</span></td></tr>
-        </tbody>
-      </table>
-    </section>
   </main>
   <script>
     // Each state is a moment in the shift. Everything on the board is worked out from that moment's clock.

@@ -29,11 +29,12 @@
     .board-head .aside { margin-left: auto; }
 
     /* The replay: the wall screen itself, a pass torn off a board of the demo shift's steps. */
-    /* One column no wider than the pass, so a long block on it wraps instead of widening every segment. */
-    .pass { grid-column: 1 / 6; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; container-type: inline-size; animation: tear 320ms var(--ease-out) both; }
+    /* One column no wider than the pass, so a long block on it wraps instead of widening every segment.
+       The replay leads in the markup at every width, so a screen reader and the tab ring reach the steps first,
+       which CSS order cannot do. Row 3 is the row under the title and the lede, where both are placed side by side. */
+    .pass { grid-column: 1 / 6; grid-row: 3; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; container-type: inline-size; animation: tear 320ms var(--ease-out) both; }
     @keyframes tear { from { transform: translateX(28px); opacity: 0; } to { transform: none; opacity: 1; } }
-    /* Stacked, the pass tears off vertically from the side the replay board sits on, and never widens the page. */
-    @keyframes tear-up { from { transform: translateY(28px); opacity: 0; } to { transform: none; opacity: 1; } }
+    /* Stacked, the pass sits under the replay and tears off downward, from the replay's side, never widening the page. */
     @keyframes tear-down { from { transform: translateY(-28px); opacity: 0; } to { transform: none; opacity: 1; } }
     .seg { padding: 14px 22px; }
     .seg + .seg { border-top: 2px dashed var(--hair); }
@@ -56,7 +57,7 @@
     .seg--cells .label { display: block; margin-bottom: 2px; }
     .seg--cells b { display: block; font-family: var(--mono); font-size: 1rem; font-weight: 800; }
 
-    .replay { grid-column: 6 / -1; padding: 18px 24px 16px; display: grid; align-content: start; gap: 4px; }
+    .replay { grid-column: 6 / -1; grid-row: 3; padding: 18px 24px 16px; display: grid; align-content: start; gap: 4px; }
     table { width: 100%; border-collapse: collapse; }
     caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
     th { text-align: left; padding: 10px 12px 6px; }
@@ -124,10 +125,11 @@
     .foot .theme-switch { margin-left: auto; }
     .to-top { display: inline-flex; align-items: center; min-height: 44px; font-family: var(--mono); font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); }
 
-    /* Under 1100 wide a five-column pass is too narrow for its verdict block, so the pass and the replay each take a row. */
+    /* Under 1100 wide a five-column pass is too narrow for its verdict block, so the pass and the replay each take a
+       row, in the order the markup already has them: the replay, then the pass torn off under it. */
     @media (max-width: 1099px) {
-      .pass, .replay { grid-column: 1 / -1; }
-      .pass { animation-name: tear-up; }
+      .pass, .replay { grid-column: 1 / -1; grid-row: auto; }
+      .pass { animation-name: tear-down; }
     }
 
     @media (max-width: 900px) {
@@ -136,9 +138,7 @@
       .top nav { display: none; }
       .title { font-size: 2.5rem; }
       .lede { margin: 0; font-size: 1.0625rem; }
-      .replay { order: 1; padding: 14px; }
-      .pass { order: 2; animation-name: tear-down; }
-      .argument, .paper, .sheet, .try, .limits, .foot { order: 3; }
+      .replay { padding: 14px; }
       .reading { font-size: 6.5rem; }
       .reading--words { font-size: 2.5rem; }
       .verdict { font-size: 2rem; }
@@ -196,25 +196,6 @@
     <h1 class="title">Say the reading. Tolsey keeps the record.</h1>
     <p class="lede">A food safety log for small kitchens, filled in by voice with gloves on. Every reading is judged against its rule as you say it, and a check with no number is refused.</p>
 
-    <article class="panel pass" aria-labelledby="pass-point">
-      <div class="seg seg--said">
-        <p><span class="label">Cook JT, 1:32 PM</span><q>Soup well is at 128.</q></p>
-        <p><span class="label">Tolsey</span><span class="answer">That is under 135. Reheat to 165 within the hour and tell me the new reading.</span></p>
-      </div>
-      <div class="seg seg--main">
-        <h2 class="point" id="pass-point">Soup well</h2>
-        <p class="kind label">Hot holding</p>
-        <p class="reading">128<small>°F</small></p>
-        <span class="status status--alert verdict">Out of range</span>
-        <p class="todo">Fix open: reheat to 165°F by 2:32 PM.</p>
-      </div>
-      <div class="seg seg--cells">
-        <div><span class="label">Rule</span><b>135°F or above</b></div>
-        <div><span class="label">Source</span><b>FDA 3-501.16</b></div>
-        <div><span class="label">By</span><b>JT</b></div>
-      </div>
-    </article>
-
     <section class="panel replay" id="replay" aria-labelledby="replay-title">
       <header class="board-head"><h2 id="replay-title">Replay, lunch shift</h2><span class="aside label"><span id="replay-step">Step 2 of 6</span> &middot; a scripted demo shift</span></header>
       <table>
@@ -237,6 +218,25 @@
       </div>
       <p class="visually-hidden" id="replay-live" aria-live="polite"></p>
     </section>
+
+    <article class="panel pass" aria-labelledby="pass-point">
+      <div class="seg seg--said">
+        <p><span class="label">Cook JT, 1:32 PM</span><q>Soup well is at 128.</q></p>
+        <p><span class="label">Tolsey</span><span class="answer">That is under 135. Reheat to 165 within the hour and tell me the new reading.</span></p>
+      </div>
+      <div class="seg seg--main">
+        <h2 class="point" id="pass-point">Soup well</h2>
+        <p class="kind label">Hot holding</p>
+        <p class="reading">128<small>°F</small></p>
+        <span class="status status--alert verdict">Out of range</span>
+        <p class="todo">Fix open: reheat to 165°F by 2:32 PM.</p>
+      </div>
+      <div class="seg seg--cells">
+        <div><span class="label">Rule</span><b>135°F or above</b></div>
+        <div><span class="label">Source</span><b>FDA 3-501.16</b></div>
+        <div><span class="label">By</span><b>JT</b></div>
+      </div>
+    </article>
 
     <h2 class="argument">A check without a number is not a check.</h2>
 
