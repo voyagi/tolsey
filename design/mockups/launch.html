@@ -100,6 +100,8 @@
     .paper h3, .sheet h3 { margin: 0; font-size: 1.375rem; font-weight: 800; font-stretch: 90%; line-height: 1.3; }
     .paper-log th { padding: 8px 6px 4px; border-top: 2px solid var(--ink); }
     .paper-log td { height: 44px; padding: 0 6px; border: 0; border-bottom: 1px solid var(--hair); font-family: 'Nanum Pen Script', var(--sans); font-size: 2rem; line-height: 1; vertical-align: bottom; text-align: left; }
+    /* The afternoon the cook never filled in: empty cells, so a screen reader passes over them in silence. Their
+       height comes from the rule above, not from a character made invisible. */
     .paper-log td.blank { color: transparent; }
     .sheet td { height: 48px; }
     /* The temperature column reads right, so its head does too. */
@@ -249,8 +251,8 @@
             <tr><td>11am</td><td>walk in</td><td>38</td><td>MR</td></tr>
             <tr><td>1:30</td><td>soup</td><td>ok</td><td>JT</td></tr>
             <tr><td>2pm</td><td>reach in</td><td>fine</td><td>AK</td></tr>
-            <tr><td class="blank">.</td><td class="blank">.</td><td class="blank">.</td><td class="blank">.</td></tr>
-            <tr><td class="blank">.</td><td class="blank">.</td><td class="blank">.</td><td class="blank">.</td></tr>
+            <tr><td class="blank"></td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
+            <tr><td class="blank"></td><td class="blank"></td><td class="blank"></td><td class="blank"></td></tr>
           </tbody>
         </table>
       </div>
@@ -347,8 +349,10 @@
       rule.textContent = step.rule;
       source.textContent = step.source;
       by.textContent = step.by;
-      // One sentence per step for a screen reader, instead of every field of the pass announced on its own.
-      document.getElementById('replay-live').textContent = `Step ${current + 1} of ${steps.length}, ${step.at}: ${step.point}, ${isNumber ? `${step.reading}°F` : step.reading}, ${step.verdict}.`;
+      // One sentence per step for a screen reader, instead of every field of the pass announced on its own. It carries
+      // what the step left open as well as its verdict: a deadline nobody hears is the one thing this page is about.
+      const said = `Step ${current + 1} of ${steps.length}, ${step.at}: ${step.point}, ${isNumber ? `${step.reading}°F` : step.reading}, ${step.verdict}.`;
+      document.getElementById('replay-live').textContent = step.todo ? `${said} ${step.todo}` : said;
       // The tear restarts once reveal() has measured: cancelled, the pass sits where it settles, not on the tear's
       // first frame, which is shifted 28px even under reduced motion.
       const tear = pass.getAnimations();
@@ -386,7 +390,11 @@
     document.querySelector('[data-replay="next"]').addEventListener('click', () => { stop(); show(current + 1); });
     playButton.addEventListener('click', () => {
       if (timer) { stop(); return; }
-      if (current === steps.length - 1) show(0);
+      // Play runs unattended, so the pass is brought into view once, here; the ticks after it never move it again.
+      // Back and Next deliberately do not: they would scroll the button out from under the hand pressing it, and the
+      // step they change is marked in the row the reader is already looking at, and spoken by the live region.
+      if (current === steps.length - 1) show(0, true);
+      else reveal();
       playButton.setAttribute('aria-pressed', 'true');
       // Play lets go on the tick that posts the last step, not a tick later.
       timer = setInterval(() => {
