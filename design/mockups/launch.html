@@ -282,7 +282,7 @@
       <header class="board-head"><h2 id="limits-title">Limits</h2></header>
       <ul role="list">
         <li><b>The Alexa+ screen is simulated.</b> Amazon lists the Alexa+ MCP Toolkit as available in the United States. The server behind the screen is real and answers the MCP 2025-11-25 protocol.</li>
-        <li><b>The rules are FDA Food Code 2022 defaults.</b> State and county codes differ. Every value names its source.</li>
+        <li><b>The temperature rules are FDA Food Code 2022 defaults.</b> State and county codes differ, and every value names its source. The hour to reheat is this kitchen&rsquo;s house rule, stricter than the two hours section 3-403.11 allows.</li>
         <li><b>No sensors.</b> Every check is taken by voice, including the ones a fridge sensor cannot take: hot holding, cooling and receiving.</li>
         <li><b>The demo kitchen is invented.</b> Its initials belong to nobody.</li>
       </ul>
@@ -306,7 +306,7 @@
       { by: 'AK', at: '2:09 PM', said: 'The reach-in is fine.', answer: 'I need a number. What does the reach-in read?', point: 'Reach-in, line 2', kind: 'Cold holding', reading: 'No number', alert: true, verdict: 'Refused', todo: 'The check stays open until a number is said.', rule: '41°F or below', source: 'FDA 3-501.16' },
       { by: 'AK', at: '2:11 PM', said: 'Reach-in reads 39.', answer: 'Logged. Reach-in at 39, in range. That closes the open check.', point: 'Reach-in, line 2', kind: 'Cold holding', reading: '39', alert: false, verdict: 'In range', todo: '', rule: '41°F or below', source: 'FDA 3-501.16' },
       { by: 'DS', at: '2:20 PM', said: 'Sandwich cooler is 40.', answer: 'Logged. Sandwich cooler at 40, in range, 20 minutes late.', point: 'Sandwich cooler', kind: 'Cold holding', reading: '40', alert: true, verdict: 'Late 20 min', todo: 'It was due at 2:00 PM.', rule: '41°F or below', source: 'FDA 3-501.16' },
-      { by: 'DS', at: '2:26 PM', said: 'Soup well is 168.', answer: 'Logged. Soup well at 168. The fix is closed, six minutes early.', point: 'Soup well', kind: 'Hot holding, reheat', reading: '168', alert: false, verdict: 'In range', todo: 'Fix closed on time.', rule: '165°F or above', source: 'FDA 3-403.11' },
+      { by: 'DS', at: '2:26 PM', said: 'Soup well is 168.', answer: 'Logged. Soup well at 168. The fix is closed, six minutes early.', point: 'Soup well', kind: 'Hot holding, reheat', reading: '168', alert: false, verdict: 'In range', todo: 'Fix closed on time.', rule: '165°F for 15 s', source: 'FDA 3-403.11' },
     ];
     const rows = [...document.querySelectorAll('#replay tbody tr')];
     const pass = document.querySelector('.pass');
