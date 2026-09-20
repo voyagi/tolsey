@@ -28,7 +28,7 @@ Replace the paper temperature log and the opening and closing clipboard in a sma
 - A small commercial kitchen during service: heat, steam, noise, bright or uneven light, wet or gloved hands, attention split with cooking.
 - The device is an Alexa+ screen (Echo Show class) on a kitchen wall or counter, read from a few steps away. Amazon lists the Alexa+ MCP Toolkit as available in the United States. A judge has nothing installed and the hackathon allows a simulated experience, so the entry ships a simulated Alexa+ surface in the browser; the MCP server behind it is real.
 - Artifacts that exist today in this world: the clipboard temperature log on the walk-in door, opening and closing checklists, the shift handover conversation, the inspector's visit.
-- The judge's path: a launch page, a zero-install replay of a captured real run, a video under three minutes.
+- The judge's path: a launch page, a zero-install replay of the demo shift, a video under three minutes. The replay is scripted from the demo kitchen's record and is labelled as such until a real run is captured and its licence settled.
 
 ## Capabilities and Constraints
 

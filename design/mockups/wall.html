@@ -121,6 +121,9 @@
     .check { font-size: 1.375rem; font-weight: 700; font-stretch: 95%; line-height: 1.3; letter-spacing: -0.01em; }
     .check small { display: block; font-size: 0.9375rem; font-weight: 500; font-stretch: 100%; color: var(--steel); margin-top: 2px; }
     .r { font-family: var(--mono); font-size: 0.9375rem; font-weight: 600; color: var(--steel); white-space: nowrap; }
+    /* The boarded list sits under its own heading and needs no second visible header row, but the column names
+       still belong in the accessibility tree: a bare 38°F beside a bare In range means nothing without them. */
+    .rows--boarded thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .rows--boarded td { padding: 6px 12px; }
     .rows--boarded .t { font-size: 1.125rem; }
     .rows--boarded .check { font-size: 1.125rem; }
@@ -172,8 +175,12 @@
       thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
       tr { display: grid; grid-template-columns: 5.25rem minmax(0, 1fr); column-gap: 12px; row-gap: 6px; padding: 10px 8px; border-top: 1px solid var(--hair); }
       td, th:first-child, td:first-child, td:last-child { padding: 0; border: 0; text-align: left; }
-      td.t { grid-row: span 2; }
-      td.rule { display: none; }
+      /* The rule stays on a phone: a cook who can see a check is due can see the number it must meet. */
+      td.t { grid-row: span 3; }
+      /* A relative time carrying hours and minutes is wider than the time column, so it wraps here rather
+         than running across the check beside it. The printed time above it still never breaks. */
+      .t small { white-space: normal; }
+      td.rule { grid-column: 2; }
       td:last-child { grid-column: 2; }
       tr.row--change { background: var(--row-alt); }
       tr.row--lit { background: var(--alert); color: var(--on-alert); }
@@ -229,6 +236,7 @@
       <header class="board-head board-head--second"><h3>Boarded this shift</h3><span class="aside label" id="boarded-count">Newest 4 of 12</span></header>
       <table class="rows--boarded">
         <caption>Checks logged this shift, newest first</caption>
+        <thead><tr><th class="label" scope="col">Time</th><th class="label" scope="col">Check</th><th class="label" scope="col">Reading</th><th class="label" scope="col">Status</th></tr></thead>
         <tbody id="boarded">
           <tr class="row--newest" data-at="854"><td class="t">2:14 PM</td><td class="check">Walk-in cooler<small>Cold holding</small></td><td class="r reading-cell">38°F</td><td><span class="status status--word flip">In range</span></td></tr>
           <tr data-at="851"><td class="t">2:11 PM</td><td class="check">Reach-in, line 2<small>Cold holding, retaken</small></td><td class="r reading-cell">39°F</td><td><span class="status status--word flip">In range</span></td></tr>
