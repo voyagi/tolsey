@@ -112,7 +112,8 @@
       .tally div:nth-child(4):not(.is-change) { padding-left: 0; }
 
       table, tbody, tr, td { display: block; }
-      thead { display: none; }
+      /* Restacked rows drop the visible header row, but it stays in the accessibility tree: display: none would not. */
+      thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
       tr { display: grid; grid-template-columns: 4.75rem minmax(0, 1fr) auto; column-gap: 12px; row-gap: 4px; padding: 10px 4px; border-top: 1px solid var(--hair); }
       td, td:first-child, td:last-child { padding: 0; border: 0; text-align: left; }
       tr.row--change { background: var(--row-alt); }
@@ -212,7 +213,7 @@
 
       <table>
         <caption>Every check logged on Tuesday October 20, in time order</caption>
-        <thead><tr><th class="label">Time</th><th class="label">Check</th><th class="label num">Reading</th><th class="label">Rule</th><th class="label">Verdict</th><th class="label">By</th></tr></thead>
+        <thead><tr><th class="label" scope="col">Time</th><th class="label" scope="col">Check</th><th class="label num" scope="col">Reading</th><th class="label" scope="col">Rule</th><th class="label" scope="col">Verdict</th><th class="label" scope="col">By</th></tr></thead>
         <tbody>
           <tr class="hour"><td colspan="6">Opening</td></tr>
           <tr><td class="t">6:52 AM</td><td class="check">Walk-in cooler<small>Cold holding</small></td><td class="reading num">37</td><td class="rule">41 or below</td><td class="verdict"><span class="status status--word">In range</span></td><td class="by">MR</td></tr>

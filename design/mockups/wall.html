@@ -164,7 +164,8 @@
       .board-head .aside { margin-left: 0; }
 
       table, tbody, tr, td { display: block; }
-      thead { display: none; }
+      /* Restacked rows drop the visible header row, but it stays in the accessibility tree: display: none would not. */
+      thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
       tr { display: grid; grid-template-columns: 5.25rem minmax(0, 1fr); column-gap: 12px; row-gap: 6px; padding: 10px 8px; border-top: 1px solid var(--hair); }
       td, th:first-child, td:first-child, td:last-child { padding: 0; border: 0; text-align: left; }
       td.t { grid-row: span 2; }
@@ -313,7 +314,7 @@
       <header class="board-head"><h2 id="board-due">Due now</h2><span class="aside hint">Say a check and its number: &ldquo;the walk-in reads 38&rdquo;.</span></header>
       <table>
         <caption>Checks due, ranked by due time</caption>
-        <thead><tr><th class="label">Due</th><th class="label">Check</th><th class="label rule">Rule</th><th class="label">Status</th></tr></thead>
+        <thead><tr><th class="label" scope="col">Due</th><th class="label" scope="col">Check</th><th class="label rule" scope="col">Rule</th><th class="label" scope="col">Status</th></tr></thead>
         <tbody id="due">
           <tr data-due="840" data-kind="check"><td class="t">2:00 PM<small data-rel></small></td><td class="check">Sandwich cooler<small>Cold holding</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
           <tr data-due="845" data-kind="refused" data-from="849" data-until="851" hidden><td class="t">2:05 PM<small data-rel></small></td><td class="check">Reach-in, line 2<small>Said &ldquo;fine&rdquo; at 2:09 PM, no number yet</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>No number</span></td></tr>
