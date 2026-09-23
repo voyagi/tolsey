@@ -23,7 +23,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const DEFAULT_ALLOW = ['@users.noreply.github.com'];
+// GitHub's own merge-button committer identity is not a person and lands in history on every web merge.
+const DEFAULT_ALLOW = ['@users.noreply.github.com', 'noreply@github.com'];
 
 function allowlist() {
   const extra = String(process.env.GIT_IDENTITY_ALLOW || '')
