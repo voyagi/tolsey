@@ -143,6 +143,9 @@
       .screen { min-height: 0; grid-template-columns: minmax(0, 1fr); }
       .board, .pass { grid-column: 1; overflow: visible; }
       .board { grid-row: 3; }
+      /* Each pass keeps its own height. While a new pass tears over the old one they share this row, and a stretched
+         pass snapped its lower half by the difference when the other one came or went; the board takes it instead. */
+      .pass { align-self: start; }
       /* Stacked, the board stands under the pass, so the tear line runs along the pass's bottom edge. */
       .pass::after { top: auto; left: 0; width: auto; height: 6px; background: radial-gradient(circle at 50% 100%, var(--ground) 3.5px, transparent 4px) 0 0 / 16px 6px repeat-x; }
     }
