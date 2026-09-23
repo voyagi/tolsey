@@ -510,10 +510,12 @@
       const said = `${clockText(854)}: ${incoming.querySelector('.point').textContent}, ${incoming.querySelector('.reading').textContent}, ${incoming.querySelector('.verdict').textContent}.`;
       document.getElementById('wall-live').textContent = note ? `${said} ${note.textContent}` : said;
       row.getAnimations().forEach((animation) => animation.cancel());
+      // A blank tile keeps one line's height, so the rows closing up below it are aimed at the layout they settle in:
+      // an empty one was 4px shorter on a phone and the rows under it jumped when its word arrived.
       boardLines().filter((line) => !before.has(line)).forEach((line) => {
         const word = line.querySelector('.status');
         const text = word.textContent;
-        word.textContent = '';
+        word.textContent = '\u00a0';
         motion.flap(word, () => { word.textContent = text; });
       });
       await Promise.all([motion.closeUp(before), torn]);
