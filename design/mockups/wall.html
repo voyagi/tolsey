@@ -23,7 +23,8 @@
 
     .top { grid-column: 1 / -1; display: flex; align-items: center; gap: 22px; min-height: 44px; }
     .wordmark { font-weight: 900; font-stretch: 80%; font-size: 1.5rem; letter-spacing: 0.06em; text-transform: uppercase; }
-    .site { font-family: var(--mono); font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--steel); }
+    /* The kitchen and shift stay one line beside the wordmark; between the phone and the wall, the hint wraps instead. */
+    .site { font-family: var(--mono); font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--steel); white-space: nowrap; }
     .top .theme-switch { margin-left: auto; }
     .clock { font-family: var(--mono); font-size: 1.5rem; font-weight: 800; }
     .control {
@@ -101,7 +102,8 @@
     /* Due now carries the clock and Log by hand at its right end, the way a gate board carries its time. */
     .board-head--due { align-items: center; }
     .board-head--due .clock { margin-left: auto; }
-    .hint { font-size: 1rem; font-weight: 600; color: var(--steel); }
+    /* Where the hint takes two lines, they come out even rather than leaving the quoted number alone on the second. */
+    .hint { font-size: 1rem; font-weight: 600; color: var(--steel); text-wrap: balance; }
     .board-head--second { margin-top: 8px; }
 
     table { width: 100%; border-collapse: collapse; }
@@ -148,6 +150,8 @@
     @media (max-width: 900px) {
       .screen { padding: 14px 16px 24px; gap: 16px; }
       .top { flex-wrap: wrap; gap: 10px 14px; }
+      /* On a phone at large browser text the kitchen line may need to wrap to stay inside the screen. */
+      .site { white-space: normal; }
       .top .hint { order: 1; flex-basis: 100%; }
       .board-head--due .control { flex-basis: 100%; }
       .board { padding: 14px 14px 6px; }
@@ -168,7 +172,9 @@
       thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
       tr { display: grid; grid-template-columns: 5.25rem minmax(0, 1fr); column-gap: 12px; row-gap: 6px; padding: 10px 8px; border-top: 1px solid var(--hair); }
       td, th:first-child, td:first-child, td:last-child { padding: 0; border: 0; text-align: left; }
-      /* The rule stays on a phone: a cook who can see a check is due can see the number it must meet. */
+      /* The rule stays on a phone: a cook who can see a check is due can see the number it must meet. Here a rule or a
+         reading may wrap between words, since at large browser text on a narrow phone one line runs past the screen. */
+      .r { white-space: normal; }
       td.t { grid-row: span 3; }
       /* A relative time carrying hours and minutes is wider than the time column, so it wraps here rather
          than running across the check beside it. The printed time above it still never breaks. */
@@ -347,8 +353,8 @@
           <tr data-due="840" data-kind="check"><td class="t">2:00 PM<small data-rel></small></td><td class="check">Sandwich cooler<small>Cold holding</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet" data-status>Due</span></td></tr>
           <tr data-due="845" data-kind="refused" data-from="849" data-until="851" hidden><td class="t">2:05 PM<small data-rel></small></td><td class="check">Reach-in, line 2<small>Said &ldquo;fine&rdquo; at 2:09 PM, no number yet</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet" data-status>No number</span></td></tr>
           <tr data-due="854" data-kind="check" data-until="854" hidden><td class="t">2:14 PM<small data-rel></small></td><td class="check">Walk-in cooler<small>Cold holding, lunch check</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet" data-status>Due</span></td></tr>
-          <tr data-due="872" data-kind="fix" data-from="812"><td class="t">2:32 PM<small data-rel></small></td><td class="check">Soup well, reheat<small>Fix open since 1:32 PM</small></td><td class="r rule">165°F for 15 s</td><td><span class="status status--quiet" data-status>Fix open</span></td></tr>
-          <tr data-due="900" data-kind="check"><td class="t">3:00 PM<small data-rel></small></td><td class="check">Rice, cooling stage 2<small>Started 12:05 PM</small></td><td class="r rule">41°F by 6:05 PM</td><td><span class="status status--quiet" data-status>Due</span></td></tr>
+          <tr data-due="872" data-kind="fix" data-from="812"><td class="t">2:32 PM<small data-rel></small></td><td class="check">Soup well, reheat<small>Fix open since 1:32 PM</small></td><td class="r rule">165°F for 15&nbsp;s</td><td><span class="status status--quiet" data-status>Fix open</span></td></tr>
+          <tr data-due="900" data-kind="check"><td class="t">3:00 PM<small data-rel></small></td><td class="check">Rice, cooling stage 2<small>Started 12:05 PM</small></td><td class="r rule">41°F by 6:05&nbsp;PM</td><td><span class="status status--quiet" data-status>Due</span></td></tr>
           <tr data-due="1300" data-kind="check" data-from="854"><td class="t">9:40 PM<small data-rel></small></td><td class="check">Walk-in cooler<small>Cold holding, closing check</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet" data-status>Due</span></td></tr>
         </tbody>
       </table>

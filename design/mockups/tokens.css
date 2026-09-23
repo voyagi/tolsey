@@ -196,9 +196,11 @@ a {
   color: var(--steel);
 }
 
-/* Theme switch: Light, Dark, Device. A setting, so it sits quieter than any status or the main control. */
+/* Theme switch: Light, Dark, Device. A setting, so it sits quieter than any status or the main control. On a narrow
+   screen at large browser text its three buttons wrap inside the switch rather than running past the screen's edge. */
 .theme-switch {
   display: inline-flex;
+  flex-wrap: wrap;
   gap: 3px;
   padding: 3px;
   border: 2px solid var(--steel);

@@ -323,6 +323,7 @@
     let timer = null;
 
     const show = (index, bringIntoView = false) => {
+      const previous = current;
       current = Math.max(0, Math.min(steps.length - 1, index));
       const step = steps[current];
       rows.forEach((row, i) => {
@@ -366,8 +367,9 @@
       setVerdict();
       if (bringIntoView) reveal();
       // The verdict tile flaps from its old word to the new one, and the pass slides a short way in from the replay's
-      // side: the right on two columns, above once they stack. Without the motion script the word simply changes.
-      if (!motion) return;
+      // side: the right on two columns, above once they stack. Without the motion script the word simply changes, and
+      // a step that stays put (Back on the first, Next on the last, the current row chosen again) moves nothing.
+      if (!motion || current === previous) return;
       verdict.textContent = was.word;
       verdict.classList.toggle('status--alert', was.alert);
       motion.flap(verdict, setVerdict);
