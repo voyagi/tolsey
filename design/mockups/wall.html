@@ -498,8 +498,13 @@
       await motion.flap(tile, () => setStatus(tile, 'In range', 'status--word'));
       // The old pass stays on screen but gives up its active mark, so only the new one is raised above it: the old pass
       // comes later in the markup, and two raised passes would leave it covering the tear until the tear was nearly done.
+      // Stacked, the two passes share a row as tall as the taller one, and at some widths and text sizes they differ by
+      // a line, so each time a pass joins or leaves that row the board under it closes up instead of jumping.
+      const board = document.querySelector('.board');
+      const boardBefore = motion.where([board]);
       outgoing.classList.replace('is-active', 'is-leaving');
       incoming.classList.add('is-active');
+      const boardIn = motion.closeUp(boardBefore);
       const torn = motion.tearOver(incoming, stacked ? 'bottom' : 'right');
       await motion.liftOff(row, stacked ? 'up' : 'left');
       const before = motion.where(boardLines());
@@ -518,8 +523,10 @@
         word.textContent = '\u00a0';
         motion.flap(word, () => { word.textContent = text; });
       });
-      await Promise.all([motion.closeUp(before), torn]);
+      await Promise.all([motion.closeUp(before), torn, boardIn]);
+      const boardCovered = motion.where([board]);
       outgoing.classList.remove('is-leaving');
+      await motion.closeUp(boardCovered);
     };
 
     // The page posts the minute before, complete and still, then plays the landing once. Under reduced motion, or
