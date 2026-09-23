@@ -231,7 +231,7 @@
         <p class="kind label">Hot holding</p>
         <p class="reading">128<small>°F</small></p>
         <span class="status status--alert verdict">Out of range</span>
-        <p class="todo">Fix open: reheat to 165°F by 2:32 PM.</p>
+        <p class="todo">Fix open: reheat to 165°F for 15&nbsp;s by 2:32 PM.</p>
       </div>
       <div class="seg seg--cells">
         <div><span class="label">Rule</span><b>135°F or above</b></div>
@@ -308,7 +308,7 @@
     // The replay mockup: choosing a step, Back, Next or Play posts that step's pass. The steps are the day sheet's own lines.
     const steps = [
       { by: 'MR', at: '11:02 AM', said: 'The walk-in reads 38.', answer: 'Logged. Walk-in at 38, in range.', point: 'Walk-in cooler', kind: 'Cold holding', reading: '38', alert: false, verdict: 'In range', todo: '', rule: '41°F or below', source: 'FDA 3-501.16' },
-      { by: 'JT', at: '1:32 PM', said: 'Soup well is at 128.', answer: 'That is under 135. Reheat to 165 within the hour and tell me the new reading.', point: 'Soup well', kind: 'Hot holding', reading: '128', alert: true, verdict: 'Out of range', todo: 'Fix open: reheat to 165°F by 2:32 PM.', rule: '135°F or above', source: 'FDA 3-501.16' },
+      { by: 'JT', at: '1:32 PM', said: 'Soup well is at 128.', answer: 'That is under 135. Reheat to 165 within the hour and tell me the new reading.', point: 'Soup well', kind: 'Hot holding', reading: '128', alert: true, verdict: 'Out of range', todo: 'Fix open: reheat to 165°F for 15\u00a0s by 2:32 PM.', rule: '135°F or above', source: 'FDA 3-501.16' },
       { by: 'AK', at: '2:09 PM', said: 'The reach-in is fine.', answer: 'I need a number. What does the reach-in read?', point: 'Reach-in, line 2', kind: 'Cold holding', reading: 'No number', alert: true, verdict: 'Refused', todo: 'The check stays open until a number is said.', rule: '41°F or below', source: 'FDA 3-501.16' },
       { by: 'AK', at: '2:11 PM', said: 'Reach-in reads 39.', answer: 'Logged. Reach-in at 39, in range. That closes the open check.', point: 'Reach-in, line 2', kind: 'Cold holding', reading: '39', alert: false, verdict: 'In range', todo: '', rule: '41°F or below', source: 'FDA 3-501.16' },
       { by: 'DS', at: '2:20 PM', said: 'Sandwich cooler is 40.', answer: 'Logged. Sandwich cooler at 40, in range, 20 minutes late.', point: 'Sandwich cooler', kind: 'Cold holding', reading: '40', alert: true, verdict: 'Late 20 min', todo: 'It was due at 2:00 PM.', rule: '41°F or below', source: 'FDA 3-501.16' },
