@@ -143,10 +143,12 @@
       .status { white-space: normal; }
     }
 
-    /* Under 360 wide a row of three tally cells, two of them lit, is wider than the sheet: two to a row. The third and
+    /* Under 360 wide a row of three tally cells, two of them lit, is wider than the sheet: two to a row. The width is
+       in em, which a media query takes from the browser's text size setting, so at Large and Very large text the
+       cells go two to a row on a wider phone too (449 and 538 wide), where three ran past the sheet. The third and
        fifth cells start a row, and the fourth follows the third again: the gap beside a lit cell, or the divider and
        inset between two unlit ones. */
-    @media screen and (max-width: 359px) {
+    @media screen and (max-width: 22.4375em) {
       .tally { grid-template-columns: repeat(2, auto); }
       .tally div:nth-child(4) { margin-left: 8px; }
       .tally div:nth-child(4):not(.is-change) { padding-left: 18px; }
