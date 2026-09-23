@@ -6,6 +6,7 @@
   <title>Tolsey: say the reading, keep the record</title>
   <meta name="description" content="A food safety log for small restaurant kitchens that you fill in by voice. Each reading is judged against its rule, and a check with no number is refused.">
   <script src="theme.js"></script>
+  <script src="motion.js"></script>
   <link rel="stylesheet" href="tokens.css">
   <style>
     .page { max-width: 1280px; margin: 0 auto; padding: 20px 24px 32px; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 18px 22px; }
@@ -31,11 +32,10 @@
     /* The replay: the wall screen itself, a pass torn off a board of the demo shift's steps. */
     /* One column no wider than the pass, so a long block on it wraps instead of widening every segment.
        The replay leads in the markup at every width, so a screen reader and the tab ring reach the steps first,
-       which CSS order cannot do. Row 3 is the row under the title and the lede, where both are placed side by side. */
-    .pass { grid-column: 1 / 6; grid-row: 3; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; container-type: inline-size; animation: tear 320ms var(--ease-out) both; }
-    @keyframes tear { from { transform: translateX(28px); opacity: 0; } to { transform: none; opacity: 1; } }
-    /* Stacked, the pass sits under the replay and tears off downward, from the replay's side, never widening the page. */
-    @keyframes tear-down { from { transform: translateY(-28px); opacity: 0; } to { transform: none; opacity: 1; } }
+       which CSS order cannot do. Row 3 is the row under the title and the lede, where both are placed side by side.
+       The pass is ticket stock, not a panel: this rule comes after .panel, so the stock here wins over the panel's.
+       It posts still and visible; only a step change moves it (see show()). */
+    .pass { grid-column: 1 / 6; grid-row: 3; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; container-type: inline-size; background: var(--pass-stock); }
     .seg { padding: 14px 22px; }
     .seg + .seg { border-top: 2px dashed var(--hair); }
     .seg--said p { margin: 0; }
@@ -128,10 +128,11 @@
     .to-top { display: inline-flex; align-items: center; min-height: 44px; font-family: var(--mono); font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); }
 
     /* Under 1100 wide a five-column pass is too narrow for its verdict block, so the pass and the replay each take a
-       row, in the order the markup already has them: the replay, then the pass torn off under it. */
+       row, in the order the markup already has them: the replay, then the pass torn off under it. The replay then
+       stands above the pass, so the tear line runs along the pass's top edge. */
     @media (max-width: 1099px) {
       .pass, .replay { grid-column: 1 / -1; grid-row: auto; }
-      .pass { animation-name: tear-down; }
+      .pass::after { bottom: auto; left: 0; width: auto; height: 6px; background: radial-gradient(circle at 50% 0%, var(--ground) 3.5px, transparent 4px) 0 0 / 16px 6px repeat-x; }
     }
 
     @media (max-width: 900px) {
@@ -312,10 +313,11 @@
       { by: 'AK', at: '2:09 PM', said: 'The reach-in is fine.', answer: 'I need a number. What does the reach-in read?', point: 'Reach-in, line 2', kind: 'Cold holding', reading: 'No number', alert: true, verdict: 'Refused', todo: 'The check stays open until a number is said.', rule: '41°F or below', source: 'FDA 3-501.16' },
       { by: 'AK', at: '2:11 PM', said: 'Reach-in reads 39.', answer: 'Logged. Reach-in at 39, in range. That closes the open check.', point: 'Reach-in, line 2', kind: 'Cold holding', reading: '39', alert: false, verdict: 'In range', todo: '', rule: '41°F or below', source: 'FDA 3-501.16' },
       { by: 'DS', at: '2:20 PM', said: 'Sandwich cooler is 40.', answer: 'Logged. Sandwich cooler at 40, in range, 20 minutes late.', point: 'Sandwich cooler', kind: 'Cold holding', reading: '40', alert: true, verdict: 'Late 20 min', todo: 'It was due at 2:00 PM.', rule: '41°F or below', source: 'FDA 3-501.16' },
-      { by: 'DS', at: '2:26 PM', said: 'Soup well is 168.', answer: 'Logged. Soup well at 168. The fix is closed, six minutes early.', point: 'Soup well', kind: 'Hot holding, reheat', reading: '168', alert: false, verdict: 'In range', todo: 'Fix closed on time.', rule: '165°F for 15 s', source: 'FDA 3-403.11' },
+      { by: 'DS', at: '2:26 PM', said: 'Soup well is 168.', answer: 'Logged. Soup well at 168. The fix is closed, six minutes early.', point: 'Soup well', kind: 'Hot holding, reheat', reading: '168', alert: false, verdict: 'In range', todo: 'Fix closed on time.', rule: '165°F for 15\u00a0s', source: 'FDA 3-403.11' },
     ];
     const rows = [...document.querySelectorAll('#replay tbody tr')];
     const pass = document.querySelector('.pass');
+    const motion = window.tolseyMotion;
     const playButton = document.querySelector('[data-replay="play"]');
     let current = Math.max(0, rows.findIndex((row) => row.getAttribute('aria-current') === 'step'));
     let timer = null;
@@ -340,8 +342,10 @@
       reading.firstChild.nodeValue = step.reading;
       reading.querySelector('small').hidden = !isNumber;
       const verdict = pass.querySelector('.verdict');
-      verdict.textContent = step.verdict;
-      verdict.classList.toggle('status--alert', step.alert);
+      const setVerdict = () => {
+        verdict.textContent = step.verdict;
+        verdict.classList.toggle('status--alert', step.alert);
+      };
       const todo = pass.querySelector('.todo');
       todo.textContent = step.todo;
       todo.hidden = !step.todo;
@@ -353,12 +357,21 @@
       // what the step left open as well as its verdict: a deadline nobody hears is the one thing this page is about.
       const said = `Step ${current + 1} of ${steps.length}, ${step.at}: ${step.point}, ${isNumber ? `${step.reading}°F` : step.reading}, ${step.verdict}.`;
       document.getElementById('replay-live').textContent = step.todo ? `${said} ${step.todo}` : said;
-      // The tear restarts once reveal() has measured: cancelled, the pass sits where it settles, not on the tear's
-      // first frame, which is shifted 28px even under reduced motion.
-      const tear = pass.getAnimations();
-      tear.forEach((animation) => animation.cancel());
+      // reveal() measures the pass as it will settle: a move still in flight from a quicker click is cancelled, and the
+      // new verdict word is in place (at large text a longer word takes another line), so nothing is measured shifted,
+      // folded flat or a line short. The old word goes back before the next paint for the flap to turn it over.
+      pass.getAnimations().forEach((animation) => animation.cancel());
+      verdict.getAnimations().forEach((animation) => animation.cancel());
+      const was = { word: verdict.textContent, alert: verdict.classList.contains('status--alert') };
+      setVerdict();
       if (bringIntoView) reveal();
-      tear.forEach((animation) => animation.play());
+      // The verdict tile flaps from its old word to the new one, and the pass slides a short way in from the replay's
+      // side: the right on two columns, above once they stack. Without the motion script the word simply changes.
+      if (!motion) return;
+      verdict.textContent = was.word;
+      verdict.classList.toggle('status--alert', was.alert);
+      motion.flap(verdict, setVerdict);
+      motion.nudge(pass, window.matchMedia('(max-width: 1099px)').matches ? 'top' : 'right');
     };
 
     const stop = () => {

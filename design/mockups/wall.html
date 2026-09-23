@@ -215,7 +215,7 @@
       <div class="seg seg--said">
         <p><span class="label">Cook MR</span><q>The walk-in reads 38.</q></p>
         <p><span class="label">Tolsey</span><span class="answer">Logged. Walk-in at 38, in range. Say &ldquo;wrong number&rdquo; to fix it.</span></p>
-        <p class="note note--lit">Sandwich cooler is <span data-mins-since="840">14</span> min overdue.</p>
+        <p class="note note--lit">Sandwich cooler is <span data-mins-since="840">14</span>&nbsp;min overdue.</p>
       </div>
       <div class="seg seg--main">
         <h2 class="point" id="pass-logged">Walk-in cooler</h2>
@@ -240,7 +240,7 @@
       <div class="seg seg--said">
         <p><span class="label">Cook AK</span><q>Reach-in reads 39.</q></p>
         <p><span class="label">Tolsey</span><span class="answer">Logged. Reach-in at 39, in range. That closes the open check.</span></p>
-        <p class="note note--lit">Sandwich cooler is <span data-mins-since="840">11</span> min overdue.</p>
+        <p class="note note--lit">Sandwich cooler is <span data-mins-since="840">11</span>&nbsp;min overdue.</p>
       </div>
       <div class="seg seg--main">
         <h2 class="point" id="pass-retaken">Reach-in, line 2</h2>
@@ -276,7 +276,7 @@
       <div class="seg seg--cells">
         <div><span class="label">Read</span><b>128°F, 1:32 PM</b></div>
         <div><span class="label">Rule</span><b>135°F or above</b></div>
-        <div><span class="label">Closes at</span><b>165°F for 15 s</b></div>
+        <div><span class="label">Closes at</span><b>165°F for 15&nbsp;s</b></div>
         <div><span class="label">By</span><b>JT</b></div>
       </div>
       <div class="seg seg--code">
@@ -321,7 +321,7 @@
         <p class="kind label">Handover &middot; 2:14 PM</p>
         <p class="reading reading--count">2<small>open</small></p>
         <div class="verdicts">
-          <p>Sandwich cooler <span class="status status--alert">Overdue <span data-mins-since="840">14</span> min</span></p>
+          <p>Sandwich cooler <span class="status status--alert">Overdue <span data-mins-since="840">14</span>&nbsp;min</span></p>
           <p>Soup well <span class="status status--alert">Fix open, due 2:32 PM</span></p>
         </div>
         <p class="todo">Dinner owns both. Sandwich cooler first.</p>
@@ -373,6 +373,8 @@
         </tbody>
       </table>
     </section>
+    <!-- The landing moment changes the page by itself, so it says what landed, the way the launch replay speaks a step. -->
+    <p class="visually-hidden" id="wall-live" aria-live="polite"></p>
   </main>
   <script>
     // Each state is a moment in the shift. Everything on the board is worked out from that moment's clock.
@@ -399,13 +401,13 @@
     });
 
     const relative = (diff) => {
-      if (diff < 0) return `${-diff} min ago`;
+      if (diff < 0) return `${-diff}\u00a0min ago`;
       if (diff === 0) return 'now';
-      if (diff < 60) return `in ${diff} min`;
+      if (diff < 60) return `in ${diff}\u00a0min`;
       // An hour figure that drops its minutes reads as exact and is not: the 9:40 PM check, 446 minutes off, said 7 hr.
       const hours = Math.floor(diff / 60);
       const minutes = diff % 60;
-      return minutes ? `in ${hours} hr ${minutes} min` : `in ${hours} hr`;
+      return minutes ? `in ${hours}\u00a0hr ${minutes}\u00a0min` : `in ${hours}\u00a0hr`;
     };
 
     const setStatus = (el, text, kind) => {
@@ -414,37 +416,44 @@
       el.classList.add(kind);
     };
 
-    const post = (name, now) => {
-      document.querySelectorAll('[data-state]').forEach((el) => el.classList.toggle('is-active', el.dataset.state === name));
-      setClock(now);
+    // Due now: a check past its time is lit and says how late; a refused check stays lit until a number is logged.
+    const markDue = (row, now) => {
+      const diff = Number(row.dataset.due) - now;
+      const status = row.querySelector('[data-status]');
+      row.querySelector('[data-rel]').textContent = relative(diff);
+      row.classList.remove('row--lit', 'row--change');
+      if (row.dataset.kind === 'refused') {
+        row.classList.add('row--lit');
+        setStatus(status, 'No number', 'status--alert');
+      } else if (row.dataset.kind === 'fix') {
+        row.classList.add(diff < 0 ? 'row--lit' : 'row--change');
+        setStatus(status, diff < 0 ? `Fix overdue ${-diff}\u00a0min` : 'Fix open', 'status--alert');
+      } else if (diff < 0) {
+        row.classList.add('row--lit');
+        setStatus(status, `Overdue ${-diff}\u00a0min`, 'status--alert');
+      } else {
+        setStatus(status, 'Due', 'status--quiet');
+      }
+    };
 
+    // A minute passing: the clock and every figure worked out from it, on whatever is on screen. Which checks and
+    // which pass are shown is left alone, so the clock never reads one minute while the board still counts another.
+    const tick = (now) => {
+      setClock(now);
       // Minutes on a pass come from the same clock: data-mins-since counts up from a time, data-mins-to counts down to one.
       document.querySelectorAll('[data-mins-since]').forEach((el) => { el.textContent = String(now - Number(el.dataset.minsSince)); });
       document.querySelectorAll('[data-mins-to]').forEach((el) => { el.textContent = String(Number(el.dataset.minsTo) - now); });
+      document.querySelectorAll('#due tr:not([hidden])').forEach((row) => markDue(row, now));
+    };
 
-      // Due now: a check past its time is lit and says how late; a refused check stays lit until a number is logged.
+    const post = (name, now) => {
+      document.querySelectorAll('[data-state]').forEach((el) => el.classList.toggle('is-active', el.dataset.state === name));
       document.querySelectorAll('#due tr').forEach((row) => {
         const from = Number(row.dataset.from ?? 0);
         const until = Number(row.dataset.until ?? Infinity);
         row.hidden = now < from || now >= until;
-        if (row.hidden) return;
-        const diff = Number(row.dataset.due) - now;
-        const status = row.querySelector('[data-status]');
-        row.querySelector('[data-rel]').textContent = relative(diff);
-        row.classList.remove('row--lit', 'row--change');
-        if (row.dataset.kind === 'refused') {
-          row.classList.add('row--lit');
-          setStatus(status, 'No number', 'status--alert');
-        } else if (row.dataset.kind === 'fix') {
-          row.classList.add(diff < 0 ? 'row--lit' : 'row--change');
-          setStatus(status, diff < 0 ? `Fix overdue ${-diff} min` : 'Fix open', 'status--alert');
-        } else if (diff < 0) {
-          row.classList.add('row--lit');
-          setStatus(status, `Overdue ${-diff} min`, 'status--alert');
-        } else {
-          setStatus(status, 'Due', 'status--quiet');
-        }
       });
+      tick(now);
 
       // Boarded: the newest lines that fit under the due checks, and the count of everything logged by now.
       const dueShown = document.querySelectorAll('#due tr:not([hidden])').length;
@@ -469,16 +478,17 @@
 
     const boardLines = () => [...document.querySelectorAll('#due tr:not([hidden]), #boarded tr:not([hidden])')];
 
-    // The moment this screen exists to show: the walk-in reading lands at 2:14. Its tile flaps to the verdict, the row
-    // lifts off toward the pass, the rows under it close up in place, and the new pass tears over the old one from the
-    // board's side. New lines board with their tiles flapping in from blank.
+    // The moment this screen exists to show: the walk-in reading lands at 2:14. The minute ticks over first, so every
+    // figure on screen agrees with the clock. Then the walk-in's tile flaps to the verdict, the row lifts off toward the
+    // pass as the new pass starts tearing over the old one from the board's side, and the rows under it close up in
+    // place while new lines board with their tiles flapping in from blank.
     const land = async () => {
       const stacked = window.matchMedia('(max-width: 1279px)').matches;
       const row = document.querySelector('#due tr[data-until="854"]');
       const tile = row.querySelector('[data-status]');
       const outgoing = document.querySelector('.pass.is-active');
       const incoming = document.querySelector('.pass[data-state="logged"]');
-      setClock(854);
+      tick(854);
       await motion.flap(tile, () => setStatus(tile, 'In range', 'status--word'));
       outgoing.classList.add('is-leaving');
       incoming.classList.add('is-active');
@@ -486,6 +496,11 @@
       await motion.liftOff(row, stacked ? 'up' : 'left');
       const before = motion.where(boardLines());
       post('logged', 854);
+      // One sentence for a screen reader, as the new pass lands: its reading and verdict, and the overdue check it
+      // carries, which is lit on the pass and would otherwise land in silence.
+      const note = incoming.querySelector('.note');
+      const said = `${clockText(854)}: ${incoming.querySelector('.point').textContent}, ${incoming.querySelector('.reading').textContent}, ${incoming.querySelector('.verdict').textContent}.`;
+      document.getElementById('wall-live').textContent = note ? `${said} ${note.textContent}` : said;
       row.getAnimations().forEach((animation) => animation.cancel());
       boardLines().filter((line) => !before.has(line)).forEach((line) => {
         const word = line.querySelector('.status');
