@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tolsey wall screen (mockup)</title>
   <script src="theme.js"></script>
+  <script src="motion.js"></script>
   <link rel="stylesheet" href="tokens.css">
   <style>
     .screen {
@@ -23,7 +24,8 @@
     .top { grid-column: 1 / -1; display: flex; align-items: center; gap: 22px; min-height: 44px; }
     .wordmark { font-weight: 900; font-stretch: 80%; font-size: 1.5rem; letter-spacing: 0.06em; text-transform: uppercase; }
     .site { font-family: var(--mono); font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--steel); }
-    .clock { margin-left: auto; font-family: var(--mono); font-size: 1.5rem; font-weight: 800; }
+    .top .theme-switch { margin-left: auto; }
+    .clock { font-family: var(--mono); font-size: 1.5rem; font-weight: 800; }
     .control {
       font-family: var(--mono); font-size: 0.8125rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
       min-height: 44px; padding: 0 1.1rem; border: 0; cursor: pointer;
@@ -32,35 +34,26 @@
     .control:hover { background: var(--row-alt); color: var(--ink); box-shadow: inset 0 0 0 3px var(--ink); }
     @media (forced-colors: active) { .control { border: 2px solid ButtonText; } }
 
-    /* The pass: the newest record line, segmented like a boarding pass, torn off the board.
-       The board leads in the markup at every width, so a screen reader and the tab ring meet what is late first,
-       which CSS order cannot do. On the wall's two columns the pass is placed back to the left by column. */
+    /* The pass: the newest record line, segmented like a boarding pass, torn off the board. It leads the markup and
+       the board follows, so the two columns read left to right and a stacked screen opens on the reading just spoken,
+       with no CSS order to part the picture from the accessibility tree. While a new pass tears over the old one, both
+       share this cell and the new one lies on top. */
     .pass {
       grid-column: 1;
       grid-row: 2;
       min-width: 0;
       min-height: 0;
       overflow-x: auto;
-      background: var(--stock);
       box-shadow: var(--lift);
       display: grid;
       /* One column no wider than the pass, so a long block on it wraps instead of widening every segment. */
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: auto 1fr auto auto;
       container-type: inline-size;
-      animation: tear 320ms var(--ease-out) both;
     }
+    .pass.is-active { z-index: 1; }
     /* A status on the pass keeps one line wherever it fits; with large browser text it wraps between words. */
     .pass .status { white-space: normal; }
-    @keyframes tear {
-      from { transform: translateX(28px); opacity: 0; }
-      to { transform: none; opacity: 1; }
-    }
-    /* Stacked under the board, the pass tears off downward, from the board's side, and never widens the page. */
-    @keyframes tear-down {
-      from { transform: translateY(-28px); opacity: 0; }
-      to { transform: none; opacity: 1; }
-    }
     .seg { padding: 12px 22px; }
     .seg + .seg { border-top: 2px dashed var(--hair); }
 
@@ -91,9 +84,12 @@
     .seg--cells .label { display: block; margin-bottom: 2px; }
     .seg--cells b { display: block; font-family: var(--mono); font-size: 1rem; font-weight: 800; letter-spacing: -0.01em; }
 
-    .seg--code { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 16px; align-items: center; padding-top: 10px; padding-bottom: 10px; }
-    .scan { width: 64px; height: 64px; display: block; fill: var(--ink); }
-    .seg--code b { display: block; font-family: var(--mono); font-size: 0.9375rem; font-weight: 800; margin: 1px 0 2px; }
+    /* The scan band runs the width of the pass, a stacked code under its record id, as on a boarding pass. */
+    /* It shares the pass's height with the reading, so it stays short enough that the whole wall fits its 800px frame. */
+    .seg--code { display: grid; gap: 4px; padding-top: 10px; padding-bottom: 10px; }
+    .scan { width: 100%; height: 26px; display: block; fill: var(--ink); }
+    .seg--code b { font-family: var(--mono); font-size: 0.9375rem; font-weight: 800; margin-left: 8px; }
+    .seg--code .fine { display: block; }
 
     /* The board: every check of the shift ranked by due time, then everything that boarded. */
     .board { grid-column: 2; grid-row: 2; min-width: 0; min-height: 0; overflow-x: auto; background: var(--stock); box-shadow: var(--lift); padding: 18px 24px 8px; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 4px; }
@@ -102,6 +98,9 @@
     .board-head h2 { font-size: 2.25rem; }
     .board-head h3 { font-size: 1.625rem; }
     .board-head .aside { margin-left: auto; }
+    /* Due now carries the clock and Log by hand at its right end, the way a gate board carries its time. */
+    .board-head--due { align-items: center; }
+    .board-head--due .clock { margin-left: auto; }
     .hint { font-size: 1rem; font-weight: 600; color: var(--steel); }
     .board-head--second { margin-top: 8px; }
 
@@ -115,10 +114,10 @@
     /* A row that needs a hand now is lit edge to edge and holds it; its status inverts so it still reads as a block. */
     tr.row--lit td { background: var(--alert); color: var(--on-alert); }
     tr.row--lit td small, tr.row--lit .r { color: var(--on-alert); }
-    tr.row--lit .status { background: var(--on-alert); color: var(--alert); box-shadow: none; }
+    tr.row--lit .status { background: var(--on-alert); color: var(--alert); box-shadow: none; --hinge: rgb(255 212 0 / 0.3); }
     .t { font-family: var(--mono); font-size: 1.375rem; font-weight: 800; white-space: nowrap; }
     .t small { display: block; font-size: 0.75rem; font-weight: 700; color: var(--steel); letter-spacing: 0.06em; text-transform: uppercase; }
-    .check { font-size: 1.375rem; font-weight: 700; font-stretch: 95%; line-height: 1.3; letter-spacing: -0.01em; }
+    .check { font-size: 1.375rem; font-weight: 800; font-stretch: 80%; line-height: 1.3; letter-spacing: -0.01em; }
     .check small { display: block; font-size: 0.9375rem; font-weight: 500; font-stretch: 100%; color: var(--steel); margin-top: 2px; }
     .r { font-family: var(--mono); font-size: 0.9375rem; font-weight: 600; color: var(--steel); white-space: nowrap; }
     /* The boarded list sits under its own heading and needs no second visible header row, but the column names
@@ -130,40 +129,34 @@
     .rows--boarded .r { font-size: 1.125rem; font-weight: 800; color: var(--ink); }
     .rows--boarded .r.r--none { font-weight: 600; color: var(--steel); font-style: italic; }
     .rows--boarded .status { font-size: 0.8125rem; }
-    tr.row--newest .check { font-weight: 800; }
+    tr.row--newest .check { font-weight: 900; }
 
-    /* The split-flap: every status cell flips in once, top to bottom, when the board is posted. */
-    .flip { display: inline-flex; transform-origin: 50% 0; animation: flap 360ms var(--ease-out) both; animation-delay: calc(var(--i, 0) * 55ms); backface-visibility: hidden; }
-    @keyframes flap {
-      from { transform: rotateX(-88deg); opacity: 0.2; }
-      to { transform: none; opacity: 1; }
-    }
-
-    [data-state]:not(.is-active) { display: none !important; }
+    /* A pass that is being covered stays on screen under the one tearing over it. */
+    [data-state]:not(.is-active):not(.is-leaving) { display: none !important; }
     tr[hidden] { display: none !important; }
 
     /* The two columns are sized for the 1280 by 800 wall screen. Anything narrower stacks and scrolls instead of
-       cutting the board off, and the stack simply follows the markup: the board, then the newest pass. */
+       cutting the board off, and the stack simply follows the markup: the newest pass, then the board. */
     @media (max-width: 1279px) {
       .screen { min-height: 0; grid-template-columns: minmax(0, 1fr); }
-      .board, .pass { grid-column: 1; grid-row: auto; overflow: visible; }
-      .pass { animation-name: tear-down; }
+      .board, .pass { grid-column: 1; overflow: visible; }
+      .board { grid-row: 3; }
+      /* Stacked, the board stands under the pass, so the tear line runs along the pass's bottom edge. */
+      .pass::after { top: auto; left: 0; width: auto; height: 6px; background: radial-gradient(circle at 50% 100%, var(--ground) 3.5px, transparent 4px) 0 0 / 16px 6px repeat-x; }
     }
 
     @media (max-width: 900px) {
       .screen { padding: 14px 16px 24px; gap: 16px; }
       .top { flex-wrap: wrap; gap: 10px 14px; }
-      .clock { margin-left: 0; order: 1; }
-      .theme-switch { margin-left: auto; order: 2; }
-      .control { width: 100%; order: 3; }
+      .top .hint { order: 1; flex-basis: 100%; }
+      .board-head--due .control { flex-basis: 100%; }
       .board { padding: 14px 14px 6px; }
       .reading { font-size: 6.5rem; }
       .reading--count { font-size: 4.75rem; }
       .reading--words { font-size: 2.5rem; }
       .seg--main .verdict { font-size: 2rem; }
       /* A record code or a handover line never pushes the pass past a phone's width. */
-      .seg--code { grid-template-columns: 48px minmax(0, 1fr); }
-      .scan { width: 48px; height: 48px; }
+      .scan { height: 24px; }
       .seg--code b { font-size: 0.8125rem; overflow-wrap: anywhere; }
       .board-head { flex-wrap: wrap; gap: 4px 12px; }
       .board-head h2 { font-size: 1.75rem; }
@@ -209,50 +202,14 @@
       <h1 class="visually-hidden">Tolsey wall screen, demo kitchen</h1>
       <span class="wordmark" aria-hidden="true">Tolsey</span>
       <span class="site">Demo kitchen &middot; Oct 20 &middot; Lunch</span>
-      <time class="clock" id="clock" datetime="14:14">2:14 PM</time>
+      <span class="hint">Say a check and its number: &ldquo;the walk-in reads 38&rdquo;.</span>
       <div class="theme-switch" role="group" aria-label="Theme">
         <button type="button" data-theme-choice="light">Light</button>
         <button type="button" data-theme-choice="dark">Dark</button>
         <button type="button" data-theme-choice="device">Device</button>
       </div>
-      <button class="control" type="button">Log by hand</button>
     </header>
 
-    <section class="board" aria-labelledby="board-due">
-      <header class="board-head"><h2 id="board-due">Due now</h2><span class="aside hint">Say a check and its number: &ldquo;the walk-in reads 38&rdquo;.</span></header>
-      <table>
-        <caption>Checks due, ranked by due time</caption>
-        <thead><tr><th class="label" scope="col">Due</th><th class="label" scope="col">Check</th><th class="label rule" scope="col">Rule</th><th class="label" scope="col">Status</th></tr></thead>
-        <tbody id="due">
-          <tr data-due="840" data-kind="check"><td class="t">2:00 PM<small data-rel></small></td><td class="check">Sandwich cooler<small>Cold holding</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
-          <tr data-due="845" data-kind="refused" data-from="849" data-until="851" hidden><td class="t">2:05 PM<small data-rel></small></td><td class="check">Reach-in, line 2<small>Said &ldquo;fine&rdquo; at 2:09 PM, no number yet</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>No number</span></td></tr>
-          <tr data-due="854" data-kind="check" data-until="854" hidden><td class="t">2:14 PM<small data-rel></small></td><td class="check">Walk-in cooler<small>Cold holding, lunch check</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
-          <tr data-due="872" data-kind="fix" data-from="812"><td class="t">2:32 PM<small data-rel></small></td><td class="check">Soup well, reheat<small>Fix open since 1:32 PM</small></td><td class="r rule">165°F for 15 s</td><td><span class="status status--quiet flip" data-status>Fix open</span></td></tr>
-          <tr data-due="900" data-kind="check"><td class="t">3:00 PM<small data-rel></small></td><td class="check">Rice, cooling stage 2<small>Started 12:05 PM</small></td><td class="r rule">41°F by 6:05 PM</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
-          <tr data-due="1300" data-kind="check" data-from="854"><td class="t">9:40 PM<small data-rel></small></td><td class="check">Walk-in cooler<small>Cold holding, closing check</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet flip" data-status>Due</span></td></tr>
-        </tbody>
-      </table>
-
-      <header class="board-head board-head--second"><h3>Boarded this shift</h3><span class="aside label" id="boarded-count">Newest 4 of 12</span></header>
-      <table class="rows--boarded">
-        <caption>Checks logged this shift, newest first</caption>
-        <thead><tr><th class="label" scope="col">Time</th><th class="label" scope="col">Check</th><th class="label" scope="col">Reading</th><th class="label" scope="col">Status</th></tr></thead>
-        <tbody id="boarded">
-          <tr class="row--newest" data-at="854"><td class="t">2:14 PM</td><td class="check">Walk-in cooler<small>Cold holding</small></td><td class="r reading-cell">38°F</td><td><span class="status status--word flip">In range</span></td></tr>
-          <tr data-at="851"><td class="t">2:11 PM</td><td class="check">Reach-in, line 2<small>Cold holding, retaken</small></td><td class="r reading-cell">39°F</td><td><span class="status status--word flip">In range</span></td></tr>
-          <tr data-at="849" data-open-until="851"><td class="t">2:09 PM</td><td class="check">Reach-in, line 2<small>&ldquo;The reach-in is fine&rdquo;</small></td><td class="r reading-cell r--none">no number</td><td><span class="status status--quiet flip" data-status>Refused</span></td></tr>
-          <tr data-at="838"><td class="t">1:58 PM</td><td class="check">Rice<small>Cooling, stage 1</small></td><td class="r reading-cell">68°F</td><td><span class="status status--word flip">In range</span></td></tr>
-          <tr class="row--change" data-at="812" hidden><td class="t">1:32 PM</td><td class="check">Soup well<small>Hot holding</small></td><td class="r reading-cell">128°F</td><td><span class="status status--alert flip">Out of range</span></td></tr>
-          <tr data-at="725" hidden><td class="t">12:05 PM</td><td class="check">Rice<small>Cooling starts</small></td><td class="r reading-cell">135°F</td><td><span class="status status--quiet flip">Cooling</span></td></tr>
-          <tr data-at="700" hidden><td class="t">11:40 AM</td><td class="check">Delivery, chicken<small>Receiving</small></td><td class="r reading-cell">36°F</td><td><span class="status status--word flip">In range</span></td></tr>
-          <tr data-at="662" hidden><td class="t">11:02 AM</td><td class="check">Walk-in cooler<small>Cold holding</small></td><td class="r reading-cell">38°F</td><td><span class="status status--word flip">In range</span></td></tr>
-          <tr data-at="555" hidden><td class="t">9:15 AM</td><td class="check">Delivery, dairy<small>Receiving</small></td><td class="r reading-cell">40°F</td><td><span class="status status--word flip">In range</span></td></tr>
-          <tr data-at="418" hidden><td class="t">6:58 AM</td><td class="check">Reach-in, line 2<small>Cold holding</small></td><td class="r reading-cell">40°F</td><td><span class="status status--word flip">In range</span></td></tr>
-          <tr data-at="415" hidden><td class="t">6:55 AM</td><td class="check">Reach-in, line 1<small>Cold holding</small></td><td class="r reading-cell">39°F</td><td><span class="status status--word flip">In range</span></td></tr>
-          <tr data-at="412" hidden><td class="t">6:52 AM</td><td class="check">Walk-in cooler<small>Cold holding</small></td><td class="r reading-cell">37°F</td><td><span class="status status--word flip">In range</span></td></tr>
-        </tbody>
-      </table>
-    </section>
     <!-- State: a reading logged, in range (2:14 PM). Active in the markup, so the page reads as this moment with no script. -->
     <article class="pass is-active" data-state="logged" aria-labelledby="pass-logged">
       <div class="seg seg--said">
@@ -273,8 +230,33 @@
         <div><span class="label">By</span><b>MR</b></div>
       </div>
       <div class="seg seg--code">
-        <svg class="scan" viewBox="0 0 13 13" role="img" aria-label="Record code, sample" data-seed="1020-1414-WI-38"></svg>
+        <svg class="scan" viewBox="0 0 120 16" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="Record code, sample" data-seed="1020-1414-WI-38"></svg>
         <div><span class="label">Record</span><b>1020-1414-WI-38</b><span class="fine">Sample code, decided at phase 1.</span></div>
+      </div>
+    </article>
+
+    <!-- State: the refused check retaken with a number (2:11 PM), the pass on the board just before 2:14 -->
+    <article class="pass" data-state="retaken" aria-labelledby="pass-retaken">
+      <div class="seg seg--said">
+        <p><span class="label">Cook AK</span><q>Reach-in reads 39.</q></p>
+        <p><span class="label">Tolsey</span><span class="answer">Logged. Reach-in at 39, in range. That closes the open check.</span></p>
+        <p class="note note--lit">Sandwich cooler is <span data-mins-since="840">11</span> min overdue.</p>
+      </div>
+      <div class="seg seg--main">
+        <h2 class="point" id="pass-retaken">Reach-in, line 2</h2>
+        <p class="kind label">Cold holding &middot; retaken</p>
+        <p class="reading">39<small>°F</small></p>
+        <span class="status verdict">In range</span>
+      </div>
+      <div class="seg seg--cells">
+        <div><span class="label">Rule</span><b>41°F or below</b></div>
+        <div><span class="label">Source</span><b>FDA 3-501.16</b></div>
+        <div><span class="label">Time</span><b>2:11 PM</b></div>
+        <div><span class="label">By</span><b>AK</b></div>
+      </div>
+      <div class="seg seg--code">
+        <svg class="scan" viewBox="0 0 120 16" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="Record code, sample" data-seed="1020-1411-R2-39"></svg>
+        <div><span class="label">Record</span><b>1020-1411-R2-39</b><span class="fine">Closes the check refused at 2:09 PM.</span></div>
       </div>
     </article>
 
@@ -298,7 +280,7 @@
         <div><span class="label">By</span><b>JT</b></div>
       </div>
       <div class="seg seg--code">
-        <svg class="scan" viewBox="0 0 13 13" role="img" aria-label="Record code, sample" data-seed="1020-1332-SW-128"></svg>
+        <svg class="scan" viewBox="0 0 120 16" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="Record code, sample" data-seed="1020-1332-SW-128"></svg>
         <div><span class="label">Record</span><b>1020-1332-SW-128</b><span class="fine">Opened 1:32 PM. House rule, one hour, where FDA 3-403.11 allows two.</span></div>
       </div>
     </article>
@@ -323,7 +305,7 @@
         <div><span class="label">By</span><b>AK</b></div>
       </div>
       <div class="seg seg--code">
-        <svg class="scan" viewBox="0 0 13 13" role="img" aria-label="Record code, sample" data-seed="1020-1409-R2-REFUSED"></svg>
+        <svg class="scan" viewBox="0 0 120 16" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="Record code, sample" data-seed="1020-1409-R2-REFUSED"></svg>
         <div><span class="label">Record</span><b>1020-1409-R2-REFUSED</b><span class="fine">A check is logged only with a number. The refusal is on the record.</span></div>
       </div>
     </article>
@@ -351,19 +333,54 @@
         <div><span class="label">From</span><b>MR</b></div>
       </div>
       <div class="seg seg--code">
-        <svg class="scan" viewBox="0 0 13 13" role="img" aria-label="Record code, sample" data-seed="1020-1414-HANDOVER"></svg>
+        <svg class="scan" viewBox="0 0 120 16" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="Record code, sample" data-seed="1020-1414-HANDOVER"></svg>
         <div><span class="label">Record</span><b>1020-1414-HANDOVER</b><span class="fine">The handover is a record line too.</span></div>
       </div>
     </article>
+
+    <section class="board" aria-labelledby="board-due">
+      <header class="board-head board-head--due"><h2 id="board-due">Due now</h2><time class="clock" id="clock" datetime="14:14">2:14 PM</time><button class="control" type="button">Log by hand</button></header>
+      <table>
+        <caption>Checks due, ranked by due time</caption>
+        <thead><tr><th class="label" scope="col">Due</th><th class="label" scope="col">Check</th><th class="label rule" scope="col">Rule</th><th class="label" scope="col">Status</th></tr></thead>
+        <tbody id="due">
+          <tr data-due="840" data-kind="check"><td class="t">2:00 PM<small data-rel></small></td><td class="check">Sandwich cooler<small>Cold holding</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet" data-status>Due</span></td></tr>
+          <tr data-due="845" data-kind="refused" data-from="849" data-until="851" hidden><td class="t">2:05 PM<small data-rel></small></td><td class="check">Reach-in, line 2<small>Said &ldquo;fine&rdquo; at 2:09 PM, no number yet</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet" data-status>No number</span></td></tr>
+          <tr data-due="854" data-kind="check" data-until="854" hidden><td class="t">2:14 PM<small data-rel></small></td><td class="check">Walk-in cooler<small>Cold holding, lunch check</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet" data-status>Due</span></td></tr>
+          <tr data-due="872" data-kind="fix" data-from="812"><td class="t">2:32 PM<small data-rel></small></td><td class="check">Soup well, reheat<small>Fix open since 1:32 PM</small></td><td class="r rule">165°F for 15 s</td><td><span class="status status--quiet" data-status>Fix open</span></td></tr>
+          <tr data-due="900" data-kind="check"><td class="t">3:00 PM<small data-rel></small></td><td class="check">Rice, cooling stage 2<small>Started 12:05 PM</small></td><td class="r rule">41°F by 6:05 PM</td><td><span class="status status--quiet" data-status>Due</span></td></tr>
+          <tr data-due="1300" data-kind="check" data-from="854"><td class="t">9:40 PM<small data-rel></small></td><td class="check">Walk-in cooler<small>Cold holding, closing check</small></td><td class="r rule">41°F or below</td><td><span class="status status--quiet" data-status>Due</span></td></tr>
+        </tbody>
+      </table>
+
+      <header class="board-head board-head--second"><h3>Boarded this shift</h3><span class="aside label" id="boarded-count">Newest 4 of 12</span></header>
+      <table class="rows--boarded">
+        <caption>Checks logged this shift, newest first</caption>
+        <thead><tr><th class="label" scope="col">Time</th><th class="label" scope="col">Check</th><th class="label" scope="col">Reading</th><th class="label" scope="col">Status</th></tr></thead>
+        <tbody id="boarded">
+          <tr class="row--newest" data-at="854"><td class="t">2:14 PM</td><td class="check">Walk-in cooler<small>Cold holding</small></td><td class="r reading-cell">38°F</td><td><span class="status status--word">In range</span></td></tr>
+          <tr data-at="851"><td class="t">2:11 PM</td><td class="check">Reach-in, line 2<small>Cold holding, retaken</small></td><td class="r reading-cell">39°F</td><td><span class="status status--word">In range</span></td></tr>
+          <tr data-at="849" data-open-until="851"><td class="t">2:09 PM</td><td class="check">Reach-in, line 2<small>&ldquo;The reach-in is fine&rdquo;</small></td><td class="r reading-cell r--none">no number</td><td><span class="status status--quiet" data-status>Refused</span></td></tr>
+          <tr data-at="838"><td class="t">1:58 PM</td><td class="check">Rice<small>Cooling, stage 1</small></td><td class="r reading-cell">68°F</td><td><span class="status status--word">In range</span></td></tr>
+          <tr class="row--change" data-at="812" hidden><td class="t">1:32 PM</td><td class="check">Soup well<small>Hot holding</small></td><td class="r reading-cell">128°F</td><td><span class="status status--alert">Out of range</span></td></tr>
+          <tr data-at="725" hidden><td class="t">12:05 PM</td><td class="check">Rice<small>Cooling starts</small></td><td class="r reading-cell">135°F</td><td><span class="status status--quiet">Cooling</span></td></tr>
+          <tr data-at="700" hidden><td class="t">11:40 AM</td><td class="check">Delivery, chicken<small>Receiving</small></td><td class="r reading-cell">36°F</td><td><span class="status status--word">In range</span></td></tr>
+          <tr data-at="662" hidden><td class="t">11:02 AM</td><td class="check">Walk-in cooler<small>Cold holding</small></td><td class="r reading-cell">38°F</td><td><span class="status status--word">In range</span></td></tr>
+          <tr data-at="555" hidden><td class="t">9:15 AM</td><td class="check">Delivery, dairy<small>Receiving</small></td><td class="r reading-cell">40°F</td><td><span class="status status--word">In range</span></td></tr>
+          <tr data-at="418" hidden><td class="t">6:58 AM</td><td class="check">Reach-in, line 2<small>Cold holding</small></td><td class="r reading-cell">40°F</td><td><span class="status status--word">In range</span></td></tr>
+          <tr data-at="415" hidden><td class="t">6:55 AM</td><td class="check">Reach-in, line 1<small>Cold holding</small></td><td class="r reading-cell">39°F</td><td><span class="status status--word">In range</span></td></tr>
+          <tr data-at="412" hidden><td class="t">6:52 AM</td><td class="check">Walk-in cooler<small>Cold holding</small></td><td class="r reading-cell">37°F</td><td><span class="status status--word">In range</span></td></tr>
+        </tbody>
+      </table>
+    </section>
   </main>
   <script>
     // Each state is a moment in the shift. Everything on the board is worked out from that moment's clock.
-    const moments = { logged: 854, action: 854, refused: 849, handover: 854 };
+    const moments = { logged: 854, action: 854, refused: 849, handover: 854, retaken: 851 };
     // Only a known moment is used: anything else in the query would match no pass and blank it.
     const asked = new URLSearchParams(location.search).get('state');
     const state = Object.hasOwn(moments, asked) ? asked : 'logged';
-    const now = moments[state];
-    document.querySelectorAll('[data-state]').forEach((el) => el.classList.toggle('is-active', el.dataset.state === state));
+    const motion = window.tolseyMotion;
 
     const clockText = (minutes) => {
       const hours = Math.floor(minutes / 60);
@@ -371,12 +388,11 @@
       return `${shown}:${String(minutes % 60).padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
     };
     const clock = document.getElementById('clock');
-    clock.textContent = clockText(now);
-    clock.dateTime = `${String(Math.floor(now / 60)).padStart(2, '0')}:${String(now % 60).padStart(2, '0')}`;
+    const setClock = (now) => {
+      clock.textContent = clockText(now);
+      clock.dateTime = `${String(Math.floor(now / 60)).padStart(2, '0')}:${String(now % 60).padStart(2, '0')}`;
+    };
 
-    // Minutes on a pass come from the same clock: data-mins-since counts up from a time, data-mins-to counts down to one.
-    document.querySelectorAll('[data-mins-since]').forEach((el) => { el.textContent = String(now - Number(el.dataset.minsSince)); });
-    document.querySelectorAll('[data-mins-to]').forEach((el) => { el.textContent = String(Number(el.dataset.minsTo) - now); });
     // A row's printed time is its own due or logged minute, so the words and the ranking can never disagree.
     document.querySelectorAll('tr[data-due], tr[data-at]').forEach((row) => {
       row.querySelector('.t').firstChild.nodeValue = clockText(Number(row.dataset.due ?? row.dataset.at));
@@ -392,72 +408,129 @@
       return minutes ? `in ${hours} hr ${minutes} min` : `in ${hours} hr`;
     };
 
-    let flipIndex = 0;
     const setStatus = (el, text, kind) => {
       el.textContent = text;
       el.classList.remove('status--quiet', 'status--alert', 'status--word');
       el.classList.add(kind);
     };
 
-    // Due now: a check past its time is lit and says how late; a refused check stays lit until a number is logged.
-    document.querySelectorAll('#due tr').forEach((row) => {
-      const from = Number(row.dataset.from ?? 0);
-      const until = Number(row.dataset.until ?? Infinity);
-      row.hidden = now < from || now >= until;
-      if (row.hidden) return;
-      const diff = Number(row.dataset.due) - now;
-      const status = row.querySelector('[data-status]');
-      row.querySelector('[data-rel]').textContent = relative(diff);
-      row.classList.remove('row--lit', 'row--change');
-      if (row.dataset.kind === 'refused') {
-        row.classList.add('row--lit');
-        setStatus(status, 'No number', 'status--alert');
-      } else if (row.dataset.kind === 'fix') {
-        row.classList.add(diff < 0 ? 'row--lit' : 'row--change');
-        setStatus(status, diff < 0 ? `Fix overdue ${-diff} min` : 'Fix open', 'status--alert');
-      } else if (diff < 0) {
-        row.classList.add('row--lit');
-        setStatus(status, `Overdue ${-diff} min`, 'status--alert');
-      } else {
-        setStatus(status, 'Due', 'status--quiet');
-      }
-      status.style.setProperty('--i', flipIndex++);
-    });
+    const post = (name, now) => {
+      document.querySelectorAll('[data-state]').forEach((el) => el.classList.toggle('is-active', el.dataset.state === name));
+      setClock(now);
 
-    // Boarded: the newest lines that fit under the due checks, and the count of everything logged by now.
-    const dueShown = document.querySelectorAll('#due tr:not([hidden])').length;
-    const limit = dueShown >= 5 ? 3 : 4;
-    const logged = [...document.querySelectorAll('#boarded tr')].filter((row) => Number(row.dataset.at) <= now);
-    document.querySelectorAll('#boarded tr').forEach((row) => { row.hidden = true; });
-    logged.slice(0, limit).forEach((row, index) => {
-      row.hidden = false;
-      row.classList.toggle('row--newest', index === 0);
-      const status = row.querySelector('[data-status]');
-      if (status && row.dataset.openUntil) {
-        const open = now < Number(row.dataset.openUntil);
-        row.classList.toggle('row--change', open);
-        setStatus(status, 'Refused', open ? 'status--alert' : 'status--quiet');
-      }
-      row.querySelector('.status').style.setProperty('--i', flipIndex++);
-    });
-    document.getElementById('boarded-count').textContent = `Newest ${Math.min(limit, logged.length)} of ${logged.length}`;
+      // Minutes on a pass come from the same clock: data-mins-since counts up from a time, data-mins-to counts down to one.
+      document.querySelectorAll('[data-mins-since]').forEach((el) => { el.textContent = String(now - Number(el.dataset.minsSince)); });
+      document.querySelectorAll('[data-mins-to]').forEach((el) => { el.textContent = String(Number(el.dataset.minsTo) - now); });
 
-    // The scan block is a stand-in drawn from the record id, so it is the same every load and never random art.
+      // Due now: a check past its time is lit and says how late; a refused check stays lit until a number is logged.
+      document.querySelectorAll('#due tr').forEach((row) => {
+        const from = Number(row.dataset.from ?? 0);
+        const until = Number(row.dataset.until ?? Infinity);
+        row.hidden = now < from || now >= until;
+        if (row.hidden) return;
+        const diff = Number(row.dataset.due) - now;
+        const status = row.querySelector('[data-status]');
+        row.querySelector('[data-rel]').textContent = relative(diff);
+        row.classList.remove('row--lit', 'row--change');
+        if (row.dataset.kind === 'refused') {
+          row.classList.add('row--lit');
+          setStatus(status, 'No number', 'status--alert');
+        } else if (row.dataset.kind === 'fix') {
+          row.classList.add(diff < 0 ? 'row--lit' : 'row--change');
+          setStatus(status, diff < 0 ? `Fix overdue ${-diff} min` : 'Fix open', 'status--alert');
+        } else if (diff < 0) {
+          row.classList.add('row--lit');
+          setStatus(status, `Overdue ${-diff} min`, 'status--alert');
+        } else {
+          setStatus(status, 'Due', 'status--quiet');
+        }
+      });
+
+      // Boarded: the newest lines that fit under the due checks, and the count of everything logged by now.
+      const dueShown = document.querySelectorAll('#due tr:not([hidden])').length;
+      const limit = dueShown >= 5 ? 3 : 4;
+      const logged = [...document.querySelectorAll('#boarded tr')].filter((row) => Number(row.dataset.at) <= now);
+      document.querySelectorAll('#boarded tr').forEach((row) => {
+        row.hidden = true;
+        row.classList.remove('row--newest');
+      });
+      logged.slice(0, limit).forEach((row, index) => {
+        row.hidden = false;
+        row.classList.toggle('row--newest', index === 0);
+        const status = row.querySelector('[data-status]');
+        if (status && row.dataset.openUntil) {
+          const open = now < Number(row.dataset.openUntil);
+          row.classList.toggle('row--change', open);
+          setStatus(status, 'Refused', open ? 'status--alert' : 'status--quiet');
+        }
+      });
+      document.getElementById('boarded-count').textContent = `Newest ${Math.min(limit, logged.length)} of ${logged.length}`;
+    };
+
+    const boardLines = () => [...document.querySelectorAll('#due tr:not([hidden]), #boarded tr:not([hidden])')];
+
+    // The moment this screen exists to show: the walk-in reading lands at 2:14. Its tile flaps to the verdict, the row
+    // lifts off toward the pass, the rows under it close up in place, and the new pass tears over the old one from the
+    // board's side. New lines board with their tiles flapping in from blank.
+    const land = async () => {
+      const stacked = window.matchMedia('(max-width: 1279px)').matches;
+      const row = document.querySelector('#due tr[data-until="854"]');
+      const tile = row.querySelector('[data-status]');
+      const outgoing = document.querySelector('.pass.is-active');
+      const incoming = document.querySelector('.pass[data-state="logged"]');
+      setClock(854);
+      await motion.flap(tile, () => setStatus(tile, 'In range', 'status--word'));
+      outgoing.classList.add('is-leaving');
+      incoming.classList.add('is-active');
+      const torn = motion.tearOver(incoming, stacked ? 'bottom' : 'right');
+      await motion.liftOff(row, stacked ? 'up' : 'left');
+      const before = motion.where(boardLines());
+      post('logged', 854);
+      row.getAnimations().forEach((animation) => animation.cancel());
+      boardLines().filter((line) => !before.has(line)).forEach((line) => {
+        const word = line.querySelector('.status');
+        const text = word.textContent;
+        word.textContent = '';
+        motion.flap(word, () => { word.textContent = text; });
+      });
+      await Promise.all([motion.closeUp(before), torn]);
+      outgoing.classList.remove('is-leaving');
+    };
+
+    // The page posts the minute before, complete and still, then plays the landing once. Under reduced motion, or
+    // without the motion script, it posts the moment itself.
+    if (state === 'logged' && motion && !motion.reduced()) {
+      post('retaken', 853);
+      const play = () => setTimeout(land, 1100);
+      if (document.visibilityState === 'visible') play();
+      else document.addEventListener('visibilitychange', play, { once: true });
+    } else {
+      post(state, moments[state]);
+    }
+
+    // The scan band is a stand-in drawn from the record id, so it is the same every load and never random art: four
+    // stacked rows between fixed start and stop bars, the shape of the code on a boarding pass.
     document.querySelectorAll('.scan[data-seed]').forEach((svg) => {
       let h = 2166136261;
       for (const ch of svg.dataset.seed) {
         h ^= ch.charCodeAt(0);
         h = Math.imul(h, 16777619) >>> 0;
       }
-      const cells = [];
-      for (let y = 0; y < 13; y += 1) {
-        for (let x = 0; x < 13; x += 1) {
+      const bars = [];
+      for (let y = 0; y < 16; y += 4) {
+        bars.push(`<rect x="0" y="${y}" width="4" height="4"/>`, `<rect x="5" y="${y}" width="1" height="4"/>`);
+        let x = 8;
+        let ink = true;
+        while (x < 112) {
           h ^= h << 13; h >>>= 0; h ^= h >>> 17; h ^= h << 5; h >>>= 0;
-          const finder = (x < 3 && y < 3) || (x > 9 && y < 3) || (x < 3 && y > 9);
-          if (finder || (h & 1)) cells.push(`<rect x="${x}" y="${y}" width="1" height="1"/>`);
+          const width = Math.min(1 + (h % 3), 112 - x);
+          if (ink) bars.push(`<rect x="${x}" y="${y}" width="${width}" height="4"/>`);
+          x += width;
+          ink = !ink;
         }
+        bars.push(`<rect x="114" y="${y}" width="1" height="4"/>`, `<rect x="116" y="${y}" width="4" height="4"/>`);
       }
-      svg.innerHTML = cells.join('');
+      svg.innerHTML = bars.join('');
     });
   </script>
 </body>

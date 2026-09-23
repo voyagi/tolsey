@@ -27,6 +27,7 @@
   color-scheme: light;
   --ground: #e3e6e9;
   --stock: #ffffff;
+  --pass-stock: #f4f5f7;
   --row-alt: #f3f4f6;
   --ink: #0b0d10;
   --steel: #5f666d;
@@ -37,6 +38,8 @@
   --verdict: #0b0d10;
   --on-verdict: #ffffff;
   --verdict-edge: #0b0d10;
+  --verdict-hinge: rgb(255 255 255 / 0.22);
+  --alert-hinge: rgb(11 13 16 / 0.22);
   --focus: #0b0d10;
   --lift: 0 8px 24px rgb(11 13 16 / 0.14);
 
@@ -49,6 +52,7 @@
   color-scheme: dark;
   --ground: #0b0d10;
   --stock: #15191e;
+  --pass-stock: #1c2127;
   --row-alt: #1b2026;
   --ink: #f4f6f8;
   --steel: #a6adb5;
@@ -60,6 +64,8 @@
   --verdict: transparent;
   --on-verdict: #f4f6f8;
   --verdict-edge: #f4f6f8;
+  /* A framed tile has no flap face to hinge, and a line across an empty frame reads as a strike through its word. */
+  --verdict-hinge: transparent;
   --focus: #ffd400;
   --lift: 0 8px 24px rgb(0 0 0 / 0.55);
 }
@@ -149,6 +155,40 @@ a {
   background: transparent;
   color: var(--ink);
   box-shadow: none;
+}
+
+/* On a live board a filled tile is two flaps on one hinge. The hinge shows only at the tile's two ends, inside the
+   padding: a line drawn across the word reads as a strike through it, and OVERDUE struck out says the opposite.
+   A day sheet is a printed record, not a board, so its tiles stay whole. */
+.status {
+  --hinge: var(--verdict-hinge);
+}
+.status--alert {
+  --hinge: var(--alert-hinge);
+}
+:is(.board, .pass, .replay) .status:not(.status--quiet, .status--word) {
+  background-image: linear-gradient(var(--hinge), var(--hinge)), linear-gradient(var(--hinge), var(--hinge));
+  background-size: 0.4em 1px, 0.4em 1px;
+  background-position: left center, right center;
+  background-repeat: no-repeat;
+}
+
+/* The pass is ticket stock, not a second board panel. Its tear line is the edge it came off the board by, punched
+   through to the wall behind it: the right edge where the board stands to its right. A page whose board sits above or
+   below the pass moves the line to that edge. */
+.pass {
+  position: relative;
+  background: var(--pass-stock);
+}
+.pass::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  background: radial-gradient(circle at 100% 50%, var(--ground) 3.5px, transparent 4px) 0 0 / 6px 16px repeat-y;
+  pointer-events: none;
 }
 
 .fine {
