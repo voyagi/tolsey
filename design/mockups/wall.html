@@ -38,7 +38,7 @@
     /* The pass: the newest record line, segmented like a boarding pass, torn off the board. It leads the markup and
        the board follows, so the two columns read left to right and a stacked screen opens on the reading just spoken,
        with no CSS order to part the picture from the accessibility tree. While a new pass tears over the old one, both
-       share this cell and the new one lies on top. */
+       share this cell: the old one is marked leaving rather than active, so the new one is the only one raised. */
     .pass {
       grid-column: 1;
       grid-row: 2;
@@ -496,7 +496,9 @@
       const incoming = document.querySelector('.pass[data-state="logged"]');
       tick(854);
       await motion.flap(tile, () => setStatus(tile, 'In range', 'status--word'));
-      outgoing.classList.add('is-leaving');
+      // The old pass stays on screen but gives up its active mark, so only the new one is raised above it: the old pass
+      // comes later in the markup, and two raised passes would leave it covering the tear until the tear was nearly done.
+      outgoing.classList.replace('is-active', 'is-leaving');
       incoming.classList.add('is-active');
       const torn = motion.tearOver(incoming, stacked ? 'bottom' : 'right');
       await motion.liftOff(row, stacked ? 'up' : 'left');
