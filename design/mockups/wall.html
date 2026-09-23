@@ -455,24 +455,26 @@
       document.querySelectorAll('#due tr:not([hidden])').forEach((row) => markDue(row, now));
     };
 
+    const dueAt = (row, now) => now >= Number(row.dataset.from ?? 0) && now < Number(row.dataset.until ?? Infinity);
+
+    // Boarded: the newest lines that fit under the due checks shown at that minute, and everything logged by then.
+    const boardedAt = (now) => {
+      const dueShown = [...document.querySelectorAll('#due tr')].filter((row) => dueAt(row, now)).length;
+      const logged = [...document.querySelectorAll('#boarded tr')].filter((row) => Number(row.dataset.at) <= now);
+      return { logged, shown: logged.slice(0, dueShown >= 5 ? 3 : 4) };
+    };
+
     const post = (name, now) => {
       document.querySelectorAll('[data-state]').forEach((el) => el.classList.toggle('is-active', el.dataset.state === name));
-      document.querySelectorAll('#due tr').forEach((row) => {
-        const from = Number(row.dataset.from ?? 0);
-        const until = Number(row.dataset.until ?? Infinity);
-        row.hidden = now < from || now >= until;
-      });
+      document.querySelectorAll('#due tr').forEach((row) => { row.hidden = !dueAt(row, now); });
       tick(now);
 
-      // Boarded: the newest lines that fit under the due checks, and the count of everything logged by now.
-      const dueShown = document.querySelectorAll('#due tr:not([hidden])').length;
-      const limit = dueShown >= 5 ? 3 : 4;
-      const logged = [...document.querySelectorAll('#boarded tr')].filter((row) => Number(row.dataset.at) <= now);
+      const { logged, shown } = boardedAt(now);
       document.querySelectorAll('#boarded tr').forEach((row) => {
         row.hidden = true;
         row.classList.remove('row--newest');
       });
-      logged.slice(0, limit).forEach((row, index) => {
+      shown.forEach((row, index) => {
         row.hidden = false;
         row.classList.toggle('row--newest', index === 0);
         const status = row.querySelector('[data-status]');
@@ -482,7 +484,7 @@
           setStatus(status, 'Refused', open ? 'status--alert' : 'status--quiet');
         }
       });
-      document.getElementById('boarded-count').textContent = `Newest ${Math.min(limit, logged.length)} of ${logged.length}`;
+      document.getElementById('boarded-count').textContent = `Newest ${shown.length} of ${logged.length}`;
     };
 
     const boardLines = () => [...document.querySelectorAll('#due tr:not([hidden]), #boarded tr:not([hidden])')];
@@ -509,7 +511,11 @@
       incoming.classList.add('is-active');
       const boardIn = motion.closeUp(boardBefore);
       const torn = motion.tearOver(incoming, stacked ? 'bottom' : 'right');
-      await motion.liftOff(row, stacked ? 'up' : 'left');
+      // A boarded line that no longer fits under the due checks at 2:14 leaves the same way, rather than vanishing
+      // in one frame while the lines above it slide down over the gap.
+      const staying = new Set(boardedAt(854).shown);
+      const leaving = [...document.querySelectorAll('#boarded tr:not([hidden])')].filter((line) => !staying.has(line));
+      await Promise.all([row, ...leaving].map((line) => motion.liftOff(line, stacked ? 'up' : 'left')));
       const before = motion.where(boardLines());
       post('logged', 854);
       // One sentence for a screen reader, as the new pass lands: its reading and verdict, and the overdue check it
@@ -517,7 +523,7 @@
       const note = incoming.querySelector('.note');
       const said = `${clockText(854)}: ${incoming.querySelector('.point').textContent}, ${incoming.querySelector('.reading').textContent}, ${incoming.querySelector('.verdict').textContent}.`;
       document.getElementById('wall-live').textContent = note ? `${said} ${note.textContent}` : said;
-      row.getAnimations().forEach((animation) => animation.cancel());
+      [row, ...leaving].forEach((line) => line.getAnimations().forEach((animation) => animation.cancel()));
       // A blank tile keeps one line's height, so the rows closing up below it are aimed at the layout they settle in:
       // an empty one was 4px shorter on a phone and the rows under it jumped when its word arrived.
       boardLines().filter((line) => !before.has(line)).forEach((line) => {

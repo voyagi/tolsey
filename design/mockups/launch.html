@@ -369,6 +369,8 @@
       // The verdict tile flaps from its old word to the new one, and the pass slides a short way in from the replay's
       // side: the right on two columns, above once they stack. Without the motion script the word simply changes, and
       // a step that stays put (Back on the first, Next on the last, the current row chosen again) moves nothing.
+      // A flap still in flight from a quicker click is disowned too, or it would fold the settled word in again.
+      if (current === previous) delete verdict.dataset.flap;
       if (!motion || current === previous) return;
       verdict.textContent = was.word;
       verdict.classList.toggle('status--alert', was.alert);
