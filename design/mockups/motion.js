@@ -20,8 +20,8 @@ window.tolseyMotion = (() => {
       change();
       return;
     }
-    // The first half holds the tile edge-on until the second half takes over. Let go when it finished, the tile could
-    // stand face-on with its old word for a frame wherever the fold runs off the main thread and that thread is late.
+    // The first half holds the tile edge-on until the second half takes over. If it let go when it finished, the tile
+    // could stand face-on with its old word for a frame wherever the fold runs off the main thread and that thread is late.
     const away = tile.animate([{ transform: 'perspective(400px) rotateX(0deg)' }, { transform: 'perspective(400px) rotateX(-90deg)' }], { duration: 120, easing: leave, fill: 'forwards' });
     await done(away);
     if (tile.dataset.flap !== id) return;

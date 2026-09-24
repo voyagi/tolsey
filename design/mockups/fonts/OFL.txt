@@ -4,6 +4,10 @@ mona-sans-vf.woff2 (Mona Sans):
 The authors' own web font, byte for byte: fonts/webfonts/variable/MonaSansVF[wdth,opsz,wght].woff2
 at tag v2.0.27 of https://github.com/github/mona-sans
 (sha256 875ad1fab0c1f4854927fa8086963fb6ddd4608b04a58b267cddf8a9d78f80d3).
+The licence header as the LICENSE file at that tag publishes it:
+Copyright (c) 2023, GitHub https://github.com/github/mona-sans
+with Reserved Font Name "Mona Sans"
+The copyright notice inside the font file itself reads:
 Copyright 2022 The Mona Sans Project Authors (https://github.com/github/mona-sans), with Reserved Font Name "Mona"
 
 jetbrains-mono-latin.woff2 (JetBrains Mono):

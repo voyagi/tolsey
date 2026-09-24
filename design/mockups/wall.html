@@ -6,6 +6,7 @@
   <title>Tolsey wall screen (mockup)</title>
   <script src="theme.js"></script>
   <script src="motion.js"></script>
+  <script src="faces.js"></script>
   <script>
     // The markup is the 2:14 moment, for a page read with no script. With one, nothing is drawn until the page has posted
     // the moment its address asks for, or the minute before the landing: on a slow phone the parser stopped halfway and
@@ -551,8 +552,10 @@
 
     // The page posts the minute before, complete and still, then plays the landing once, a second after someone can see
     // it. A page opened behind another tab, or hidden during that second, waits until it is shown and starts the second
-    // again, or the landing would play to nobody. Under reduced motion, or without the motion script, it posts the
-    // moment itself.
+    // again, or the landing would play to nobody. The second starts once the wall's two faces have loaded, or the landing
+    // plays in the fallback type and the board reflows as Mona Sans lands just after it (measured 2026-09-24 at 1.6 Mbps:
+    // the face arrived 2.3 s after the page, the landing had ended at 2.0 s). A face that never comes holds it back 4 s at
+    // most (faces.js). Under reduced motion, or without the motion script, it posts the moment itself.
     if (state === 'logged' && motion && !motion.reduced()) {
       post('retaken', 853);
       const play = () => {
@@ -562,7 +565,7 @@
         }
         setTimeout(() => (document.visibilityState === 'visible' ? land() : play()), 1100);
       };
-      play();
+      (window.tolseyFaces ? window.tolseyFaces() : Promise.resolve()).then(play);
     } else {
       post(state, moments[state]);
     }
