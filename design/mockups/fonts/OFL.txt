@@ -1,16 +1,23 @@
 Licences for the fonts in this folder.
 
-mona-sans-latin.woff2 (Mona Sans):
+mona-sans-vf.woff2 (Mona Sans):
+The authors' own web font, byte for byte: fonts/webfonts/variable/MonaSansVF[wdth,opsz,wght].woff2
+at tag v2.0.27 of https://github.com/github/mona-sans
+(sha256 875ad1fab0c1f4854927fa8086963fb6ddd4608b04a58b267cddf8a9d78f80d3).
 Copyright 2022 The Mona Sans Project Authors (https://github.com/github/mona-sans), with Reserved Font Name "Mona"
 
 jetbrains-mono-latin.woff2 (JetBrains Mono):
 Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
 
-nanum-pen-latin.woff2 (Nanum Pen Script):
-Copyright (c) 2010, NHN Corporation (http://www.nhncorp.com),
-with Reserved Font Name Nanum, Naver Nanum, NanumGothic, Naver
-NanumGothic, NanumMyeongjo, Naver NanumMyeongjo, NanumBrush, Naver
-NanumBrush, NanumPen, Naver NanumPen.
+NanumPen.woff (NanumPen):
+The authors' own web font, byte for byte: the file NAVER's stylesheet for the font serves,
+https://hangeul.pstatic.net/hangeul_static/webfont/NanumBrush/NanumPen.woff
+(sha256 b4b5372235ceec55c168c1e994fc349c36f2454bd891d03e55c1a387b4a78fab).
+Copyright (c) 2010, NAVER Corporation ( https://www.navercorp.com/ ) with Reserved Font Name
+Nanum, Naver Nanum, NanumGothic, Naver NanumGothic, NanumMyeongjo, Naver NanumMyeongjo,
+NanumBrush, Naver NanumBrush, NanumPen, Naver NanumPen, Naver NanumGothicEco, NanumGothicEco,
+Naver NanumMyeongjoEco, NanumMyeongjoEco, Naver NanumGothicLight, NanumGothicLight,
+NanumBarunGothic, Naver NanumBarunGothic, NanumSquareRound, NanumBarunPen, MaruBuri, NanumSquareNeo
 
 All three are licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
