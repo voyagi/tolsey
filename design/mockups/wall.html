@@ -10,7 +10,9 @@
   <script>
     // The markup is the 2:14 moment, for a page read with no script. With one, nothing is drawn until the page has posted
     // the moment its address asks for, or the minute before the landing: on a slow phone the parser stopped halfway and
-    // the markup's moment was drawn first, then replaced. The page shows at DOMContentLoaded even if posting fails.
+    // the markup's moment was drawn first, then replaced. The page shows at DOMContentLoaded, even if posting fails, and
+    // that comes after posting only because the posting script is a plain one at the end of the body: made deferred,
+    // async or a module, it would show the page before its moment.
     document.documentElement.classList.add('is-posting');
     document.addEventListener('DOMContentLoaded', () => document.documentElement.classList.remove('is-posting'));
   </script>
@@ -563,7 +565,18 @@
           document.addEventListener('visibilitychange', play, { once: true });
           return;
         }
-        setTimeout(() => (document.visibilityState === 'visible' ? land() : play()), 1100);
+        // Hidden at any moment of the second, the second is dropped and starts again once the page is shown.
+        const hidden = () => {
+          if (document.visibilityState === 'visible') return;
+          clearTimeout(second);
+          document.removeEventListener('visibilitychange', hidden);
+          play();
+        };
+        const second = setTimeout(() => {
+          document.removeEventListener('visibilitychange', hidden);
+          land();
+        }, 1100);
+        document.addEventListener('visibilitychange', hidden);
       };
       (window.tolseyFaces ? window.tolseyFaces() : Promise.resolve()).then(play);
     } else {
