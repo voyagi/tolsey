@@ -323,7 +323,7 @@ All three are SIL Open Font License; the two families that reserve their names a
 - **Said** (Mona Sans 700, 22px on the wall and 24px on the launch pass): what the cook said. Tolsey's answer is 18px at 600.
 - **Body and lede** (Mona Sans 500 to 700, 16 to 19px, line height 1.35 to 1.45): notes, to-do lines (20px at 700), the launch lede (19px at 500). Fine print is 14px in steel.
 - **Figure** (JetBrains Mono 800): board times 22px, pass cells 16px, day sheet readings 22px, tallies 22px. Rules on a row are mono 15px at 600 in steel.
-- **Status** (JetBrains Mono 800, 15px, tracking 0.06em, uppercase): every status tile on the due board, the pass and the launch page's Try it. 13px on a phone, on a boarded row and on the day sheet's lines; 14px in the launch replay; 15px on the day sheet's fix line; 17px beside each open item on a handover pass.
+- **Status** (JetBrains Mono 800, 15px, tracking 0.06em, uppercase): every status tile on the due board and the launch page's Try it (the pass's own verdict is the Verdict type). 13px on a phone, on a boarded row and on the day sheet's lines; 14px in the launch replay; 15px on the day sheet's fix line; 17px beside each open item on a handover pass.
 - **Label** (JetBrains Mono 700, 12px, tracking 0.08em, uppercase, steel): column heads and every field name on a pass. Nav links and the kitchen line use the same treatment at 13px. Controls take it at weight 800: filled controls 13px (the `control` type), outline buttons and the launch page's main action 14px (the `button` type).
 
 ### Named Rules
@@ -380,7 +380,8 @@ Mono 800 uppercase words in a square tile, padding 0.3em 0.6em, no wrapping by d
 ### Split-flap tiles (live boards only)
 On a board, a pass and the launch replay, every filled or alert tile (not the quiet or word tiles) is drawn as two flaps on one hinge, with no line across the word, because a line through OVERDUE reads as struck out.
 - **Two flat halves.** The tile's fill is split at 50 percent with a hard stop, never a blend. On the verdict the upper half is lighter (`verdict-flap-top`, white at 16 percent; in dark white at 12 percent inside the frame). On alert the lower half is darker (`alert-flap-bottom`, ink at 14 percent). On a lit row's inverted tile the upper half is white at 16 percent.
-- **Square hinge pins.** A pin at each end of the split, `max(3px, 0.07em)` tall. Each pin starts at the tile's own edge line (`--hinge-inset`: 3px on the verdict, 2px on alert, 0 on a lit row's tile) and extends `max(3px, 0.1em)` past it, so only its square shows beyond the edge. Pin colours: ticket stock on the black verdict, white on the dark verdict frame, ink on yellow, yellow on a lit row's tile. Pins are at least 3 to 1 against their tile.
+- **Square hinge pins.** A pin at each end of the split, `max(3px, 0.07em)` tall. Each pin starts at the tile's own edge line (`--hinge-inset`: 3px on the verdict, 2px on alert, `0px` on a lit row's tile) and extends `max(3px, 0.1em)` past it, so only its square shows beyond the edge. Pin colours: ticket stock on the black verdict, white on the dark verdict frame, ink on yellow, yellow on a lit row's tile. Pins are at least 3 to 1 against their tile.
+- **The inset is always a length.** Write `0px`, never a bare `0`, and set the inset wherever the drawing applies. A bare `0` or a missing inset makes the pin size fail to compute, the two pin layers then fill the whole tile in the pin colour, and the word disappears: a lit tile tried that way on 2026-09-25 turned solid yellow.
 - **Where it does not apply.** The day sheet is a printed record, not a board: its tiles stay whole, on screen and on paper. The split is scoped to `.board`, `.pass` and `.replay` only.
 
 ### The pass
