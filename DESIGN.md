@@ -215,7 +215,6 @@ components:
     typography: "{typography.control}"
     rounded: "{rounded.none}"
     padding: "0 1.1rem"
-    height: "44px"
   control-hover:
     backgroundColor: "{colors.row-alt}"
     textColor: "{colors.ink}"
@@ -225,14 +224,12 @@ components:
     typography: "{typography.button}"
     rounded: "{rounded.none}"
     padding: "0 1.1rem"
-    height: "48px"
   theme-switch-button:
     backgroundColor: "transparent"
     textColor: "{colors.steel}"
     typography: "{typography.label}"
     rounded: "{rounded.none}"
     padding: "0 0.8rem"
-    height: "38px"
   theme-switch-button-pressed:
     backgroundColor: "{colors.row-alt}"
     textColor: "{colors.ink}"
@@ -345,7 +342,7 @@ All three are SIL Open Font License; the two families that reserve their names a
 
 **Breakpoints.** Under 1280 the wall stacks: the pass first, then the board. Under 1100 the launch pass and replay each take a full row, replay first. Under 900 every page goes to one column, padding 14px 16px 24px, and tables restack each row as a grid (the header row is clipped, not removed, so column names stay in the accessibility tree). The day sheet's tally goes two to a row under 22.4375em (an em width, so it follows the browser's text size). A pass narrower than 16.25em steps its reading down.
 
-**Rhythm.** Board cells 7px by 12px (boarded rows 6px), pass segments 12px by 22px (14px on the launch pass), board padding 18px 24px 8px. Controls and nav links are 44px tall, outline buttons 48px, replay steps 56px (44px on a phone); theme buttons are 38px inside a 3px padded frame. Every one of these heights is a minimum (`min-height`), so a label at a large browser text size grows its control instead of spilling out of it, and the front matter's `height` fields carry the same values as minimums.
+**Rhythm.** Board cells 7px by 12px (boarded rows 6px), pass segments 12px by 22px (14px on the launch pass), board padding 18px 24px 8px. Controls and nav links are 44px tall, outline buttons 48px, replay steps 56px (44px on a phone); theme buttons are 38px inside a 3px padded frame. Every one of these heights is a minimum (`min-height`), so a label at a large browser text size grows its control instead of spilling out of it. The front matter gives these components no `height`: the format's only height field is a fixed height, and these values are minimums, so they live in this line.
 
 ## Elevation & Depth
 
@@ -382,8 +379,8 @@ Mono 800 uppercase words in a square tile, padding 0.3em 0.6em, no wrapping by d
 ### Split-flap tiles (live boards only)
 On a board, a pass and the launch replay, every filled or alert tile (not the quiet or word tiles) is drawn as two flaps on one hinge, with no line across the word, because a line through OVERDUE reads as struck out.
 - **Two flat halves.** The tile's fill is split at 50 percent with a hard stop, never a blend. On the verdict the upper half is lighter (`verdict-flap-top`, white at 16 percent; in dark white at 12 percent inside the frame). On alert the lower half is darker (`alert-flap-bottom`, ink at 14 percent). On a lit row's inverted tile the upper half is white at 16 percent.
-- **Square hinge pins.** A pin at each end of the split, `max(3px, 0.07em)` tall. Each pin starts at the tile's own edge line (`--hinge-inset`: 3px on the verdict, 2px on alert, `0px` on a lit row's tile) and extends `max(3px, 0.1em)` past it, so only its square shows beyond the edge. Pin colours: ticket stock on the black verdict, white on the dark verdict frame, ink on yellow, yellow on a lit row's tile. Pins are at least 3 to 1 against their tile.
-- **The inset is always a length.** Write `0px`, never a bare `0`, and set the inset wherever the drawing applies. A bare `0` or a missing inset makes the pin size fail to compute, the two pin layers then fill the whole tile in the pin colour, and the word disappears: a lit tile tried that way on 2026-09-25 turned solid yellow.
+- **Square hinge pins.** A square pin at each end of the split, `max(3px, 0.07em)` on a side (`spacing.pin`, 3px at the default text size). Each pin starts at the tile's own edge line (`--hinge-inset`: 3px on the verdict, 2px on alert, `0px` on a lit row's tile) and extends that same side past it, so only its square shows beyond the edge: `--pin: calc(var(--hinge-inset) + max(3px, 0.07em)) max(3px, 0.07em)`. The mockups' `tokens.css` extends the pin by `max(3px, 0.1em)` instead, which shows 4 by 3px on the 40px verdict, the one size where their pins are not square; the port uses the square rule. Pin colours: ticket stock on the black verdict, white on the dark verdict frame, ink on yellow, yellow on a lit row's tile. Pins are at least 3 to 1 against their tile.
+- **The inset is always a length.** Write `0px`, never a bare `0`, and set the inset wherever the drawing applies. A bare `0` or a missing inset makes the pin size fail to compute, the two pin layers then fill the whole tile in the pin colour, and the word disappears: a lit tile tried that way on 2026-09-25 turned solid yellow. The port closes that door: it registers the inset as a length, `@property --hinge-inset { syntax: '<length>'; inherits: false; initial-value: 0px; }`, so a bare `0` computes as `0px` and a value that is not a length falls back to `0px`, and the tile never floods (measured in Chromium on 2026-09-25: registered, a bare `0` and a junk value both drew the lit tile's 3px pin, while the unregistered bare `0` flooded it). A framed tile whose inset is missing then hides its pin under its edge, a quiet fault a pin-size test catches. It also sets a lit tile's fill with `background-color`, never the `background` shorthand, which resets the flap layers wherever it wins the cascade.
 - **Where it does not apply.** The day sheet is a printed record, not a board: its tiles stay whole, on screen and on paper. The split is scoped to `.board`, `.pass` and `.replay` only.
 
 ### The pass
