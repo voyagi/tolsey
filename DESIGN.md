@@ -299,7 +299,7 @@ Device is not a third palette. It resolves to Light or Dark from `prefers-color-
 Printing overrides the tokens to black on white: `print-paper` for ground, stock and change tint, `print-ink` for ink, `print-steel` for steel, `print-hair` for rules, and the alert becomes white with a black edge, so an exception prints as an outlined block. The lifted shadow is removed. The day sheet must read in black and white.
 
 ### Named Rules
-**The Held Colour Rule.** Yellow appears only where something needs a hand, and it stays until a number is logged or the fix closes. Never on a heading, a button, a brand mark or an illustration.
+**The Held Colour Rule.** Yellow appears only where something needs a hand, and on a live board it stays until a number is logged or the fix closes. The day sheet is history, not a live board: a line that needed a hand (out of range, refused, late) keeps its yellow block after it is dealt with, because an inspector reads the exceptions first, and the fix line or the retaken reading under it shows how it was dealt with (in print the block is outlined in black). Never on a heading, a button, a brand mark or an illustration.
 
 **The Quiet Pass Rule.** In range is the quietest state: a black block (a white frame in dark) on the pass, its word alone on the board and the day sheet. Only the pass's verdict is filled.
 
@@ -345,7 +345,7 @@ All three are SIL Open Font License; the two families that reserve their names a
 
 **Breakpoints.** Under 1280 the wall stacks: the pass first, then the board. Under 1100 the launch pass and replay each take a full row, replay first. Under 900 every page goes to one column, padding 14px 16px 24px, and tables restack each row as a grid (the header row is clipped, not removed, so column names stay in the accessibility tree). The day sheet's tally goes two to a row under 22.4375em (an em width, so it follows the browser's text size). A pass narrower than 16.25em steps its reading down.
 
-**Rhythm.** Board cells 7px by 12px (boarded rows 6px), pass segments 12px by 22px (14px on the launch pass), board padding 18px 24px 8px. Controls and nav links are 44px tall, outline buttons 48px, replay steps 56px (44px on a phone); theme buttons are 38px inside a 3px padded frame.
+**Rhythm.** Board cells 7px by 12px (boarded rows 6px), pass segments 12px by 22px (14px on the launch pass), board padding 18px 24px 8px. Controls and nav links are 44px tall, outline buttons 48px, replay steps 56px (44px on a phone); theme buttons are 38px inside a 3px padded frame. Every one of these heights is a minimum (`min-height`), so a label at a large browser text size grows its control instead of spilling out of it, and the front matter's `height` fields carry the same values as minimums.
 
 ## Elevation & Depth
 
@@ -393,10 +393,10 @@ Ticket stock (`pass-stock`) with the panel lift and the tear line on its board s
 Time in mono 800 with a relative time label under it, the check in condensed heavy Mona Sans with a steel second line, the rule in steel mono, the status tile right aligned. A row holding a change sits on the change tint; a row that needs a hand now is lit yellow edge to edge.
 
 ### Controls
-- **Filled control** (Log by hand, Print day sheet, the launch page's main action and a pressed toggle): the verdict treatment, ink fill with a 3px ink inset edge (a white frame in dark), label type at 13 to 14px, 44 to 48px tall, square. Hover swaps to the change tint with ink text and a 3px ink inset edge.
+- **Filled control** (Log by hand, Print day sheet, the launch page's main action and a pressed toggle): the verdict treatment, ink fill with a 3px ink inset edge (a white frame in dark), label type at 13 to 14px, at least 44 to 48px tall, square. Hover swaps to the change tint with ink text and a 3px ink inset edge.
 - **Outline button** (replay Back, Play, Next): transparent, ink text, 2px steel inset frame; hover thickens it to 3px ink.
 - **Theme switch**: a group of three buttons (Light, Dark, Device) in a 2px steel frame on board stock with 3px padding and gaps, quieter than any status. Buttons are steel label type; hover turns them ink; the pressed one sits on the change tint with a 3px ink underline bar. It wraps inside its frame on a narrow screen.
-- **Navigation**: steel label links, 44px tall; hover turns them ink; the current page carries a 3px ink underline bar. Hidden on the launch page under 900.
+- **Navigation**: steel label links, at least 44px tall; hover turns them ink; the current page carries a 3px ink underline bar. Hidden on the launch page under 900.
 
 ### Focus, selection and forced colours
 - **Focus**: every focusable element gets `outline: 3px solid var(--focus)` with a 3px offset: ink in light, alert yellow in dark.
