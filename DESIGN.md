@@ -135,6 +135,16 @@ typography:
     fontSize: "0.75rem"
     fontWeight: 700
     letterSpacing: "0.08em"
+  control:
+    fontFamily: "'JetBrains Mono', monospace"
+    fontSize: "0.8125rem"
+    fontWeight: 800
+    letterSpacing: "0.08em"
+  button:
+    fontFamily: "'JetBrains Mono', monospace"
+    fontSize: "0.875rem"
+    fontWeight: 800
+    letterSpacing: "0.08em"
   pen:
     fontFamily: "'NanumPen', 'Mona Sans', sans-serif"
     fontSize: "2rem"
@@ -202,7 +212,7 @@ components:
   control:
     backgroundColor: "{colors.verdict}"
     textColor: "{colors.on-verdict}"
-    typography: "{typography.label}"
+    typography: "{typography.control}"
     rounded: "{rounded.none}"
     padding: "0 1.1rem"
     height: "44px"
@@ -212,7 +222,7 @@ components:
   button-outline:
     backgroundColor: "transparent"
     textColor: "{colors.ink}"
-    typography: "{typography.label}"
+    typography: "{typography.button}"
     rounded: "{rounded.none}"
     padding: "0 1.1rem"
     height: "48px"
@@ -265,7 +275,7 @@ The world refuses the compliance dashboard of equal rounded cards, completion ri
 Cool greys and near-black ink plus a single saturated yellow that only ever means "a change that needs a hand".
 
 ### Primary
-- **Held Alert Yellow** (`alert`): the one colour. Overdue, out of range, refused, a fix open, a late line on the day sheet, a lit tally cell. Always with near-black text (`on-alert`). In light it always carries a 2px ink edge (`alert-edge`) so it keeps its shape on white; in dark its edge is the yellow itself (`alert-edge-dark`). Also the text selection colour in both themes, and the focus ring in dark.
+- **Held Alert Yellow** (`alert`): the one colour. Overdue, out of range, refused, a fix open, a late line on the day sheet, a lit tally cell. A yellow fill always carries near-black text (`on-alert`); the one inversion is the tile on a lit row, a near-black block with a yellow word. In light a yellow tile, note or tally cell carries a 2px ink edge (`alert-edge`) so it keeps its shape on white, and in dark its edge is the yellow itself (`alert-edge-dark`); a lit row, yellow edge to edge across the board, has no edge. Also the text selection colour in both themes, and the focus ring in dark.
 
 ### Neutral (Light, the default under bright kitchen light)
 - **Panel Wall** (`ground`): the page behind everything; shows through the pass's punched tear line.
@@ -281,7 +291,7 @@ Cool greys and near-black ink plus a single saturated yellow that only ever mean
 - The verdict is not a filled white block in dark: `verdict-dark` is transparent and the tile is a 3px white frame (`verdict-edge-dark`) with white text, because a filled white block glares at the close.
 
 ### Device theme
-Device is not a third palette. It resolves to Light or Dark from `prefers-color-scheme`, is the first-run default, and follows an OS change live. The stylesheet only knows `data-theme="dark"` on the root; `theme.js` sets it before first paint, stores the choice under `tolsey-theme`, and accepts a `?theme=` query that overrides the stored choice.
+Device is not a third palette. It resolves to Light or Dark from `prefers-color-scheme`, is the first-run default, and follows an OS change live. The stylesheet only knows `data-theme="dark"` on the root; `theme.js` sets it before first paint, stores the choice under `tolsey-theme`, and accepts a `?theme=` query that overrides the stored choice. A card shown inside an MCP Apps host is the exception: it takes light or dark from the host (the OS setting when the host gives none), carries no switch and stores nothing.
 
 ### Print (the day sheet)
 Printing overrides the tokens to black on white: `print-paper` for ground, stock and change tint, `print-ink` for ink, `print-steel` for steel, `print-hair` for rules, and the alert becomes white with a black edge, so an exception prints as an outlined block. The lifted shadow is removed. The day sheet must read in black and white.
@@ -299,22 +309,22 @@ Printing overrides the tokens to black on white: `print-paper` for ground, stock
 **Figure font:** JetBrains Mono (self-hosted `fonts/jetbrains-mono-latin.woff2`, weight 400 to 800), fallback `monospace`.
 **Pen font:** NanumPen (self-hosted `fonts/NanumPen.woff`, 400), only for the launch page's typed reconstruction of a paper clipboard log, requested after the first screen's faces load.
 
-All three are SIL Open Font License; the two families that reserve their names are served as their authors' own unmodified files (`fonts/OFL.txt`). No font CDN. All faces use `font-display: swap`. The root sets `font-variant-numeric: tabular-nums`. Width is set with `font-stretch`, not `font-variation-settings`.
+All three are SIL Open Font License; the two families that reserve their names are served as their authors' own unmodified files (`fonts/OFL.txt`), and a subset of either may ship only under a new name. No font CDN. A card inside a host may be refused the self-hosted faces by the host's content policy, so every card must also lay out correctly in the fallback faces. All faces use `font-display: swap`. The root sets `font-variant-numeric: tabular-nums`. Width is set with `font-stretch`, not `font-variation-settings`: the frontmatter writes it as `fontVariation: "'wdth' 80"` because that is the format's field for it, and in CSS the same width is `font-stretch: 80%`, which the face's declared width range (75 to 125 percent) maps to its wdth axis.
 
 **Character:** a condensed, heavy grotesque doing the work a gate board's letters do, beside a mono that reads as measurement because on this board the data is the surface.
 
 ### Hierarchy (as built on the 1280 by 800 wall unless named)
 - **Display** (Mona Sans 900 at 75 percent width, `clamp(2.5rem, 5.4vw, 4.5rem)`, line height 1.3, uppercase): the launch page's one-line title. The launch page's argument line uses the same face at `clamp(2rem, 4.2vw, 3.5rem)`.
 - **Reading** (JetBrains Mono 800, 148px, line height 0.9, tracking -0.04em): the temperature on a pass, always the largest figure. The unit sits at 0.3em, raised 1.4em. A countdown or count steps down to 108px; a reading in words (NO NUMBER) is 52px uppercase. On a phone 104px, 76px and 40px; in a pass narrower than 16.25em, 84px.
-- **Verdict** (JetBrains Mono 800, 40px, tracking 0.04em, uppercase): the pass's verdict tile. 32px on a phone.
+- **Verdict** (JetBrains Mono 800, 40px, tracking 0.04em, uppercase): the pass's verdict tile. 32px on a phone, and 26px on the launch page under 360 wide.
 - **Headline** (Mona Sans 900 at 80 percent width, uppercase, line height 1.3): board titles 36px (DUE NOW), second board heads 26px, the day sheet title 44px, the launch page's board heads and the day sheet's cooling head 28px.
 - **Title** (Mona Sans 800 at 90 percent width, 32px, tracking -0.02em): the check point on a pass.
-- **Row** (Mona Sans 800 at 80 percent width, 22px, line height 1.3): a check name on a board row, with a 15px second line at weight 500 and normal width in steel. The day sheet's rows are 18px, the launch replay's step 19px, a boarded row 18px; the newest boarded row goes to 900.
+- **Row** (Mona Sans 800 at 80 percent width, 22px, line height 1.3): a check name on a board row, with a 15px second line at weight 500 and normal width in steel. The day sheet's rows are 18px, the launch page's copy of the day sheet 17px, the launch replay's step 19px, a boarded row 18px; the newest boarded row goes to 900.
 - **Said** (Mona Sans 700, 22px on the wall and 24px on the launch pass): what the cook said. Tolsey's answer is 18px at 600.
 - **Body and lede** (Mona Sans 500 to 700, 16 to 19px, line height 1.35 to 1.45): notes, to-do lines (20px at 700), the launch lede (19px at 500). Fine print is 14px in steel.
 - **Figure** (JetBrains Mono 800): board times 22px, pass cells 16px, day sheet readings 22px, tallies 22px. Rules on a row are mono 15px at 600 in steel.
-- **Status** (JetBrains Mono 800, 15px, tracking 0.06em, uppercase): every status tile. 13px on a phone and on the day sheet.
-- **Label** (JetBrains Mono 700, 12px, tracking 0.08em, uppercase, steel): column heads and every field name on a pass. Nav links, controls and the kitchen line use the same treatment at 13px.
+- **Status** (JetBrains Mono 800, 15px, tracking 0.06em, uppercase): every status tile on the due board, the pass and the launch page's Try it. 13px on a phone, on a boarded row and on the day sheet's lines; 14px in the launch replay; 15px on the day sheet's fix line; 17px beside each open item on a handover pass.
+- **Label** (JetBrains Mono 700, 12px, tracking 0.08em, uppercase, steel): column heads and every field name on a pass. Nav links and the kitchen line use the same treatment at 13px. Controls take it at weight 800: filled controls 13px (the `control` type), outline buttons and the launch page's main action 14px (the `button` type).
 
 ### Named Rules
 **The Width Not Face Rule.** Personality is bought with Mona Sans's width (75 to 90 percent) and weight (800 to 900). There is no separate display face.
@@ -374,7 +384,7 @@ On a board, a pass and the launch replay, every filled or alert tile (not the qu
 - **Where it does not apply.** The day sheet is a printed record, not a board: its tiles stay whole, on screen and on paper. The split is scoped to `.board`, `.pass` and `.replay` only.
 
 ### The pass
-Ticket stock (`pass-stock`) with the panel lift and the tear line on its board side. Four segments divided by 2px dashed hairlines: what was said and Tolsey's answer (with a lit note, a yellow block with a 2px ink edge, for an overdue check it carries); the check point, its kind label, the reading and the verdict tile; a two column grid of labelled cells (rule, source, time, by) in mono 800; the scan band, a crisp-edged ink SVG drawn deterministically from the record id, running the full width, 26px tall (24px on a phone), with the record id under it.
+Ticket stock (`pass-stock`) with the panel lift and the tear line on its board side. Four segments divided by 2px dashed hairlines: what was said and Tolsey's answer (with a lit note, a yellow block with a 2px ink edge, for an overdue check it carries); the check point, its kind label, the reading and the verdict tile; a two column grid of labelled cells (rule, source, time, by) in mono 800; the scan band, a crisp-edged ink SVG drawn deterministically from the record id, running the full width, 26px tall (24px on a phone), with the record id under it. The launch page's pass is a shorter ticket: it spans the grid's first five columns instead of 420px, its segments are 14px by 22px, and it has three segments, with no scan band and three cells (rule, source, by) in three columns, two on a phone.
 
 ### Board rows
 Time in mono 800 with a relative time label under it, the check in condensed heavy Mona Sans with a steel second line, the rule in steel mono, the status tile right aligned. A row holding a change sits on the change tint; a row that needs a hand now is lit yellow edge to edge.
@@ -404,22 +414,22 @@ Pages post still and visible; there is no entrance animation. The wall plays its
 ## Do's and Don'ts
 
 ### Do:
-- **Do** keep yellow (`alert`) for change only, with near-black text, and give it a 2px ink edge in light.
+- **Do** keep yellow (`alert`) for change only, with near-black text, and give a yellow tile, note or tally cell a 2px ink edge in light.
 - **Do** make the reading and its verdict the largest things on a pass (reading 148px, verdict 40px on the wall), and keep a count one step under the reading.
 - **Do** set every figure, time, status and code in JetBrains Mono, and set headings and check names in Mona Sans at 75 to 90 percent width.
 - **Do** draw filled and alert tiles on a live board, pass or replay as two flat halves with a square hinge pin at each end of the split, starting at the tile's edge line.
 - **Do** keep day sheet tiles whole, and let an exception print as an outlined block in black and white.
 - **Do** put the pass's tear line on the edge that faces its board, and move it when the layout stacks.
 - **Do** lift panels with `--lift` and separate structure with the board's own rules (3px ink under headings, 1px hairlines, 2px dashed segments).
-- **Do** ship Light, Dark and Device on every screen, with Device the default.
+- **Do** ship Light, Dark and Device on every page, with Device the default; a card inside a host follows the host's theme instead.
 - **Do** give every focusable element the 3px focus outline and every marked state a forced-colours border or underline.
 
 ### Don't:
 - **Don't** round a corner on any box.
 - **Don't** draw a line across a tile's word; the flap is shown by its halves and pins.
-- **Don't** blend colours: CSS gradients appear only as hard-stop drawing (the flap halves, the pins, the tear punches).
+- **Don't** blend colours: CSS gradients appear only as drawing, with hard stops for the flap halves and the pins, and a half-pixel edge on the tear punches that only keeps each circle smooth.
 - **Don't** use completion rings, green ticks, pills, a bottom tab bar or a round plus button.
 - **Don't** fill the dark verdict with white; it is a 3px white frame.
 - **Don't** let colour carry a state without its word.
 - **Don't** animate an entrance or count a value up; motion only shows a change, and reduced motion shows none.
-- **Don't** load fonts from a CDN or subset the two families that reserve their names.
+- **Don't** load fonts from a CDN, or serve a subset or converted copy of the two families that reserve their names under those names.
