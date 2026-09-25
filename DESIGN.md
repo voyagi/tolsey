@@ -300,7 +300,7 @@ Printing overrides the tokens to black on white: `print-paper` for ground, stock
 
 **The Quiet Pass Rule.** In range is the quietest state: a black block (a white frame in dark) on the pass, its word alone on the board and the day sheet. Only the pass's verdict is filled.
 
-**The Never Colour Alone Rule.** Every status carries its word (IN RANGE, OUT OF RANGE, REFUSED, NO NUMBER, DUE, OVERDUE 14 MIN, LATE 20 MIN, COOLING, FIX OPEN, FIX OVERDUE 5 MIN, CLOSED ON TIME). A tile's colour never says anything its word does not.
+**The Never Colour Alone Rule.** Every status carries its word (IN RANGE, OUT OF RANGE, REFUSED, NO NUMBER, CORRECTED, DUE, OVERDUE 14 MIN, LATE 20 MIN, MISSED, COOLING, FIX OPEN, FIX OVERDUE 5 MIN, CLOSED ON TIME, CLOSED LATE). A tile's colour never says anything its word does not.
 
 ## Typography
 
