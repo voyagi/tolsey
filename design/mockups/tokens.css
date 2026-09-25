@@ -1,12 +1,15 @@
 /* Tolsey design tokens: the gate board. Values and contrast figures: design/ART-DIRECTION.md. */
-/* Self-hosted: no visitor request goes to a font CDN. Mona Sans, JetBrains Mono and Nanum Pen Script, all SIL Open Font License. */
+/* Self-hosted: no visitor request goes to a font CDN. Mona Sans, JetBrains Mono and NanumPen, all SIL Open Font License.
+   Mona Sans and NanumPen are their authors' own web font files, byte for byte: both families reserve their names, and a
+   subset or a converted file counts as a modified version, which may not carry them (fonts/OFL.txt). Mona Sans picks
+   its optical size from the text size, text cut at small sizes and display cut at large ones, as its authors intend. */
 @font-face {
   font-family: 'Mona Sans';
   font-style: normal;
   font-weight: 200 900;
   font-stretch: 75% 125%;
   font-display: swap;
-  src: url('fonts/mona-sans-latin.woff2') format('woff2');
+  src: url('fonts/mona-sans-vf.woff2') format('woff2');
 }
 @font-face {
   font-family: 'JetBrains Mono';
@@ -16,11 +19,11 @@
   src: url('fonts/jetbrains-mono-latin.woff2') format('woff2');
 }
 @font-face {
-  font-family: 'Nanum Pen Script';
+  font-family: 'NanumPen';
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url('fonts/nanum-pen-latin.woff2') format('woff2');
+  src: url('fonts/NanumPen.woff') format('woff');
 }
 
 :root {

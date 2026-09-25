@@ -7,6 +7,7 @@
   <meta name="description" content="A food safety log for small restaurant kitchens that you fill in by voice. Each reading is judged against its rule, and a check with no number is refused.">
   <script src="theme.js"></script>
   <script src="motion.js"></script>
+  <script src="faces.js"></script>
   <link rel="stylesheet" href="tokens.css">
   <style>
     .page { max-width: 1280px; margin: 0 auto; padding: 20px 24px 32px; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 18px 22px; }
@@ -99,7 +100,11 @@
     .sheet { grid-column: 6 / -1; padding: 20px 24px 18px; display: grid; gap: 12px; align-content: start; }
     .paper h3, .sheet h3 { margin: 0; font-size: 1.375rem; font-weight: 800; font-stretch: 90%; line-height: 1.3; }
     .paper-log th { padding: 8px 6px 4px; border-top: 2px solid var(--ink); }
-    .paper-log td { height: 44px; padding: 0 6px; border: 0; border-bottom: 1px solid var(--hair); font-family: 'Nanum Pen Script', var(--sans); font-size: 2rem; line-height: 1; vertical-align: bottom; text-align: left; }
+    .paper-log td { height: 44px; padding: 0 6px; border: 0; border-bottom: 1px solid var(--hair); font-size: 2rem; line-height: 1; vertical-align: bottom; text-align: left; }
+    /* The pen face is 1.45 MB (NAVER's own file, the whole Korean set), so the log asks for it only once the first
+       screen's faces have loaded (faces.js): asked for with them, it held Mona Sans back 1.4 s at 1.6 Mbps (measured
+       2026-09-24). A page read with no script asks for it at once (the noscript style below). */
+    .faces-ready .paper-log td { font-family: 'NanumPen', var(--sans); }
     /* The afternoon the cook never filled in: empty cells, so a screen reader passes over them in silence. Their
        height comes from the rule above, not from a character made invisible. */
     .paper-log td.blank { color: transparent; }
@@ -184,6 +189,7 @@
       .reading:not(.reading--words) { font-size: 5.25rem; }
     }
   </style>
+  <noscript><style>.paper-log td { font-family: 'NanumPen', var(--sans); }</style></noscript>
 </head>
 <body>
   <div class="page">
@@ -210,7 +216,7 @@
           <tr><td class="t">2:09 PM</td><td><button class="step" type="button">&ldquo;The reach-in is fine&rdquo;<small>No number, the check stays open</small></button></td><td><span class="status status--alert">Refused</span></td></tr>
           <tr><td class="t">2:11 PM</td><td><button class="step" type="button">&ldquo;Reach-in reads 39&rdquo;<small>Closes the open check</small></button></td><td><span class="status status--word">In range</span></td></tr>
           <tr><td class="t">2:20 PM</td><td><button class="step" type="button">&ldquo;Sandwich cooler is 40&rdquo;<small>Was due 2:00 PM</small></button></td><td><span class="status status--alert">Late 20 min</span></td></tr>
-          <tr><td class="t">2:26 PM</td><td><button class="step" type="button">&ldquo;Soup well is 168&rdquo;<small>Closes the fix, six minutes early</small></button></td><td><span class="status status--word">In range</span></td></tr>
+          <tr><td class="t">2:26 PM</td><td><button class="step" type="button">&ldquo;Soup well is 168, held 15 seconds&rdquo;<small>Closes the fix, six minutes early</small></button></td><td><span class="status status--word">In range</span></td></tr>
         </tbody>
       </table>
       <div class="controls" role="group" aria-label="Replay controls">
@@ -225,7 +231,7 @@
     <article class="panel pass" aria-labelledby="pass-point">
       <div class="seg seg--said">
         <p><span class="label">Cook JT, 1:32 PM</span><q>Soup well is at 128.</q></p>
-        <p><span class="label">Tolsey</span><span class="answer">That is under 135. Reheat to 165 within the hour and tell me the new reading.</span></p>
+        <p><span class="label">Tolsey</span><span class="answer">That is under 135. Reheat to 165 within the hour and hold it 15 seconds.</span></p>
       </div>
       <div class="seg seg--main">
         <h2 class="point" id="pass-point">Soup well</h2>
@@ -270,7 +276,7 @@
           <tr class="row--change"><td class="t">2:09 PM</td><td class="check">Reach-in, line 2</td><td class="r r--none">no number</td><td><span class="status status--alert">Refused</span></td></tr>
           <tr><td class="t">2:11 PM</td><td class="check">Reach-in, line 2</td><td class="r">39</td><td><span class="status status--word">In range</span></td></tr>
           <tr class="row--change"><td class="t">2:20 PM</td><td class="check">Sandwich cooler</td><td class="r">40</td><td><span class="status status--alert">Late 20 min</span></td></tr>
-          <tr><td class="t">2:26 PM</td><td class="check">Soup well, reheat</td><td class="r">168</td><td><span class="status status--word">In range</span></td></tr>
+          <tr><td class="t">2:26 PM</td><td class="check">Soup well, reheat, held 15&nbsp;s</td><td class="r">168</td><td><span class="status status--word">In range</span></td></tr>
         </tbody>
       </table>
       <figcaption>Four columns of the printed sheet, read from the stored record rather than from what was said. Every line keeps its reading and its verdict; the sheet itself adds the rule each was judged against and who logged it.</figcaption>
@@ -306,14 +312,17 @@
     </footer>
   </div>
   <script>
+    // The paper log's pen face is asked for once the first screen's faces have loaded (see .faces-ready).
+    (window.tolseyFaces ? window.tolseyFaces() : Promise.resolve()).then(() => document.documentElement.classList.add('faces-ready'));
+
     // The replay mockup: choosing a step, Back, Next or Play posts that step's pass. The steps are the day sheet's own lines.
     const steps = [
       { by: 'MR', at: '11:02 AM', said: 'The walk-in reads 38.', answer: 'Logged. Walk-in at 38, in range.', point: 'Walk-in cooler', kind: 'Cold holding', reading: '38', alert: false, verdict: 'In range', todo: '', rule: '41°F or below', source: 'FDA 3-501.16' },
-      { by: 'JT', at: '1:32 PM', said: 'Soup well is at 128.', answer: 'That is under 135. Reheat to 165 within the hour and tell me the new reading.', point: 'Soup well', kind: 'Hot holding', reading: '128', alert: true, verdict: 'Out of range', todo: 'Fix open: reheat to 165°F for 15\u00a0s by 2:32 PM.', rule: '135°F or above', source: 'FDA 3-501.16' },
+      { by: 'JT', at: '1:32 PM', said: 'Soup well is at 128.', answer: 'That is under 135. Reheat to 165 within the hour and hold it 15 seconds.', point: 'Soup well', kind: 'Hot holding', reading: '128', alert: true, verdict: 'Out of range', todo: 'Fix open: reheat to 165°F for 15\u00a0s by 2:32 PM.', rule: '135°F or above', source: 'FDA 3-501.16' },
       { by: 'AK', at: '2:09 PM', said: 'The reach-in is fine.', answer: 'I need a number. What does the reach-in read?', point: 'Reach-in, line 2', kind: 'Cold holding', reading: 'No number', alert: true, verdict: 'Refused', todo: 'The check stays open until a number is said.', rule: '41°F or below', source: 'FDA 3-501.16' },
       { by: 'AK', at: '2:11 PM', said: 'Reach-in reads 39.', answer: 'Logged. Reach-in at 39, in range. That closes the open check.', point: 'Reach-in, line 2', kind: 'Cold holding', reading: '39', alert: false, verdict: 'In range', todo: '', rule: '41°F or below', source: 'FDA 3-501.16' },
       { by: 'DS', at: '2:20 PM', said: 'Sandwich cooler is 40.', answer: 'Logged. Sandwich cooler at 40, in range, 20 minutes late.', point: 'Sandwich cooler', kind: 'Cold holding', reading: '40', alert: true, verdict: 'Late 20 min', todo: 'It was due at 2:00 PM.', rule: '41°F or below', source: 'FDA 3-501.16' },
-      { by: 'DS', at: '2:26 PM', said: 'Soup well is 168.', answer: 'Logged. Soup well at 168. The fix is closed, six minutes early.', point: 'Soup well', kind: 'Hot holding, reheat', reading: '168', alert: false, verdict: 'In range', todo: 'Fix closed on time.', rule: '165°F for 15\u00a0s', source: 'FDA 3-403.11' },
+      { by: 'DS', at: '2:26 PM', said: 'Soup well is 168, held 15 seconds.', answer: 'Logged. Soup well at 168, held 15 seconds. The fix is closed, six minutes early.', point: 'Soup well', kind: 'Hot holding, reheat', reading: '168', alert: false, verdict: 'In range', todo: 'Fix closed on time.', rule: '165°F for 15\u00a0s', source: 'FDA 3-403.11' },
     ];
     const rows = [...document.querySelectorAll('#replay tbody tr')];
     const pass = document.querySelector('.pass');

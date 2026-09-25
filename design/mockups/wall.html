@@ -6,6 +6,16 @@
   <title>Tolsey wall screen (mockup)</title>
   <script src="theme.js"></script>
   <script src="motion.js"></script>
+  <script src="faces.js"></script>
+  <script>
+    // The markup is the 2:14 moment, for a page read with no script. With one, nothing is drawn until the page has posted
+    // the moment its address asks for, or the minute before the landing: on a slow phone the parser stopped halfway and
+    // the markup's moment was drawn first, then replaced. The page shows at DOMContentLoaded, even if posting fails, and
+    // that comes after posting only because the posting script is a plain one at the end of the body: made deferred,
+    // async or a module, it would show the page before its moment.
+    document.documentElement.classList.add('is-posting');
+    document.addEventListener('DOMContentLoaded', () => document.documentElement.classList.remove('is-posting'));
+  </script>
   <link rel="stylesheet" href="tokens.css">
   <style>
     .screen {
@@ -136,6 +146,7 @@
     /* A pass that is being covered stays on screen under the one tearing over it. */
     [data-state]:not(.is-active):not(.is-leaving) { display: none !important; }
     tr[hidden] { display: none !important; }
+    .is-posting .screen { visibility: hidden; }
 
     /* The two columns are sized for the 1280 by 800 wall screen. Anything narrower stacks and scrolls instead of
        cutting the board off, and the stack simply follows the markup: the newest pass, then the board. */
@@ -273,14 +284,14 @@
     <article class="pass" data-state="action" aria-labelledby="pass-action">
       <div class="seg seg--said">
         <p><span class="label">Cook JT, 1:32 PM</span><q>Soup well is at 128.</q></p>
-        <p><span class="label">Tolsey</span><span class="answer">That is under 135. Reheat to 165 within the hour and tell me the new reading.</span></p>
+        <p><span class="label">Tolsey</span><span class="answer">That is under 135. Reheat to 165 within the hour and hold it 15 seconds.</span></p>
       </div>
       <div class="seg seg--main">
         <h2 class="point" id="pass-action">Soup well</h2>
         <p class="kind label">Hot holding</p>
         <p class="reading reading--count"><span data-mins-to="872">18</span><small>min</small></p>
         <span class="status status--alert verdict">Fix open</span>
-        <p class="todo">Reheat to 165°F, then say the new reading.</p>
+        <p class="todo">Reheat to 165°F, hold it 15&nbsp;s, then say the reading.</p>
       </div>
       <div class="seg seg--cells">
         <div><span class="label">Read</span><b>128°F, 1:32 PM</b></div>
@@ -503,11 +514,13 @@
       await motion.flap(tile, () => setStatus(tile, 'In range', 'status--word'));
       // The old pass stays on screen but gives up its active mark, so only the new one is raised above it: the old pass
       // comes later in the markup, and two raised passes would leave it covering the tear until the tear was nearly done.
+      // It leaves the accessibility tree at once, so a screen reader never meets two passes as the record.
       // Stacked, the two passes share a row as tall as the taller one, and at some widths and text sizes they differ by
       // a line, so each time a pass joins or leaves that row the board under it closes up instead of jumping.
       const board = document.querySelector('.board');
       const boardBefore = motion.where([board]);
       outgoing.classList.replace('is-active', 'is-leaving');
+      outgoing.setAttribute('aria-hidden', 'true');
       incoming.classList.add('is-active');
       const boardIn = motion.closeUp(boardBefore);
       const torn = motion.tearOver(incoming, stacked ? 'bottom' : 'right');
@@ -524,27 +537,48 @@
       const said = `${clockText(854)}: ${incoming.querySelector('.point').textContent}, ${incoming.querySelector('.reading').textContent}, ${incoming.querySelector('.verdict').textContent}.`;
       document.getElementById('wall-live').textContent = note ? `${said} ${note.textContent}` : said;
       [row, ...leaving].forEach((line) => line.getAnimations().forEach((animation) => animation.cancel()));
-      // A blank tile keeps one line's height, so the rows closing up below it are aimed at the layout they settle in:
-      // an empty one was 4px shorter on a phone and the rows under it jumped when its word arrived.
+      // A boarding tile keeps its word, unseen until the flap turns it over, so the rows closing up below it are aimed at
+      // the exact layout they settle in. A blank stand-in is a different box: an empty one was 4px shorter on a phone, and
+      // one space wide it cannot take the second line a long word wraps to at large text.
       boardLines().filter((line) => !before.has(line)).forEach((line) => {
         const word = line.querySelector('.status');
-        const text = word.textContent;
-        word.textContent = '\u00a0';
-        motion.flap(word, () => { word.textContent = text; });
+        word.style.color = 'transparent';
+        motion.flap(word, () => word.style.removeProperty('color'));
       });
       await Promise.all([motion.closeUp(before), torn, boardIn]);
       const boardCovered = motion.where([board]);
       outgoing.classList.remove('is-leaving');
+      outgoing.removeAttribute('aria-hidden');
       await motion.closeUp(boardCovered);
     };
 
-    // The page posts the minute before, complete and still, then plays the landing once. Under reduced motion, or
-    // without the motion script, it posts the moment itself.
+    // The page posts the minute before, complete and still, then plays the landing once, a second after someone can see
+    // it. A page opened behind another tab, or hidden during that second, waits until it is shown and starts the second
+    // again, or the landing would play to nobody. The second starts once the wall's two faces have loaded, or the landing
+    // plays in the fallback type and the board reflows as Mona Sans lands just after it (measured 2026-09-24 at 1.6 Mbps:
+    // the face arrived 2.3 s after the page, the landing had ended at 2.0 s). A face that never comes holds it back 4 s at
+    // most (faces.js). Under reduced motion, or without the motion script, it posts the moment itself.
     if (state === 'logged' && motion && !motion.reduced()) {
       post('retaken', 853);
-      const play = () => setTimeout(land, 1100);
-      if (document.visibilityState === 'visible') play();
-      else document.addEventListener('visibilitychange', play, { once: true });
+      const play = () => {
+        if (document.visibilityState !== 'visible') {
+          document.addEventListener('visibilitychange', play, { once: true });
+          return;
+        }
+        // Hidden at any moment of the second, the second is dropped and starts again once the page is shown.
+        const hidden = () => {
+          if (document.visibilityState === 'visible') return;
+          clearTimeout(second);
+          document.removeEventListener('visibilitychange', hidden);
+          play();
+        };
+        const second = setTimeout(() => {
+          document.removeEventListener('visibilitychange', hidden);
+          land();
+        }, 1100);
+        document.addEventListener('visibilitychange', hidden);
+      };
+      (window.tolseyFaces ? window.tolseyFaces() : Promise.resolve()).then(play);
     } else {
       post(state, moments[state]);
     }

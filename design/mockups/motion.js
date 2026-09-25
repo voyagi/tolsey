@@ -20,10 +20,19 @@ window.tolseyMotion = (() => {
       change();
       return;
     }
-    await done(tile.animate([{ transform: 'perspective(400px) rotateX(0deg)' }, { transform: 'perspective(400px) rotateX(-90deg)' }], { duration: 120, easing: leave }));
+    // The first half holds the tile edge-on until the second half takes over. If it let go when it finished, the tile
+    // could stand face-on with its old word for a frame wherever the fold runs off the main thread and that thread is late.
+    const away = tile.animate([{ transform: 'perspective(400px) rotateX(0deg)' }, { transform: 'perspective(400px) rotateX(-90deg)' }], { duration: 120, easing: leave, fill: 'forwards' });
+    await done(away);
     if (tile.dataset.flap !== id) return;
-    change();
-    await done(tile.animate([{ transform: 'perspective(400px) rotateX(90deg)' }, { transform: 'none' }], { duration: 200, easing: arrive }));
+    // A word that fails to arrive still leaves the tile face-on, with the failure thrown on to the caller.
+    try {
+      change();
+    } finally {
+      const back = tile.animate([{ transform: 'perspective(400px) rotateX(90deg)' }, { transform: 'none' }], { duration: 200, easing: arrive });
+      away.cancel();
+      await done(back);
+    }
   };
 
   const where = (elements) => new Map(elements.map((element) => [element, element.getBoundingClientRect()]));
