@@ -261,6 +261,8 @@ The surface is high contrast and dense on purpose. It is read from about six fee
 
 The world refuses the compliance dashboard of equal rounded cards, completion rings, green ticks, pills, a bottom tab bar and a round plus button.
 
+The built reference is the three pages in `design/mockups/`: `wall.html`, `record.html` and `launch.html`, with `tokens.css`, `theme.js`, `motion.js`, `faces.js` and the `fonts/` folder beside them. Every file path below is relative to that folder.
+
 **Key Characteristics:**
 - Cool neutral panels (light stock and near-black ink by day, a black board with white letters in dark) and exactly one alert yellow, reserved for change.
 - Mona Sans at 75 to 90 percent width and weights 800 to 900 for headings and check names; JetBrains Mono for every time, temperature, count, status and record code, always tabular.
@@ -400,7 +402,7 @@ Time in mono 800 with a relative time label under it, the check in condensed hea
 - **Focus**: every focusable element gets `outline: 3px solid var(--focus)` with a 3px offset: ink in light, alert yellow in dark.
 - **Selection**: selected text is near-black on alert yellow in both themes.
 - **Links**: inherit their colour, 2px underline at a 0.2em offset.
-- **Forced colours** (Windows contrast themes drop fills and box shadows, the only marks on a tile or a pressed button): every tile except a plain word gets a 2px `CanvasText` border; filled controls and outline buttons get a 2px `ButtonText` border; the pressed theme button and the current nav link get a 3px underline at a 0.35em offset (longhands, because Safari drops a shorthand carrying a thickness); the current replay step gets 3px `Highlight` rules above and below.
+- **Forced colours** (Windows contrast themes drop fills and box shadows, the only marks on a tile or a pressed button): every tile except a plain word gets a 2px `CanvasText` border; filled controls, outline buttons and the day sheet's lit tally cell get a 2px `ButtonText` border; the pressed theme button, the replay's pressed Play button and the current nav link get a 3px underline at a 0.35em offset (longhands, because Safari drops a shorthand carrying a thickness); the current replay step gets 3px `Highlight` rules above and below.
 
 ### Motion
 Five moves, shared by the wall and the launch replay, each starting from what is already on screen. Arrivals use `cubic-bezier(0.16, 1, 0.3, 1)` (also `--ease-out` in the tokens); departures use `cubic-bezier(0.7, 0, 0.84, 0)`.
