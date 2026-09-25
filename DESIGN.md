@@ -265,7 +265,7 @@ The world refuses the compliance dashboard of equal rounded cards, completion ri
 - Cool neutral panels (light stock and near-black ink by day, a black board with white letters in dark) and exactly one alert yellow, reserved for change.
 - Mona Sans at 75 to 90 percent width and weights 800 to 900 for headings and check names; JetBrains Mono for every time, temperature, count, status and record code, always tabular.
 - Square everywhere: no corner radius on any box.
-- Status tiles on a live board are split-flap tiles: two flat halves and a square hinge pin at each end of the split.
+- Filled and alert status tiles on a live board are split-flap tiles: two flat halves and a square hinge pin at each end of the split. Due and settled tiles stay whole.
 - The pass is its own ticket stock with a punched tear line on the edge that faces the board.
 - Motion shows a change and nothing else; reduced motion changes values in place.
 - Three themes: Light, Dark and Device (follows the OS, the default).
