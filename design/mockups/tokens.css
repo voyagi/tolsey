@@ -41,8 +41,10 @@
   --verdict: #0b0d10;
   --on-verdict: #ffffff;
   --verdict-edge: #0b0d10;
-  --verdict-hinge: rgb(255 255 255 / 0.22);
-  --alert-hinge: rgb(11 13 16 / 0.22);
+  --verdict-hinge: var(--pass-stock);
+  --alert-hinge: #0b0d10;
+  --verdict-flap-top: rgb(255 255 255 / 0.16);
+  --alert-flap-bottom: rgb(11 13 16 / 0.14);
   --focus: #0b0d10;
   --lift: 0 8px 24px rgb(11 13 16 / 0.14);
 
@@ -67,8 +69,9 @@
   --verdict: transparent;
   --on-verdict: #f4f6f8;
   --verdict-edge: #f4f6f8;
-  /* A framed tile has no flap face to hinge, and a line across an empty frame reads as a strike through its word. */
-  --verdict-hinge: transparent;
+  /* The framed verdict keeps two flaps inside its frame: the upper one lit, the pins standing on the frame's sides. */
+  --verdict-hinge: var(--verdict-edge);
+  --verdict-flap-top: rgb(244 246 248 / 0.12);
   --focus: #ffd400;
   --lift: 0 8px 24px rgb(0 0 0 / 0.55);
 }
@@ -86,7 +89,8 @@ html {
   background: var(--ground);
   -webkit-text-size-adjust: 100%;
   scrollbar-color: var(--steel) transparent;
-  caret-color: var(--alert);
+  /* The caret takes the focus colour, ink by day and yellow at the close: yellow on white is only 1.43. */
+  caret-color: var(--focus);
 }
 
 body {
@@ -160,19 +164,32 @@ a {
   box-shadow: none;
 }
 
-/* On a live board a filled tile is two flaps on one hinge. The hinge shows only at the tile's two ends, inside the
-   padding: a line drawn across the word reads as a strike through it, and OVERDUE struck out says the opposite.
-   A day sheet is a printed record, not a board, so its tiles stay whole. */
+/* On a live board a filled tile is two flaps on one hinge, drawn with no line across the word: a line through it reads
+   as a strike, and OVERDUE struck out says the opposite. The upper flap is a clear step lighter than the lower one (two
+   flat halves, not a blend), and the hinge is a square pin of about 3px at each end of the split, at least 3 to 1
+   against the tile. A longer pin reads as a dash either side of the word, so each pin starts at the tile's own edge
+   line (--hinge-inset, the width of its inset edge) and shows only its square. A day sheet is a printed record, not a
+   board, so its tiles stay whole. */
 .status {
   --hinge: var(--verdict-hinge);
+  --hinge-inset: 3px;
+  --flap-top: var(--verdict-flap-top);
+  --flap-bottom: transparent;
 }
 .status--alert {
   --hinge: var(--alert-hinge);
+  --hinge-inset: 2px;
+  --flap-top: transparent;
+  --flap-bottom: var(--alert-flap-bottom);
 }
 :is(.board, .pass, .replay) .status:not(.status--quiet, .status--word) {
-  background-image: linear-gradient(var(--hinge), var(--hinge)), linear-gradient(var(--hinge), var(--hinge));
-  background-size: 0.4em 1px, 0.4em 1px;
-  background-position: left center, right center;
+  --pin: calc(var(--hinge-inset) + max(3px, 0.1em)) max(3px, 0.07em);
+  background-image:
+    linear-gradient(var(--hinge), var(--hinge)),
+    linear-gradient(var(--hinge), var(--hinge)),
+    linear-gradient(var(--flap-top) 50%, var(--flap-bottom) 50%);
+  background-size: var(--pin), var(--pin), 100% 100%;
+  background-position: left center, right center, 0 0;
   background-repeat: no-repeat;
 }
 
