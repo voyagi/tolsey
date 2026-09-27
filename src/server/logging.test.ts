@@ -89,7 +89,11 @@ describe('what a fault leaves in the logs and the reply', () => {
     return { fetchWith };
   }
 
-  async function callWalkIn(fetchWith: (url: string | URL, init?: RequestInit) => Promise<Response>, words = WORDS) {
+  async function callWalkIn(
+    fetchWith: (url: string | URL, init?: RequestInit) => Promise<Response>,
+    words = WORDS,
+    value = 38,
+  ) {
     const client = new Client({ name: 'logging-test', version: '1.0.0' }, { capabilities: {} });
     await client.connect(
       new StreamableHTTPClientTransport(new URL(`http://localhost/mcp/k/${KITCHEN_ID}`), { fetch: fetchWith }),
@@ -99,7 +103,7 @@ describe('what a fault leaves in the logs and the reply', () => {
         name: 'log_reading',
         arguments: {
           check_point: 'walk_in',
-          value: 38,
+          value,
           measured: 'air',
           words,
           initials: INITIALS,
@@ -182,15 +186,26 @@ describe('what a fault leaves in the logs and the reply', () => {
     expect(logged()).not.toContain(INITIALS);
   });
 
+  // Each call's words must survive the rebuild to reach the store, so each carries its own value:
+  // phrases the rebuild drops would make every assertion below pass with the message logged.
   it('keeps the rule for ten concurrent failing calls, each carrying its own words', async () => {
+    const seen: string[] = [];
     const { fetchWith } = workerFor(
-      storeWith({ append: async (input) => { throw carryingWords('append', input.event.words); } }),
+      storeWith({
+        append: async (input) => {
+          seen.push(input.event.words);
+          throw carryingWords('append', input.event.words);
+        },
+      }),
     );
-    const phrases = Array.from({ length: 10 }, (_, index) => `the walk-in reads 38 near shelf ${index + 1}`);
-    const results = await Promise.all(phrases.map((phrase) => callWalkIn(fetchWith, phrase)));
+    const values = Array.from({ length: 10 }, (_, index) => 31 + index);
+    const phrases = values.map((value) => `the walk-in reads ${value}`);
+    const results = await Promise.all(values.map((value, index) => callWalkIn(fetchWith, phrases[index], value)));
 
+    expect([...seen].sort()).toEqual([...phrases].sort());
     expect(results.map((result) => result.content[0]?.text)).toEqual(phrases.map(() => FIXED_SENTENCE));
     for (const phrase of phrases) expect(logged()).not.toContain(phrase);
-    expect(logged()).not.toContain(WORDS);
+    expect(logged()).not.toContain(INITIALS);
+    expect(logged()).not.toContain('failed on');
   });
 });
