@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { validateDayStart } from './business-day';
 
 export const ComparatorSchema = z.enum(['at_most', 'at_least']);
 export type Comparator = z.infer<typeof ComparatorSchema>;
@@ -179,7 +180,8 @@ const CoarseBandSchema = z
 export const KitchenProfileSchema = z
   .object({
     timeZone: z.string().min(1),
-    dayStart: ClockSchema,
+    // Refused at load, so a profile starting its day inside a clock change never reaches a shift.
+    dayStart: z.string().refine(validateDayStart, { message: 'day start must be HH:MM outside 01:00 to 03:00' }),
     roster: z.array(z.string().regex(/^[A-Z]{2,3}$/)).min(1),
     foods: z.array(FoodSchema).min(1),
     checkPoints: z.array(CheckPointSchema).min(1),

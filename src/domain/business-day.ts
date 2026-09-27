@@ -101,21 +101,41 @@ export function lineTimeLabel(instantMs: number, timeZone: string): string {
   return nearClockChange(instantMs, timeZone) ? `${clock} ${local.zoneName}` : clock;
 }
 
-export function utcIso(instantMs: number): string {
-  return new Date(instantMs).toISOString();
+const WELL_FORMED_CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
+// A US clock change repeats or skips the hour from 01:00 to 03:00 local, so a day starting inside
+// it would begin twice or never on those two nights.
+const CHANGE_HOURS_FROM = 1 * MINUTES_PER_HOUR;
+const CHANGE_HOURS_UNTIL = 3 * MINUTES_PER_HOUR;
+
+export function validateDayStart(clock: string): boolean {
+  if (!WELL_FORMED_CLOCK.test(clock)) return false;
+  const minutes = minutesOfDay(clock);
+  return minutes < CHANGE_HOURS_FROM || minutes >= CHANGE_HOURS_UNTIL;
 }
 
-export function validateDayStart(_clock: string): boolean {
-  return true;
-}
+const BUSINESS_DAY = /^\d{2}(\d{2})-(\d{2})-(\d{2})$/;
+const DAY_LINE_DIGITS = 3;
 
-export function recordCode(_businessDay: string, _dayLine: number): string {
-  return '';
+// The same shape the D1 INSERT writes into result_json, so a line printed from memory and one
+// read back from storage carry the same code.
+export function recordCode(day: string, dayLine: number): string {
+  const match = BUSINESS_DAY.exec(day);
+  if (!match || !Number.isInteger(dayLine) || dayLine < 1) {
+    throw new RangeError('a record code needs a YYYY-MM-DD business day and a positive line number');
+  }
+  const [, year, month, date] = match;
+  return `${year}${month}${date}-${pad(dayLine, DAY_LINE_DIGITS)}`;
 }
 
 export function kitchenSettings(partial: Partial<KitchenSettings>): KitchenSettings {
-  return {
+  const settings = {
     timeZone: partial.timeZone ?? DEFAULT_SETTINGS.timeZone,
     dayStart: partial.dayStart ?? DEFAULT_SETTINGS.dayStart,
   };
+  if (!validateDayStart(settings.dayStart)) {
+    throw new RangeError(
+      `day start ${settings.dayStart} is refused: give HH:MM outside 01:00 to 03:00, the hours a clock change repeats or skips`,
+    );
+  }
+  return settings;
 }

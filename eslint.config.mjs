@@ -33,6 +33,19 @@ const FOOD_CODE_FIGURES = [
     message: 'A Food Code figure lives in data/rules/food-code-2022.json and reaches code through the rule table (RULE-01).',
   },
 ];
+// READ-06 and N3: the domain and the store take the instant the adapter read from the injected
+// clock once, and take wall-clock fields from Intl parts in the kitchen's zone, never the host's.
+// toISOString is not banned: the TZ matrix and a planted failure guard that call instead.
+const CLOCK_MESSAGE =
+  'Take the instant from the injected clock (ctx.now) and wall-clock fields from Intl parts in the kitchen zone (localParts), never the host clock or zone.';
+const CLOCK_BAN = [
+  { selector: "CallExpression[callee.object.name='Date'][callee.property.name='now']", message: CLOCK_MESSAGE },
+  { selector: "NewExpression[callee.name='Date'][arguments.length=0]", message: CLOCK_MESSAGE },
+  {
+    selector: "CallExpression[callee.property.name=/^(getHours|getDate|getDay|toLocaleString)$/]",
+    message: CLOCK_MESSAGE,
+  },
+];
 
 export default [
   // Exclude config + build output from every floor. Test files are NOT globally ignored any
@@ -64,18 +77,25 @@ export default [
     },
   },
   // RULE-01: limits are data. The judge takes no numeric literal above 1 at all; the rest of the
-  // domain and the server take no Food Code figure. src/ui is untouched (RESEARCH Pitfall 10).
+  // domain and the server take no Food Code figure. The domain and the store read no host clock.
+  // src/ui is untouched (RESEARCH Pitfall 10).
   {
     files: ['src/domain/judge.ts'],
     ignores: TEST_FILES,
     languageOptions: { ...tsParser },
-    rules: { 'no-restricted-syntax': ['error', ...JUDGE_LITERALS, ...FOOD_CODE_FIGURES] },
+    rules: { 'no-restricted-syntax': ['error', ...JUDGE_LITERALS, ...FOOD_CODE_FIGURES, ...CLOCK_BAN] },
   },
   {
     files: ['src/domain/**/*.ts'],
     ignores: [...TEST_FILES, 'src/domain/judge.ts'],
     languageOptions: { ...tsParser },
-    rules: { 'no-restricted-syntax': ['error', ...FOOD_CODE_FIGURES] },
+    rules: { 'no-restricted-syntax': ['error', ...FOOD_CODE_FIGURES, ...CLOCK_BAN] },
+  },
+  {
+    files: ['src/store/**/*.ts'],
+    ignores: TEST_FILES,
+    languageOptions: { ...tsParser },
+    rules: { 'no-restricted-syntax': ['error', ...CLOCK_BAN] },
   },
   {
     files: ['src/server/**/*.ts'],

@@ -1,6 +1,7 @@
 import type { LogReadingInput, LogReadingOutput, Outcome, RuleResult } from '../contract/log-reading';
 import type { NewEvent } from '../store/port';
-import { businessDay, utcIso } from './business-day';
+import { businessDay } from './business-day';
+import { utcIso } from './instant';
 import { judgeReading } from './judge';
 import type { CheckPoint, CheckPointKind, KitchenProfile, RuleRow, RuleSource, TemperatureRow } from './rule';
 

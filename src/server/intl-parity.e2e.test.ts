@@ -27,7 +27,7 @@ describe('Intl parity between workerd and Node', () => {
 
   it('gives the same local parts and business day in workerd and Node for the eight Q4 instants', async () => {
     const instants = Q4_INSTANTS.map((instant) => Date.parse(instant.iso));
-    const query = new URLSearchParams(instants.map((instant) => ['at', String(instant)]));
+    const query = new URLSearchParams(instants.map((instant): [string, string] => ['at', String(instant)]));
     const response = await fetch(new URL(`/?${query}`, url));
     expect(response.status).toBe(200);
     const fromWorkerd = (await response.json()) as ProbeAnswer[];
