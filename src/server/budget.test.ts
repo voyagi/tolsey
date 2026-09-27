@@ -3,11 +3,15 @@ import { D1Store } from '../store/d1-store';
 import type { D1Like } from '../store/port';
 import { countingD1, type CountingD1 } from '../test-support/counting-d1';
 import {
+  appendInput,
   HOUR_MS,
   insertLines,
   insertScratchKitchens,
+  kitchenInput,
   readLimits,
   readRowsPerWrite,
+  scratchKitchen,
+  testEvent,
   type StoreLimits,
 } from '../test-support/events';
 import { callLogReading, walkInArguments, type ToolResult } from '../test-support/mcp-client';
@@ -131,6 +135,23 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       expect(result.isError).toBe(true);
       expect(result.content).toEqual([{ type: 'text', text: KITCHEN_FULL }]);
       expect(await eventsOf(minted.id)).toBe(limits.kitchenLineCap);
+    });
+
+    // Reads are not budgeted, so their cost per call is held here (ADR 0002, rows read). The guarded
+    // insert walks the kitchen's lines twice for the line cap when it writes (309 rows at 150 lines on
+    // local D1); the next line number comes from the day-line index, never from a third walk over the
+    // day (458 before). Seeded lines cost the same walk as readings (605 and 608 at 199 lines then).
+    it('reads the kitchen lines no more than twice for an accepted reading', async () => {
+      const kitchen = scratchKitchen();
+      await worker.store.createKitchen(kitchenInput(kitchen, limits));
+      const lines = 150;
+      await insertLines(worker.db, kitchen.id, lines, kitchen.createdAt + MINUTE_MS);
+      const counted = countingD1(worker.db);
+
+      const outcome = await new D1Store(counted.db).append(appendInput(testEvent(kitchen.id), limits));
+
+      expect(outcome.status).toBe('appended');
+      expect(counted.totals().rowsRead).toBeLessThan(2.5 * lines);
     });
 
     it('accepts a write 1 ms inside the write window and refuses one at its end, saying the kitchen has closed', async () => {

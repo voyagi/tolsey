@@ -12,7 +12,9 @@ import type {
 // Statement 1 of the append batch. The day line and the record code are allocated inside the INSERT,
 // so two concurrent appends can never read the same MAX, and the stored result is complete at insert
 // time: the record is append-only, so it could never be finished by a later UPDATE. The WHERE holds
-// the write window, the line cap and the daily budget in the same statement as the write.
+// the write window, the line cap and the daily budget in the same statement as the write. MAX skips
+// nulls anyway; saying day_line IS NOT NULL lets the partial index events_day_line serve the next line
+// number, where otherwise every line of the day is read to find it.
 const INSERT_EVENT = `
 INSERT INTO events (
   id, kitchen_id, kind, occurred_at, business_day, time_zone, day_line, screen_id, request_id,
@@ -37,7 +39,10 @@ SELECT
 FROM (
   SELECT CASE
     WHEN ?3 IN ('reading', 'refusal')
-      THEN (SELECT COALESCE(MAX(day_line), 0) + 1 FROM events WHERE kitchen_id = ?2 AND business_day = ?5)
+      THEN (
+        SELECT COALESCE(MAX(day_line), 0) + 1 FROM events
+        WHERE kitchen_id = ?2 AND business_day = ?5 AND day_line IS NOT NULL
+      )
   END AS n
 ) AS line
 WHERE COALESCE((SELECT rows FROM budget WHERE utc_date = ?31), 0) + ?32 <= ?33

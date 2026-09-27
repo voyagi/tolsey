@@ -69,7 +69,7 @@ spoken reason, and the kitchen insert is guarded by the same budget. The caps an
 held in `data/store/limits.json`. The line cap is 200 because a demo shift holds a few dozen lines, and
 200 lines at the measured rows per event keeps many visitors inside the 100,000-row daily allowance.
 
-The budget protects the account, not the demo from one visitor: a single client that keeps minting
+The budget protects the account's write allowance, not the demo from one visitor: a single client that keeps minting
 can spend the day's 40,000 rows, and every visitor after it is told the demo is full until 00:00 UTC.
 Phase 1 has no per-client limit. Cloudflare's rate limiting binding counts per location over 10 or
 60 seconds and its documentation advises against IP keys, so it cannot cap one client's day, and a
@@ -85,6 +85,20 @@ D1, pinned by "counts one row per deleted kitchen and per deleted reading" in
 day's budget can mint, the costliest mix to delete. The cap therefore assumes every other D1 database
 on the account writes fewer than about 52,000 rows a day, and past the account limit every tool call
 answers with the fixed server-fault sentence.
+
+Reads are not budgeted. The line cap counts the kitchen's lines on every call, so a call reads rows in
+proportion to the lines its kitchen already holds. Measured on local D1 by counting `meta.rows_read`
+over one append (2026-09-27): an accepted reading reads 9 rows in an empty kitchen, 309 at 150 lines
+and 409 at 199, because the guarded insert walks the kitchen's lines twice when it writes; a call
+refused at the 200-line cap reads 408, the insert's count once and the follow-up's once. The next line
+number is served by the `events_day_line` index and adds no walk. Filling one kitchen to the cap reads
+about 42,000 rows, so the roughly 25 full kitchens a day's write budget allows read about 1 million,
+inside the 5 million a day. Refused calls are capped by nothing: about 12,000 of them against one full
+kitchen spend the account's 5 million daily reads, and from then until 00:00 UTC no query runs against
+any D1 database on the account. The test "reads the kitchen lines no more than twice for an accepted
+reading" in `src/server/budget.test.ts` holds the accepted figure, the pass that attacks the running
+service decides a per-client or per-kitchen limit for the read flood together with the mint flood, and
+the read figures are measured again on remote D1 at the first deploy.
 
 ## Events table
 
