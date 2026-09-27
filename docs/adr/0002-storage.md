@@ -37,15 +37,20 @@ scratch kitchen is addressed only through the path `/mcp/k/<id>` and never throu
 argument. A named kitchen is a scratch kitchen minted with a label from the closed list `capture`
 or `conformance`; the label gives it no special rights.
 
-A scratch kitchen accepts writes until 23 hours less the 120-second retry window after it was minted
-(`writeWindowMs` in `src/server/kitchens.ts`, reported to the visitor as `closesAt`). An hourly Cron
-Trigger deletes each kitchen aged 23 hours or more together with all its lines, so while the hourly
-runs succeed nothing a visitor wrote outlives 24 hours. A run that fails is not retried: Cloudflare
-records it as failed in the Cron Trigger's past events, the Worker logs `[retention]` with the error's
-name and code, and the kitchens it left are deleted by the next hourly run or the next mint's sweep, so
-each failed run can stretch that bound by an hour. Writes close one retry window early so that a retry of the last accepted
+A scratch kitchen accepts writes until 22 hours 45 minutes less the 120-second retry window after it
+was minted (`writeWindowMs` in `src/server/kitchens.ts`, reported to the visitor as `closesAt`). An
+hourly Cron Trigger deletes each kitchen aged 22 hours 45 minutes or more together with all its lines,
+so while the hourly runs succeed and each starts within 15 minutes of the hour it was scheduled for,
+nothing a visitor wrote outlives 24 hours. The 15 minutes are an allowance, not a measurement: a run
+is handed the instant it was scheduled for (`scheduledTime`, which the sweep uses as its clock) and
+Cloudflare documents no guarantee of how soon after it the run starts. A test in
+`src/server/budget.test.ts` holds the retention age, the hourly cadence and that allowance inside 24
+hours (PRIV-03). A run that fails is not retried: Cloudflare records it as failed in the Cron
+Trigger's past events, the Worker logs `[retention]` with the error's name and code, and the kitchens
+it left are deleted by the next hourly run or the next mint's sweep, so each failed run can stretch
+that bound by an hour. Writes close one retry window early so that a retry of the last accepted
 write still finds its kitchen and gets its stored result before the sweep may take it; closing at the
-full 23 hours would let such a retry answer "not found" instead.
+full retention age would let such a retry answer "not found" instead.
 
 The sweep lives in `src/server/retention.ts`, outside the store adapter, and holds the only DELETE
 statements in the codebase. A round reads expired kitchens through the `kitchens_expiry` index, at most
@@ -53,7 +58,9 @@ statements in the codebase. A round reads expired kitchens through the `kitchens
 kitchens and their lines with two statements over one bound JSON array of ids, so a round is at most
 four statements whatever its size. The hourly run repeats rounds up to `maxSweepRounds`, which keeps it
 under the free plan's 50 queries per Worker invocation while still clearing every kitchen the daily
-budget can mint. A mint reads the budget first and is refused at once when the day is full, with no
+budget can mint. It stops early only on a round that reads less than a full page: a round that read a
+full page but deleted less lost part of it to a mint's round running at the same moment, and older
+kitchens can still be waiting behind it. A mint reads the budget first and is refused at once when the day is full, with no
 sweep; an admitted mint runs one round before its guarded insert. A round that deletes nothing writes
 no budget row.
 

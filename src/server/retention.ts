@@ -3,6 +3,7 @@ import { addToBudget, utcDate } from './budget';
 import type { StoreLimits } from './data';
 
 export interface SweepRound {
+  kitchensRead: number;
   kitchensDeleted: number;
   rowsCounted: number;
 }
@@ -13,7 +14,6 @@ export interface SweepRun {
 }
 
 const HOUR_MS = 3_600_000;
-const NOTHING_DELETED: SweepRound = { kitchensDeleted: 0, rowsCounted: 0 };
 
 // Served by the kitchens_expiry index on (kind, created_at), so a round reads only the kitchens it
 // is about to delete, never the live ones.
@@ -38,7 +38,8 @@ export async function expireKitchens(
 ): Promise<SweepRound> {
   const cutoff = now - limits.retentionAgeHours * HOUR_MS;
   const expired = await db.prepare(SELECT_EXPIRED).bind(cutoff, roundSize).all<{ id: string }>();
-  if (expired.results.length === 0) return NOTHING_DELETED;
+  const kitchensRead = expired.results.length;
+  if (kitchensRead === 0) return { kitchensRead, kitchensDeleted: 0, rowsCounted: 0 };
 
   const ids = JSON.stringify(expired.results.map((row) => row.id));
   const [kitchens, events] = await db.batch([
@@ -48,15 +49,17 @@ export async function expireKitchens(
   const rowsDeleted = kitchens.meta.rows_written + events.meta.rows_written;
   // A concurrent round (another mint's, or the hourly run's) took these kitchens between the read and
   // the batch: there is nothing to count.
-  if (rowsDeleted === 0) return NOTHING_DELETED;
+  if (rowsDeleted === 0) return { kitchensRead, kitchensDeleted: 0, rowsCounted: 0 };
 
   const rowsCounted = rowsDeleted + rowsPerWrite.budget_add;
   await addToBudget(db, utcDate(now), rowsCounted);
-  return { kitchensDeleted: kitchens.meta.changes, rowsCounted };
+  return { kitchensRead, kitchensDeleted: kitchens.meta.changes, rowsCounted };
 }
 
-// The hourly Cron Trigger's run: rounds until one comes back short or the round cap is reached, which
+// The hourly Cron Trigger's run: rounds until one reads a short page or the round cap is reached, which
 // keeps a run under the per-invocation query limit while still clearing every kitchen a day can mint.
+// A round that deleted less than it read lost part of its page to a concurrent round; older kitchens
+// can still be waiting, so only a short read ends the run.
 export async function runScheduledSweep(
   db: D1Like,
   now: number,
@@ -69,7 +72,7 @@ export async function runScheduledSweep(
     rounds += 1;
     const round = await expireKitchens(db, now, limits, rowsPerWrite, limits.cronSweepBatchLimit);
     kitchensDeleted += round.kitchensDeleted;
-    if (round.kitchensDeleted < limits.cronSweepBatchLimit) break;
+    if (round.kitchensRead < limits.cronSweepBatchLimit) break;
   }
   return { rounds, kitchensDeleted };
 }

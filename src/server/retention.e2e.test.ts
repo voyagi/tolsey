@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestHarness } from 'wrangler';
 import type { D1Like } from '../store/port';
-import { HOUR_MS, insertLines, insertScratchKitchens } from '../test-support/events';
+import { HOUR_MS, insertLines, insertScratchKitchens, readLimits } from '../test-support/events';
 
 const BUILT_CONFIG = './dist/tolsey/wrangler.json';
 const MINUTE_MS = 60_000;
@@ -34,8 +34,9 @@ describe('the hourly retention sweep in the built Worker (workerd)', () => {
     return (await db.prepare('SELECT rows FROM budget WHERE utc_date = ?1').bind(SCHEDULED_DATE).first<{ rows: number }>())?.rows ?? 0;
   }
 
-  it('deletes kitchens aged 23 and 24 hours with all their lines, keeps a younger one and the demo row, and counts the deletes (E29)', async () => {
-    const ages = [23 * HOUR_MS - MINUTE_MS, 23 * HOUR_MS, 24 * HOUR_MS];
+  it('deletes kitchens at retention age and at 24 hours with all their lines, keeps a younger one and the demo row, and counts the deletes (E29)', async () => {
+    const retentionAge = readLimits().retentionAgeHours * HOUR_MS;
+    const ages = [retentionAge - MINUTE_MS, retentionAge, 24 * HOUR_MS];
     const [young, atRetention, atDay] = await insertScratchKitchens(
       db,
       ages.map((age) => SCHEDULED_AT - age),

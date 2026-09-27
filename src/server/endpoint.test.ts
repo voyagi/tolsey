@@ -88,7 +88,7 @@ describe('POST /api/kitchens and the kitchen a visitor writes to', () => {
     expect(minted).toEqual({
       id: minted.id,
       mcpPath: `/mcp/k/${String(minted.id)}`,
-      expiresAt: new Date(MINT_AT + 24 * HOUR_MS).toISOString(),
+      expiresAt: new Date(MINT_AT + limits.retentionAgeHours * HOUR_MS + HOUR_MS).toISOString(),
       closesAt: new Date(MINT_AT + limits.writeWindowHours * HOUR_MS - limits.retryWindowSeconds * 1000).toISOString(),
     });
     expect(await kitchenRow(String(minted.id))).toEqual({

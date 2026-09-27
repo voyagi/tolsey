@@ -1,8 +1,8 @@
 {
   "dailyRowCap": 40000,
   "kitchenLineCap": 200,
-  "writeWindowHours": 23,
-  "retentionAgeHours": 23,
+  "writeWindowHours": 22.75,
+  "retentionAgeHours": 22.75,
   "retryWindowSeconds": 120,
   "sweepBatchLimit": 25,
   "cronSweepBatchLimit": 2000,

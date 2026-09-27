@@ -150,6 +150,14 @@ describe('the daily row budget, the kitchen caps and retention', () => {
         limits.retentionAgeHours * HOUR_MS,
       );
     });
+
+    // PRIV-03 promises deletion within 24 hours. A kitchen past retention age waits for the next hourly
+    // run, and that run can start after the hour it was scheduled for: the platform hands it the
+    // scheduled instant and documents no start guarantee, so the age leaves room for a late start.
+    it('deletes every scratch kitchen within 24 hours even when the hourly run starts 15 minutes late (PRIV-03)', () => {
+      const lateStartAllowanceMs = 15 * MINUTE_MS;
+      expect(limits.retentionAgeHours * HOUR_MS + HOUR_MS + lateStartAllowanceMs).toBeLessThanOrEqual(24 * HOUR_MS);
+    });
   });
 
   describe('a sweep round', () => {
@@ -161,7 +169,11 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       const round = await expireKitchens(counted.db, T0, limits, rowsPerWrite, limits.sweepBatchLimit);
 
       expect(deleteBatchRows(counted)).toBeGreaterThanOrEqual(5);
-      expect(round).toEqual({ kitchensDeleted: 1, rowsCounted: deleteBatchRows(counted) + rowsPerWrite.budget_add });
+      expect(round).toEqual({
+        kitchensRead: 1,
+        kitchensDeleted: 1,
+        rowsCounted: deleteBatchRows(counted) + rowsPerWrite.budget_add,
+      });
       expect(await budgetRows()).toBe(before + round.rowsCounted);
       expect(await kitchenExists(kitchenId)).toBe(false);
       expect(await eventsOf(kitchenId)).toBe(0);
@@ -188,7 +200,7 @@ describe('the daily row budget, the kitchen caps and retention', () => {
 
       const round = await expireKitchens(counted.db, T0, limits, rowsPerWrite, limits.sweepBatchLimit);
 
-      expect(round).toEqual({ kitchensDeleted: 0, rowsCounted: 0 });
+      expect(round).toEqual({ kitchensRead: 0, kitchensDeleted: 0, rowsCounted: 0 });
       expect(counted.statements).toHaveLength(1);
       expect(counted.totals().rowsWritten).toBe(0);
       expect(await budgetRows()).toBe(0);
@@ -216,7 +228,7 @@ describe('the daily row budget, the kitchen caps and retention', () => {
 
       const round = await expireKitchens(stale.db, T0, limits, rowsPerWrite, limits.sweepBatchLimit);
 
-      expect(round).toEqual({ kitchensDeleted: 0, rowsCounted: 0 });
+      expect(round).toEqual({ kitchensRead: 1, kitchensDeleted: 0, rowsCounted: 0 });
       expect(stale.statements.map((statement) => statement.via)).toEqual(['all', 'batch', 'batch']);
       expect(await budgetRows()).toBe(before);
     });
@@ -342,6 +354,24 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       expect(await runScheduledSweep(worker.db, T0, small, rowsPerWrite)).toEqual({ rounds: 3, kitchensDeleted: 6 });
       expect((await runScheduledSweep(worker.db, T0, small, rowsPerWrite)).kitchensDeleted).toBe(4);
       expect(await scratchKitchens()).toBe(0);
+    });
+
+    // A mint's own round can delete the page the hourly run just read, so that round deletes less
+    // than it read; only a short page means nothing older is left.
+    it('keeps sweeping after a round whose full page a concurrent round took, until a page comes back short', async () => {
+      const small: StoreLimits = { ...limits, cronSweepBatchLimit: 2, maxSweepRounds: 3 };
+      const expired = await insertScratchKitchens(worker.db, [0, 1, 2].map((index) => T0 - 24 * HOUR_MS - index));
+      let selects = 0;
+      const raced = countingD1(worker.db, (query) => {
+        if (!query.includes('SELECT id FROM kitchens')) return undefined;
+        selects += 1;
+        return selects === 1 ? [{ id: 'taken-a' }, { id: 'taken-b' }] : undefined;
+      });
+
+      const run = await runScheduledSweep(raced.db, T0, small, rowsPerWrite);
+
+      expect(run).toEqual({ rounds: 3, kitchensDeleted: 3 });
+      for (const id of expired) expect(await kitchenExists(id)).toBe(false);
     });
 
     it('lets one hourly run delete every kitchen the daily budget can mint, within the per-invocation query limit', () => {
