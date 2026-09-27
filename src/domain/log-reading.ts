@@ -45,6 +45,7 @@ function recognisedTokens(profile: KitchenProfile): ReadonlySet<string> {
       ...phrases.flatMap((phrase) => [phrase.toLowerCase(), ...tokensOf(phrase)]),
       ...profile.vocabulary.verbs,
       ...profile.vocabulary.articles,
+      ...profile.vocabulary.nouns,
     ]);
     recognisedByProfile.set(profile, tokens);
   }

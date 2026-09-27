@@ -16,6 +16,24 @@ const tsParser = { parser: tseslint.parser, parserOptions: { ecmaVersion: 'lates
 // files" cannot drift between the rule that skips them and the rule that judges them.
 const TEST_FILES = ['**/*.{test,spec}.{ts,tsx,js,jsx,mjs,cjs}'];
 
+// Flat config does not merge a rule's options across blocks: the last block matching a file wins
+// no-restricted-syntax outright. So each disjoint file set below gets one block carrying every
+// selector that applies to it, built from these named lists.
+const JUDGE_LITERALS = [
+  {
+    selector: 'Literal[value>1]',
+    message: 'Limits reach the judge only as arguments from the rule table, never as literals (RULE-01).',
+  },
+];
+// The Fahrenheit figures and their tenths. Celsius figures are left out on purpose: judging reads
+// only the Fahrenheit tenths (E20), and a bare 5 or 57 would flag ordinary counts and slices.
+const FOOD_CODE_FIGURES = [
+  {
+    selector: 'Literal[raw=/^(41|135|130|165|70|45|410|1350|1300|1650|700|450)(\\.0)?$/]',
+    message: 'A Food Code figure lives in data/rules/food-code-2022.json and reaches code through the rule table (RULE-01).',
+  },
+];
+
 export default [
   // Exclude config + build output from every floor. Test files are NOT globally ignored any
   // more: a global ignore silently exempted them from every rule, including the vacuity rules
@@ -44,6 +62,26 @@ export default [
       complexity: ['error', 25],
       'sonarjs/cognitive-complexity': ['error', 25],
     },
+  },
+  // RULE-01: limits are data. The judge takes no numeric literal above 1 at all; the rest of the
+  // domain and the server take no Food Code figure. src/ui is untouched (RESEARCH Pitfall 10).
+  {
+    files: ['src/domain/judge.ts'],
+    ignores: TEST_FILES,
+    languageOptions: { ...tsParser },
+    rules: { 'no-restricted-syntax': ['error', ...JUDGE_LITERALS, ...FOOD_CODE_FIGURES] },
+  },
+  {
+    files: ['src/domain/**/*.ts'],
+    ignores: [...TEST_FILES, 'src/domain/judge.ts'],
+    languageOptions: { ...tsParser },
+    rules: { 'no-restricted-syntax': ['error', ...FOOD_CODE_FIGURES] },
+  },
+  {
+    files: ['src/server/**/*.ts'],
+    ignores: TEST_FILES,
+    languageOptions: { ...tsParser },
+    rules: { 'no-restricted-syntax': ['error', ...FOOD_CODE_FIGURES] },
   },
   // ANTI-VACUITY floor for test files (needs `npm i -D @vitest/eslint-plugin`; on a Jest
   // product use eslint-plugin-jest, which carries the same two rules). Deliberately only these

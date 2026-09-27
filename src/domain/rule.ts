@@ -3,7 +3,12 @@ import { z } from 'zod';
 export const ComparatorSchema = z.enum(['at_most', 'at_least']);
 export type Comparator = z.infer<typeof ComparatorSchema>;
 
-// A house rule carries a reason and never a section, so no surface can show it with a Code citation.
+const IdSchema = z.string().regex(/^[a-z][a-z0-9_]*$/);
+const ClockSchema = z.string().regex(/^\d{2}:\d{2}$/);
+const PositiveIntSchema = z.number().int().positive();
+
+// A house rule carries a reason and never a section (strict refuses one), so no surface can show it
+// with a Code citation. supports and device name the Code rules it serves without citing its value.
 export const RuleSourceSchema = z.discriminatedUnion('kind', [
   z
     .object({
@@ -12,7 +17,8 @@ export const RuleSourceSchema = z.discriminatedUnion('kind', [
       page: z.string().min(1),
       edition: z.string().min(1),
       quote: z.string().min(1),
-      unchanged2026: z.boolean().optional(),
+      unchanged2026: z.boolean(),
+      interpretation: z.string().min(1).optional(),
     })
     .strict(),
   z
@@ -20,44 +26,107 @@ export const RuleSourceSchema = z.discriminatedUnion('kind', [
       kind: z.literal('other_law'),
       name: z.string().min(1),
       section: z.string().min(1),
+      provision: z.string().min(1),
+      quote: z.string().min(1),
     })
     .strict(),
   z
     .object({
       kind: z.literal('house_rule'),
       reason: z.string().min(1),
+      supports: z.array(z.string().min(1)).min(1).optional(),
+      device: z.string().min(1).optional(),
+      tightens: IdSchema.optional(),
     })
     .strict(),
 ]);
 export type RuleSource = z.infer<typeof RuleSourceSchema>;
 
-const TemperatureRowSchema = z
+const temperatureLimit = {
+  id: IdSchema,
+  comparator: ComparatorSchema,
+  limitFTenths: z.number().int(),
+  limitC: z.number(),
+  source: RuleSourceSchema,
+};
+
+const TemperatureRowSchema = z.object({ kind: z.literal('temperature'), ...temperatureLimit }).strict();
+export type TemperatureRow = z.infer<typeof TemperatureRowSchema>;
+
+const TimedTemperatureRowSchema = z
   .object({
-    kind: z.literal('temperature'),
-    id: z.string().regex(/^[a-z][a-z0-9_]*$/),
-    comparator: ComparatorSchema,
-    limitFTenths: z.number().int(),
-    limitC: z.number(),
+    kind: z.literal('timed_temperature'),
+    ...temperatureLimit,
+    withinMinutes: PositiveIntSchema.optional(),
+    fromFTenths: z.number().int().optional(),
+    holdSeconds: PositiveIntSchema.optional(),
+  })
+  .strict();
+
+const DurationRowSchema = z
+  .object({
+    kind: z.literal('duration'),
+    id: IdSchema,
+    minutes: PositiveIntSchema,
+    times: z.string().min(1),
+    fromFTenths: z.number().int().optional(),
     source: RuleSourceSchema,
   })
   .strict();
-export type TemperatureRow = z.infer<typeof TemperatureRowSchema>;
 
-// A union on kind from the first row, so the timed, duration and observation shapes join as members
-// and a row with no temperature limit is never forced to carry one.
-export const RuleRowSchema = z.discriminatedUnion('kind', [TemperatureRowSchema]);
+const ObservationRowSchema = z
+  .object({
+    kind: z.literal('observation'),
+    id: IdSchema,
+    states: z.array(z.string().min(1)).min(2),
+    passingStates: z.array(z.string().min(1)).min(1),
+    source: RuleSourceSchema,
+  })
+  .strict();
+
+// One strict member per kind, so a clock, deadline or observation row can never be handed an
+// invented temperature limit, and only a temperature row reaches the judge.
+export const RuleRowSchema = z.discriminatedUnion('kind', [
+  TemperatureRowSchema,
+  TimedTemperatureRowSchema,
+  DurationRowSchema,
+  ObservationRowSchema,
+]);
 export type RuleRow = z.infer<typeof RuleRowSchema>;
+
+const NotCoveredSchema = z.object({ section: z.string().min(1), description: z.string().min(1) }).strict();
+
+function addIssue(ctx: z.RefinementCtx, path: (string | number)[], message: string): void {
+  ctx.addIssue({ code: 'custom', path, message });
+}
+
+function checkRow(row: RuleRow, index: number, ids: ReadonlySet<string>, ctx: z.RefinementCtx): void {
+  const path = ['rows', index];
+  if (row.kind === 'timed_temperature' && row.withinMinutes === undefined && row.holdSeconds === undefined) {
+    addIssue(ctx, path, `${row.id} is timed but carries no time bound`);
+  }
+  if (row.kind === 'observation' && !row.passingStates.every((state) => row.states.includes(state))) {
+    addIssue(ctx, path, `${row.id} passes a state it does not list`);
+  }
+  if (row.source.kind === 'house_rule' && row.source.tightens !== undefined && !ids.has(row.source.tightens)) {
+    addIssue(ctx, path, `${row.id} tightens ${row.source.tightens}, which the table lacks`);
+  }
+}
 
 export const RuleTableSchema = z
   .object({
     rulesVersion: z.string().min(1),
     edition: z.string().min(1),
     rows: z.array(RuleRowSchema).min(1),
+    notCovered: z.array(NotCoveredSchema),
   })
-  .strict();
+  .strict()
+  .superRefine((table, ctx) => {
+    const ids = new Set(table.rows.map((row) => row.id));
+    if (ids.size !== table.rows.length) addIssue(ctx, ['rows'], 'two rows share an id');
+    table.rows.forEach((row, index) => checkRow(row, index, ids, ctx));
+  });
 export type RuleTable = z.infer<typeof RuleTableSchema>;
-
-const IdSchema = z.string().regex(/^[a-z][a-z0-9_]*$/);
 
 // Cooling and reheat readings are kept but not judged in phase 1, so those kinds carry no rules.
 export const CheckPointKindSchema = z.enum(['cold', 'hot', 'receiving', 'freezer', 'cooling', 'reheat']);
@@ -88,17 +157,45 @@ const FoodSchema = z
   .strict();
 export type Food = z.infer<typeof FoodSchema>;
 
+const ScheduleEntrySchema = z
+  .object({
+    id: IdSchema,
+    checkPoint: IdSchema,
+    check: z.enum(['hot_holding', 'cold_holding']),
+    times: z.array(ClockSchema).min(1),
+    intervalRule: IdSchema,
+    graceMinutes: PositiveIntSchema,
+  })
+  .strict();
+export type ScheduleEntry = z.infer<typeof ScheduleEntrySchema>;
+
+const ChecklistItemSchema = z.object({ id: IdSchema, text: z.string().min(1) }).strict();
+
+const CoarseBandSchema = z
+  .object({ lowF: z.number(), highF: z.number() })
+  .strict()
+  .refine((band) => band.lowF < band.highF, { message: 'a coarse band runs from low to high' });
+
 export const KitchenProfileSchema = z
   .object({
     timeZone: z.string().min(1),
-    dayStart: z.string().regex(/^\d{2}:\d{2}$/),
+    dayStart: ClockSchema,
     roster: z.array(z.string().regex(/^[A-Z]{2,3}$/)).min(1),
     foods: z.array(FoodSchema).min(1),
     checkPoints: z.array(CheckPointSchema).min(1),
+    schedule: z.array(ScheduleEntrySchema).min(1),
+    checklist: z
+      .object({ opening: z.array(ChecklistItemSchema).min(1), closing: z.array(ChecklistItemSchema).min(1) })
+      .strict(),
+    noTimeAsPublicHealthControl: z.string().min(1),
+    correctionWindowSeconds: PositiveIntSchema,
+    promptExpirySeconds: PositiveIntSchema,
+    coarseBands: z.record(CheckPointKindSchema, CoarseBandSchema),
     vocabulary: z
       .object({
         verbs: z.array(z.string().min(1)),
         articles: z.array(z.string().min(1)),
+        nouns: z.array(z.string().min(1)),
       })
       .strict(),
   })

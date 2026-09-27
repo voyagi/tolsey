@@ -1,5 +1,5 @@
 {
-  "rulesVersion": "2026-09-27.2",
+  "rulesVersion": "2026-09-27.3",
   "edition": "FDA Food Code 2022",
   "rows": [
     {
@@ -13,7 +13,8 @@
         "section": "3-501.16(A)(2)",
         "page": "Chapter 3 - 28",
         "edition": "2022",
-        "quote": "TIME/TEMPERATURE CONTROL FOR SAFETY FOOD shall be maintained: ... (2) At 5°C (41°F) or less."
+        "quote": "TIME/TEMPERATURE CONTROL FOR SAFETY FOOD shall be maintained: ... (2) At 5°C (41°F) or less.",
+        "unchanged2026": true
       }
     },
     {
@@ -27,7 +28,8 @@
         "section": "3-501.16(A)(1)",
         "page": "Chapter 3 - 28",
         "edition": "2022",
-        "quote": "TIME/TEMPERATURE CONTROL FOR SAFETY FOOD shall be maintained: (1) At 57°C (135°F) or above, except that roasts cooked to a temperature and for a time specified in § 3-401.11(B) or reheated as specified in § 3-403.11(E) may be held at a temperature of 54°C (130°F) or above"
+        "quote": "TIME/TEMPERATURE CONTROL FOR SAFETY FOOD shall be maintained: (1) At 57°C (135°F) or above, except that roasts cooked to a temperature and for a time specified in § 3-401.11(B) or reheated as specified in § 3-403.11(E) may be held at a temperature of 54°C (130°F) or above",
+        "unchanged2026": true
       }
     },
     {
@@ -41,7 +43,52 @@
         "section": "3-501.16(A)(1)",
         "page": "Chapter 3 - 28",
         "edition": "2022",
-        "quote": "roasts cooked to a temperature and for a time specified in § 3-401.11(B) or reheated as specified in § 3-403.11(E) may be held at a temperature of 54°C (130°F) or above"
+        "quote": "roasts cooked to a temperature and for a time specified in § 3-401.11(B) or reheated as specified in § 3-403.11(E) may be held at a temperature of 54°C (130°F) or above",
+        "unchanged2026": true
+      }
+    },
+    {
+      "id": "receiving_cold",
+      "kind": "temperature",
+      "comparator": "at_most",
+      "limitFTenths": 410,
+      "limitC": 5,
+      "source": {
+        "kind": "food_code",
+        "section": "3-202.11(A)",
+        "page": "Chapter 3 - 4",
+        "edition": "2022",
+        "quote": "Except as specified in § (B) of this section, refrigerated, TIME/TEMPERATURE CONTROL FOR SAFETY FOOD shall be at a temperature of 5°C (41°F) or below when received.",
+        "unchanged2026": true
+      }
+    },
+    {
+      "id": "receiving_hot",
+      "kind": "temperature",
+      "comparator": "at_least",
+      "limitFTenths": 1350,
+      "limitC": 57,
+      "source": {
+        "kind": "food_code",
+        "section": "3-202.11(D)",
+        "page": "Chapter 3 - 5",
+        "edition": "2022",
+        "quote": "TIME/TEMPERATURE CONTROL FOR SAFETY FOOD that is cooked to a temperature and for a time specified under §§ 3-401.11 - 3-401.13 and received hot shall be at a temperature of 57°C (135°F) or above.",
+        "unchanged2026": true
+      }
+    },
+    {
+      "id": "receiving_law_milk",
+      "kind": "temperature",
+      "comparator": "at_most",
+      "limitFTenths": 450,
+      "limitC": 7,
+      "source": {
+        "kind": "other_law",
+        "name": "Grade \"A\" Pasteurized Milk Ordinance, 2025 Revision",
+        "section": "3-202.11(B)",
+        "provision": "Item 17p, Cooling of Milk and/or Milk Products, page 111",
+        "quote": "All pasteurized milk and milk products, except the following, shall be stored at a temperature of 7°C (45°F) or less and maintained thereat following filling or until further processed"
       }
     },
     {
@@ -52,7 +99,9 @@
       "limitC": 5,
       "source": {
         "kind": "house_rule",
-        "reason": "operating check that food in this unit holds at 41°F or less; the unit's thermometer is required by 4-204.112"
+        "reason": "operating check that the food in this unit holds at the Code's figure",
+        "supports": ["3-501.16"],
+        "device": "4-204.112"
       }
     },
     {
@@ -63,8 +112,215 @@
       "limitC": 57,
       "source": {
         "kind": "house_rule",
-        "reason": "operating check that food in this unit holds at 135°F or above; the unit's thermometer is required by 4-204.112"
+        "reason": "operating check that the food in this unit holds at the Code's figure",
+        "supports": ["3-501.16"],
+        "device": "4-204.112"
       }
+    },
+    {
+      "id": "freezer_limit",
+      "kind": "temperature",
+      "comparator": "at_most",
+      "limitFTenths": 0,
+      "limitC": -18,
+      "source": {
+        "kind": "house_rule",
+        "reason": "this kitchen holds its freezer at 0°F or below; 3-501.11 requires stored frozen food to be maintained frozen and sets no temperature",
+        "supports": ["3-501.11"],
+        "device": "4-204.112"
+      }
+    },
+    {
+      "id": "cooling_stage_1",
+      "kind": "timed_temperature",
+      "comparator": "at_most",
+      "limitFTenths": 700,
+      "limitC": 21,
+      "withinMinutes": 120,
+      "fromFTenths": 1350,
+      "source": {
+        "kind": "food_code",
+        "section": "3-501.14(A)(1)",
+        "page": "Chapter 3 - 27",
+        "edition": "2022",
+        "quote": "Cooked time/temperature control for safety food shall be cooled: (1) Within 2 hours from 57°C (135°F) to 21°C (70°F)",
+        "unchanged2026": true,
+        "interpretation": "at or below 70°F"
+      }
+    },
+    {
+      "id": "cooling_stage_2",
+      "kind": "timed_temperature",
+      "comparator": "at_most",
+      "limitFTenths": 410,
+      "limitC": 5,
+      "withinMinutes": 360,
+      "fromFTenths": 1350,
+      "source": {
+        "kind": "food_code",
+        "section": "3-501.14(A)(2)",
+        "page": "Chapter 3 - 27",
+        "edition": "2022",
+        "quote": "Cooked time/temperature control for safety food shall be cooled: ... (2) Within a total of 6 hours from 57°C (135°F) to 5°C (41°F) or less.",
+        "unchanged2026": true
+      }
+    },
+    {
+      "id": "reheat_hot_holding",
+      "kind": "timed_temperature",
+      "comparator": "at_least",
+      "limitFTenths": 1650,
+      "limitC": 74,
+      "holdSeconds": 15,
+      "source": {
+        "kind": "food_code",
+        "section": "3-403.11(A)",
+        "page": "Chapter 3 - 24",
+        "edition": "2022",
+        "quote": "TIME/TEMPERATURE CONTROL FOR SAFETY FOOD that is cooked, cooled, and reheated for hot holding shall be reheated so that all parts of the FOOD reach a temperature of at least 74°C (165°F) for 15 seconds.",
+        "unchanged2026": true
+      }
+    },
+    {
+      "id": "reheat_time",
+      "kind": "duration",
+      "minutes": 120,
+      "times": "a reheat for hot holding, from 41°F up to its reheat temperature",
+      "fromFTenths": 410,
+      "source": {
+        "kind": "food_code",
+        "section": "3-403.11(D)",
+        "page": "Chapter 3 - 25",
+        "edition": "2022",
+        "quote": "Reheating for hot holding as specified under §§ (A) - (C) of this section shall be done rapidly and the time the food is between 5°C (41°F) and the temperatures specified under §§ (A) - (C) of this section may not exceed 2 hours.",
+        "unchanged2026": true
+      }
+    },
+    {
+      "id": "received_frozen",
+      "kind": "observation",
+      "states": ["frozen solid", "thawed or soft", "ice crystals or refrozen"],
+      "passingStates": ["frozen solid"],
+      "source": {
+        "kind": "food_code",
+        "section": "3-202.11(E)",
+        "page": "Chapter 3 - 5",
+        "edition": "2022",
+        "quote": "A FOOD that is labeled frozen and shipped frozen by a FOOD PROCESSING PLANT shall be received frozen.",
+        "unchanged2026": true
+      }
+    },
+    {
+      "id": "frozen_storage",
+      "kind": "observation",
+      "states": ["frozen solid", "thawed or soft", "ice crystals or refrozen"],
+      "passingStates": ["frozen solid"],
+      "source": {
+        "kind": "food_code",
+        "section": "3-501.11",
+        "page": "Chapter 3 - 25",
+        "edition": "2022",
+        "quote": "Stored frozen FOODS shall be maintained frozen.",
+        "unchanged2026": true
+      }
+    },
+    {
+      "id": "no_temperature_abuse",
+      "kind": "observation",
+      "states": ["no sign of abuse", "thawed or soft", "ice crystals or refrozen"],
+      "passingStates": ["no sign of abuse"],
+      "source": {
+        "kind": "food_code",
+        "section": "3-202.11(F)",
+        "page": "Chapter 3 - 5",
+        "edition": "2022",
+        "quote": "Upon receipt, TIME/TEMPERATURE CONTROL FOR SAFETY FOOD shall be free of evidence of previous temperature abuse.",
+        "unchanged2026": true
+      }
+    },
+    {
+      "id": "hot_holding_check_interval",
+      "kind": "duration",
+      "minutes": 120,
+      "times": "the time between scheduled hot-holding checks of one point",
+      "source": {
+        "kind": "house_rule",
+        "reason": "a hot-held food checked every two hours that fails is found while the kitchen's house window still allows a reheat"
+      }
+    },
+    {
+      "id": "cold_holding_check_interval",
+      "kind": "duration",
+      "minutes": 180,
+      "times": "the time between scheduled cold-holding checks of one point",
+      "source": {
+        "kind": "house_rule",
+        "reason": "a cold-held food checked every three hours that fails is found while the kitchen's house window still allows moving or chilling it"
+      }
+    },
+    {
+      "id": "cold_holding_fix_deadline",
+      "kind": "duration",
+      "minutes": 60,
+      "times": "moving or rapidly chilling the food after a failed cold-holding reading",
+      "source": {
+        "kind": "house_rule",
+        "reason": "move or rapidly chill the food within one hour of the failed reading"
+      }
+    },
+    {
+      "id": "hot_holding_fix_deadline",
+      "kind": "duration",
+      "minutes": 60,
+      "times": "reheating the food after a failed hot-holding reading",
+      "source": {
+        "kind": "house_rule",
+        "reason": "reheat within one hour of the failed reading"
+      }
+    },
+    {
+      "id": "house_window",
+      "kind": "duration",
+      "minutes": 240,
+      "times": "the age of a point's last in-range reading within which a fix may keep the food",
+      "source": {
+        "kind": "house_rule",
+        "reason": "a fix that keeps the food is offered only when the point's last in-range reading is at most four hours old; older or unknown, the food is discarded"
+      }
+    }
+  ],
+  "notCovered": [
+    {
+      "section": "3-202.11(C)",
+      "description": "raw eggs received in refrigerated equipment at an ambient 45°F or less"
+    },
+    {
+      "section": "3-501.14(B)",
+      "description": "cooling food made from ambient ingredients to 41°F within 4 hours"
+    },
+    {
+      "section": "3-501.14(C)",
+      "description": "cooling food received above 41°F under the law that governs it to 41°F within 4 hours"
+    },
+    {
+      "section": "3-501.16(B)",
+      "description": "storing untreated eggs in equipment at an ambient 45°F or less"
+    },
+    {
+      "section": "3-501.16(C)",
+      "description": "homogeneous liquid food held in specially designed equipment"
+    },
+    {
+      "section": "3-501.19",
+      "description": "time as a public health control"
+    },
+    {
+      "section": "3-403.11(B)",
+      "description": "reheating in a microwave oven for hot holding"
+    },
+    {
+      "section": "3-403.11(C)",
+      "description": "reheating commercially processed ready-to-eat food to 135°F for hot holding"
     }
   ]
 }
