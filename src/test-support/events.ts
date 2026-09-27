@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import type { AppendInput, KitchenRow, NewEvent, RowsPerWrite } from '../store/port';
+import type { AppendInput, CreateKitchenInput, D1Like, KitchenRow, NewEvent, RowsPerWrite } from '../store/port';
 
 export interface StoreLimits {
   dailyRowCap: number;
@@ -7,7 +7,28 @@ export interface StoreLimits {
   writeWindowHours: number;
   retentionAgeHours: number;
   retryWindowSeconds: number;
+  sweepBatchLimit: number;
+  cronSweepBatchLimit: number;
+  maxSweepRounds: number;
 }
+
+// One statement per seed, not one per row: a batch of hundreds of single inserts through the local
+// proxy takes seconds.
+const INSERT_SCRATCH_KITCHENS = `
+INSERT INTO kitchens (id, kind, label, time_zone, day_start, created_at)
+SELECT json_extract(value, '$[0]'), 'scratch', NULL, 'America/Chicago', '04:00', json_extract(value, '$[1]')
+FROM json_each(?1)`;
+
+// Receipts take no day line, so any number of seeded lines can share one business day.
+const INSERT_SEEDED_LINES = `
+WITH RECURSIVE line(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM line WHERE n < ?3)
+INSERT INTO events (
+  id, kitchen_id, kind, occurred_at, business_day, time_zone, screen_id, request_id, origin, words,
+  outcome, result_json, args_hash
+)
+SELECT lower(hex(randomblob(16))), ?1, 'receipt', ?2, ?4, 'America/Chicago', 'seed',
+  lower(hex(randomblob(16))), 'seed', 'seeded line', 'receipt', '{}', 'seed'
+FROM line`;
 
 export const HOUR_MS = 3_600_000;
 export const KITCHEN_CREATED_AT = Date.UTC(2026, 9, 20, 14, 0, 0);
@@ -71,6 +92,35 @@ export function testEvent(kitchenId: string, overrides: Partial<NewEvent> = {}):
     argsHash: 'args-a',
     ...overrides,
   };
+}
+
+export function kitchenInput(
+  kitchen: KitchenRow,
+  limits: StoreLimits,
+  overrides: Partial<CreateKitchenInput> = {},
+): CreateKitchenInput {
+  return { kitchen, expectedRows: 20, utcDate: UTC_DATE, dailyRowCap: limits.dailyRowCap, ...overrides };
+}
+
+// Kitchens written straight into the table, for retention tests that need them at a chosen age.
+export async function insertScratchKitchens(db: D1Like, createdAts: number[]): Promise<string[]> {
+  const ids = createdAts.map(() => crypto.randomUUID().replaceAll('-', ''));
+  if (ids.length > 0) {
+    const rows = JSON.stringify(ids.map((id, index) => [id, createdAts[index]]));
+    await db.prepare(INSERT_SCRATCH_KITCHENS).bind(rows).run();
+  }
+  return ids;
+}
+
+export async function insertLines(
+  db: D1Like,
+  kitchenId: string,
+  count: number,
+  occurredAt: number,
+  businessDay = BUSINESS_DAY,
+): Promise<void> {
+  if (count === 0) return;
+  await db.prepare(INSERT_SEEDED_LINES).bind(kitchenId, occurredAt, count, businessDay).run();
 }
 
 export function appendInput(
