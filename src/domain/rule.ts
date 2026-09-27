@@ -57,24 +57,43 @@ export const RuleTableSchema = z
   .strict();
 export type RuleTable = z.infer<typeof RuleTableSchema>;
 
+const IdSchema = z.string().regex(/^[a-z][a-z0-9_]*$/);
+
+// Cooling and reheat readings are kept but not judged in phase 1, so those kinds carry no rules.
+export const CheckPointKindSchema = z.enum(['cold', 'hot', 'receiving', 'freezer', 'cooling', 'reheat']);
+export type CheckPointKind = z.infer<typeof CheckPointKindSchema>;
+
 const CheckPointSchema = z
   .object({
-    id: z.string().regex(/^[a-z][a-z0-9_]*$/),
+    id: IdSchema,
     name: z.string().min(1),
+    kind: CheckPointKindSchema,
     aliases: z.array(z.string().min(1)),
-    airRule: z.string().min(1),
-    foodRule: z.string().min(1),
-    defaultMeasured: z.string().min(1),
+    airRule: IdSchema.optional(),
+    foodRule: IdSchema.optional(),
+    roastRule: IdSchema.optional(),
+    foodRules: z.record(IdSchema, IdSchema).optional(),
+    defaultMeasured: IdSchema.optional(),
   })
   .strict();
 export type CheckPoint = z.infer<typeof CheckPointSchema>;
+
+const FoodSchema = z
+  .object({
+    id: IdSchema,
+    name: z.string().min(1),
+    aliases: z.array(z.string().min(1)),
+    roast: z.literal(true).optional(),
+  })
+  .strict();
+export type Food = z.infer<typeof FoodSchema>;
 
 export const KitchenProfileSchema = z
   .object({
     timeZone: z.string().min(1),
     dayStart: z.string().regex(/^\d{2}:\d{2}$/),
     roster: z.array(z.string().regex(/^[A-Z]{2,3}$/)).min(1),
-    foods: z.array(z.object({ id: z.string().regex(/^[a-z][a-z0-9_]*$/), name: z.string().min(1) }).strict()).min(1),
+    foods: z.array(FoodSchema).min(1),
     checkPoints: z.array(CheckPointSchema).min(1),
     vocabulary: z
       .object({

@@ -1,5 +1,5 @@
 {
-  "rulesVersion": "2026-09-27.1",
+  "rulesVersion": "2026-09-27.2",
   "edition": "FDA Food Code 2022",
   "rows": [
     {
@@ -17,6 +17,34 @@
       }
     },
     {
+      "id": "hot_holding",
+      "kind": "temperature",
+      "comparator": "at_least",
+      "limitFTenths": 1350,
+      "limitC": 57,
+      "source": {
+        "kind": "food_code",
+        "section": "3-501.16(A)(1)",
+        "page": "Chapter 3 - 28",
+        "edition": "2022",
+        "quote": "TIME/TEMPERATURE CONTROL FOR SAFETY FOOD shall be maintained: (1) At 57°C (135°F) or above, except that roasts cooked to a temperature and for a time specified in § 3-401.11(B) or reheated as specified in § 3-403.11(E) may be held at a temperature of 54°C (130°F) or above"
+      }
+    },
+    {
+      "id": "hot_holding_roast",
+      "kind": "temperature",
+      "comparator": "at_least",
+      "limitFTenths": 1300,
+      "limitC": 54,
+      "source": {
+        "kind": "food_code",
+        "section": "3-501.16(A)(1)",
+        "page": "Chapter 3 - 28",
+        "edition": "2022",
+        "quote": "roasts cooked to a temperature and for a time specified in § 3-401.11(B) or reheated as specified in § 3-403.11(E) may be held at a temperature of 54°C (130°F) or above"
+      }
+    },
+    {
       "id": "unit_air_cold",
       "kind": "temperature",
       "comparator": "at_most",
@@ -25,6 +53,17 @@
       "source": {
         "kind": "house_rule",
         "reason": "operating check that food in this unit holds at 41°F or less; the unit's thermometer is required by 4-204.112"
+      }
+    },
+    {
+      "id": "unit_air_hot",
+      "kind": "temperature",
+      "comparator": "at_least",
+      "limitFTenths": 1350,
+      "limitC": 57,
+      "source": {
+        "kind": "house_rule",
+        "reason": "operating check that food in this unit holds at 135°F or above; the unit's thermometer is required by 4-204.112"
       }
     }
   ]

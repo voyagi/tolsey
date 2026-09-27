@@ -71,6 +71,36 @@ export function businessDay(instantMs: number, timeZone: string, dayStart: strin
   return `${pad(date.getUTCFullYear(), 4)}-${pad(date.getUTCMonth() + 1, 2)}-${pad(date.getUTCDate(), 2)}`;
 }
 
+const MINUTE_MS = 60_000;
+const HOUR_MS = MINUTES_PER_HOUR * MINUTE_MS;
+const HOURS_ON_A_CLOCK_FACE = 12;
+const NOON = 12;
+
+// The wall clock minus the instant, both to the minute, so the offset comes from the zone's own
+// rules as Intl reports them and never from the host's zone.
+function offsetMinutes(instantMs: number, timeZone: string): number {
+  const local = localParts(instantMs, timeZone);
+  const wall = Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute);
+  const instantToMinute = instantMs - (((instantMs % MINUTE_MS) + MINUTE_MS) % MINUTE_MS);
+  return Math.round((wall - instantToMinute) / MINUTE_MS);
+}
+
+function nearClockChange(instantMs: number, timeZone: string): boolean {
+  const offset = offsetMinutes(instantMs, timeZone);
+  return (
+    offsetMinutes(instantMs - HOUR_MS, timeZone) !== offset || offsetMinutes(instantMs + HOUR_MS, timeZone) !== offset
+  );
+}
+
+// "1:30 AM" alone is ambiguous on the night the clocks go back, so the zone abbreviation is added
+// within an hour of a change.
+export function lineTimeLabel(instantMs: number, timeZone: string): string {
+  const local = localParts(instantMs, timeZone);
+  const hour = local.hour % HOURS_ON_A_CLOCK_FACE || HOURS_ON_A_CLOCK_FACE;
+  const clock = `${hour}:${pad(local.minute, 2)} ${local.hour < NOON ? 'AM' : 'PM'}`;
+  return nearClockChange(instantMs, timeZone) ? `${clock} ${local.zoneName}` : clock;
+}
+
 export function utcIso(instantMs: number): string {
   return new Date(instantMs).toISOString();
 }

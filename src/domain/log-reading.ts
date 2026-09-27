@@ -2,7 +2,7 @@ import type { LogReadingInput, LogReadingOutput, Outcome, RuleResult } from '../
 import type { NewEvent } from '../store/port';
 import { businessDay, utcIso } from './business-day';
 import { judgeReading } from './judge';
-import type { CheckPoint, KitchenProfile, RuleRow, RuleSource } from './rule';
+import type { CheckPoint, CheckPointKind, KitchenProfile, RuleRow, RuleSource, TemperatureRow } from './rule';
 
 export interface DecisionContext {
   now: number;
@@ -40,7 +40,7 @@ const recognisedByProfile = new WeakMap<KitchenProfile, ReadonlySet<string>>();
 function recognisedTokens(profile: KitchenProfile): ReadonlySet<string> {
   let tokens = recognisedByProfile.get(profile);
   if (!tokens) {
-    const phrases = profile.checkPoints.flatMap((point) => [point.name, ...point.aliases]);
+    const phrases = [...profile.checkPoints, ...profile.foods].flatMap((named) => [named.name, ...named.aliases]);
     tokens = new Set([
       ...phrases.flatMap((phrase) => [phrase.toLowerCase(), ...tokensOf(phrase)]),
       ...profile.vocabulary.verbs,
@@ -86,7 +86,7 @@ function sectionOf(source: RuleSource): string | undefined {
   return source.kind === 'house_rule' ? undefined : source.section;
 }
 
-function ruleResult(rule: RuleRow): RuleResult {
+function ruleResult(rule: TemperatureRow): RuleResult {
   const section = sectionOf(rule.source);
   return {
     id: rule.id,
@@ -104,14 +104,44 @@ function checkPointFor(profile: KitchenProfile, id: string): CheckPoint {
   return point;
 }
 
-function ruleFor(checkPoint: CheckPoint, measured: string, rules: ReadonlyMap<string, RuleRow>): RuleRow {
-  const rule = rules.get(measured === 'air' ? checkPoint.airRule : checkPoint.foodRule);
-  if (!rule) throw new Error('rule row missing from the rule table');
-  return rule;
+// Phase 1 has no judging path for these kinds, so their readings are kept unjudged rather than
+// measured against a neighbouring row (D-06).
+const UNJUDGED_KINDS: ReadonlySet<CheckPointKind> = new Set(['cooling', 'reheat']);
+
+function ruleIdFor(checkPoint: CheckPoint, measured: string, profile: KitchenProfile): string | undefined {
+  if (measured === 'air') return checkPoint.airRule;
+  const own = checkPoint.foodRules;
+  if (own && Object.hasOwn(own, measured)) return own[measured];
+  const food = profile.foods.find((candidate) => candidate.id === measured);
+  if (food?.roast && checkPoint.roastRule) return checkPoint.roastRule;
+  return checkPoint.foodRule;
+}
+
+// Only a temperature row holds a single-reading limit; every other outcome of the selection, a
+// missing row included, is not_covered and never reaches the judge or the adapter's fault path.
+export function selectRule(
+  checkPoint: CheckPoint,
+  measured: string | undefined,
+  profile: KitchenProfile,
+  rules: ReadonlyMap<string, RuleRow>,
+): TemperatureRow | undefined {
+  if (UNJUDGED_KINDS.has(checkPoint.kind) || measured === undefined) return undefined;
+  const ruleId = ruleIdFor(checkPoint, measured, profile);
+  const row = ruleId === undefined ? undefined : rules.get(ruleId);
+  return row?.kind === 'temperature' ? row : undefined;
 }
 
 function rosterInitials(initials: string): string {
   return initials.replace(/[^A-Za-z]/g, '').toUpperCase();
+}
+
+interface Judged {
+  outcome: Outcome;
+  rule: TemperatureRow | undefined;
+}
+
+function judge(valueTenths: number, rule: TemperatureRow | undefined): Judged {
+  return rule === undefined ? { outcome: 'not_covered', rule } : { outcome: judgeReading(valueTenths, rule), rule };
 }
 
 export function decideLogReading(input: LogReadingInput, ctx: DecisionContext): Decision {
@@ -124,9 +154,8 @@ export function decideLogReading(input: LogReadingInput, ctx: DecisionContext): 
 
   const checkPoint = checkPointFor(ctx.profile, checkPointId);
   const measured = input.measured ?? checkPoint.defaultMeasured;
-  const rule = ruleFor(checkPoint, measured, ctx.rules);
   const valueTenths = Math.round(value * TENTHS_PER_DEGREE);
-  const outcome = judgeReading(valueTenths, rule);
+  const { outcome, rule } = judge(valueTenths, selectRule(checkPoint, measured, ctx.profile, ctx.rules));
   const day = businessDay(ctx.now, ctx.kitchen.timeZone, ctx.kitchen.dayStart);
   const lineId = ctx.newId();
 
@@ -138,7 +167,7 @@ export function decideLogReading(input: LogReadingInput, ctx: DecisionContext): 
     value,
     unit: 'F',
     verdict: VERDICT_WORDS[outcome],
-    rule: ruleResult(rule),
+    ...(rule === undefined ? {} : { rule: ruleResult(rule) }),
     serverTime: utcIso(ctx.now),
     businessDay: day,
     timeZone: ctx.kitchen.timeZone,
@@ -156,15 +185,15 @@ export function decideLogReading(input: LogReadingInput, ctx: DecisionContext): 
     requestId: input.request_id,
     origin: 'person',
     checkPointId: checkPoint.id,
-    measured,
+    measured: measured ?? null,
     initials: person,
     words: rebuildWords(input.words, ctx.profile, value, checkPoint),
     valueTenths,
     unit: 'F',
     outcome,
-    verdict: structured.verdict,
-    ruleId: rule.id,
-    ruleSnapshot: JSON.stringify(rule),
+    verdict: rule === undefined ? null : structured.verdict,
+    ruleId: rule?.id ?? null,
+    ruleSnapshot: rule === undefined ? null : JSON.stringify(rule),
     rulesVersion: ctx.rulesVersion,
     supersedesId: null,
     rootId: null,

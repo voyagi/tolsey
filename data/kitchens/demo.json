@@ -2,15 +2,44 @@
   "timeZone": "America/Chicago",
   "dayStart": "04:00",
   "roster": ["AB", "MR", "JT", "KL"],
-  "foods": [{ "id": "chicken_soup", "name": "Chicken soup" }],
+  "foods": [
+    { "id": "chicken_soup", "name": "Chicken soup", "aliases": ["soup", "chicken soup"] },
+    { "id": "prime_rib", "name": "Prime rib", "aliases": ["prime rib", "rib", "roast"], "roast": true }
+  ],
   "checkPoints": [
     {
       "id": "walk_in",
       "name": "Walk-in",
+      "kind": "cold",
       "aliases": ["walk-in", "walk in"],
       "airRule": "unit_air_cold",
       "foodRule": "cold_holding",
       "defaultMeasured": "air"
+    },
+    {
+      "id": "soup_well",
+      "name": "Soup well",
+      "kind": "hot",
+      "aliases": ["soup well", "well", "steam well"],
+      "airRule": "unit_air_hot",
+      "foodRule": "hot_holding",
+      "defaultMeasured": "chicken_soup"
+    },
+    {
+      "id": "carving_station",
+      "name": "Carving station",
+      "kind": "hot",
+      "aliases": ["carving station", "carving", "carvery"],
+      "airRule": "unit_air_hot",
+      "foodRule": "hot_holding",
+      "roastRule": "hot_holding_roast",
+      "defaultMeasured": "prime_rib"
+    },
+    {
+      "id": "cooling",
+      "name": "Cooling",
+      "kind": "cooling",
+      "aliases": ["cooling", "cool down", "cooling pan"]
     }
   ],
   "vocabulary": {

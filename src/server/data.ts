@@ -40,10 +40,13 @@ export const ROWS_PER_WRITE: RowsPerWrite = RowsPerWriteSchema.parse(rowsPerWrit
 // first reading of a shift.
 const measures = new Set(['air', ...DEMO_PROFILE.foods.map((food) => food.id)]);
 for (const point of DEMO_PROFILE.checkPoints) {
-  for (const ruleId of [point.airRule, point.foodRule]) {
-    if (!RULES.has(ruleId)) throw new Error(`check point ${point.id} names rule ${ruleId}, which the rule table lacks`);
+  const named = [point.airRule, point.foodRule, point.roastRule, ...Object.values(point.foodRules ?? {})];
+  for (const ruleId of named) {
+    if (ruleId !== undefined && !RULES.has(ruleId)) {
+      throw new Error(`check point ${point.id} names rule ${ruleId}, which the rule table lacks`);
+    }
   }
-  if (!measures.has(point.defaultMeasured)) {
+  if (point.defaultMeasured !== undefined && !measures.has(point.defaultMeasured)) {
     throw new Error(`check point ${point.id} defaults to ${point.defaultMeasured}, which is not a known measure`);
   }
 }
