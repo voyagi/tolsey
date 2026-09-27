@@ -55,7 +55,7 @@ describe('the hourly retention sweep in the built Worker (workerd)', () => {
     expect(await count('SELECT COUNT(*) AS n FROM kitchens WHERE id = ?1', young)).toBe(1);
     expect(await count('SELECT COUNT(*) AS n FROM events WHERE kitchen_id = ?1', young)).toBe(LINES_EACH);
     expect(await count("SELECT COUNT(*) AS n FROM kitchens WHERE id = 'demo'")).toBe(1);
-    // Index rows make the real count larger; budget.test.ts pins the exact sum.
+    // At least one row per deleted kitchen and line; budget.test.ts pins the exact sum, budget_add included.
     expect((await budgetRows()) - before).toBeGreaterThanOrEqual(2 * (1 + LINES_EACH));
   });
 });

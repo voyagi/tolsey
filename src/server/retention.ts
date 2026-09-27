@@ -27,8 +27,8 @@ export const DELETE_EXPIRED_KITCHENS = `DELETE FROM kitchens WHERE id IN (SELECT
 export const DELETE_EXPIRED_EVENTS = `DELETE FROM events WHERE kitchen_id IN (SELECT value FROM json_each(?1))`;
 
 // One bounded round. The budget add is a second call because no statement inside the batch can see
-// the batch's rows written, which count index rows too; the budget is a counter, not the record, so
-// a crash between the two calls leaves one sweep uncounted rather than any line undeleted.
+// the batch's rows written; the budget is a counter, not the record, so a crash between the two calls
+// leaves one sweep uncounted rather than any line undeleted.
 export async function expireKitchens(
   db: D1Like,
   now: number,

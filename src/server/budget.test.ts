@@ -165,6 +165,21 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       expect(await eventsOf(kitchenId)).toBe(0);
     });
 
+    // ADR 0002 derives retention's daily ceiling from this figure: one row per deleted kitchen and
+    // per deleted line, whatever indexes the line filled when it was written.
+    it('counts one row per deleted kitchen and per deleted reading, plus budget_add', async () => {
+      const minted = await mintThroughRoute(worker.fetch, worker.baseUrl);
+      const readings = 10;
+      for (let index = 0; index < readings; index++) {
+        expect((await logAt(T0, minted.mcpPath)).isError).toBeFalsy();
+      }
+
+      const round = await expireKitchens(worker.db, T0 + 24 * HOUR_MS, limits, rowsPerWrite, limits.sweepBatchLimit);
+
+      expect(round.kitchensDeleted).toBe(1);
+      expect(round.rowsCounted).toBe(1 + readings + rowsPerWrite.budget_add);
+    });
+
     it('runs one read and no write when nothing has expired', async () => {
       await insertScratchKitchens(worker.db, [T0 - HOUR_MS]);
       const counted = countingD1(worker.db);

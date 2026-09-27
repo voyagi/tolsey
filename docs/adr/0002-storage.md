@@ -39,8 +39,11 @@ or `conformance`; the label gives it no special rights.
 
 A scratch kitchen accepts writes until 23 hours less the 120-second retry window after it was minted
 (`writeWindowMs` in `src/server/kitchens.ts`, reported to the visitor as `closesAt`). An hourly Cron
-Trigger deletes each kitchen aged 23 hours or more together with all its lines, so nothing a visitor
-wrote outlives 24 hours. Writes close one retry window early so that a retry of the last accepted
+Trigger deletes each kitchen aged 23 hours or more together with all its lines, so while the hourly
+runs succeed nothing a visitor wrote outlives 24 hours. A run that fails is not retried: Cloudflare
+records it as failed in the Cron Trigger's past events, the Worker logs `[retention]` with the error's
+name and code, and the kitchens it left are deleted by the next hourly run or the next mint's sweep, so
+each failed run can stretch that bound by an hour. Writes close one retry window early so that a retry of the last accepted
 write still finds its kitchen and gets its stored result before the sweep may take it; closing at the
 full 23 hours would let such a retry answer "not found" instead.
 
@@ -61,9 +64,13 @@ held in `data/store/limits.json`. The line cap is 200 because a demo shift holds
 
 The free allowance belongs to the account, not to this database. Cloudflare's D1 pricing page says
 that once the account reaches its daily limits no query runs against D1 until the 00:00 UTC reset
-(read 2026-09-26). The 40,000 cap therefore assumes every other D1 database on the account writes
-fewer than the remaining 60,000 rows a day, and past the account limit every tool call answers with
-the fixed server-fault sentence.
+(read 2026-09-26). The cap refuses writes, never retention, so a day can also spend the deletion of
+the previous day's kitchens on top of it. A delete counts one row per kitchen and one per line (local
+D1, pinned by "counts one row per deleted kitchen and per deleted reading" in
+`src/server/budget.test.ts`), so that addition is at most about 8,000 rows: the 40,000 / 5 kitchens a
+day's budget can mint, the costliest mix to delete. The cap therefore assumes every other D1 database
+on the account writes fewer than about 52,000 rows a day, and past the account limit every tool call
+answers with the fixed server-fault sentence.
 
 ## Events table
 
@@ -164,8 +171,9 @@ only by the budget insert on later events of a date and by the day-line index ro
 wrong_number or receipt event skips, which is the safe direction.
 
 Retention deletes count against the same daily allowance. A round adds the summed `meta.rows_written`
-of its delete batch, which counts index rows as well as table rows, plus `budget_add`, with no cap
-check: retention is never refused. All numbers are measured again on remote D1 at the first deploy.
+of its delete batch, plus `budget_add`, with no cap check: retention is never refused. Unlike an
+insert, a delete counts one row per kitchen and one per line on local D1, with no index rows (the
+pinned test named in the write model). All numbers are measured again on remote D1 at the first deploy.
 
 ## Append-only guard
 
