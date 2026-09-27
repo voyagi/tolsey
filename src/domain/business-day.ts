@@ -105,6 +105,14 @@ export function utcIso(instantMs: number): string {
   return new Date(instantMs).toISOString();
 }
 
+export function validateDayStart(_clock: string): boolean {
+  return true;
+}
+
+export function recordCode(_businessDay: string, _dayLine: number): string {
+  return '';
+}
+
 export function kitchenSettings(partial: Partial<KitchenSettings>): KitchenSettings {
   return {
     timeZone: partial.timeZone ?? DEFAULT_SETTINGS.timeZone,

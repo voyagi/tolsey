@@ -1,0 +1,7 @@
+// Test-only Worker for src/server/intl-parity.e2e.test.ts. It shares the product's compatibility
+// date so workerd formats dates the way the deployed Worker does, and binds nothing.
+{
+  "name": "tolsey-intl-probe",
+  "main": "./intl-probe.worker.ts",
+  "compatibility_date": "2026-08-15"
+}
