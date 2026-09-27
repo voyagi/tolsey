@@ -18,7 +18,7 @@ import { callLogReading, walkInArguments, type ToolResult } from '../test-suppor
 import { mintThroughRoute, openInProcessWorker, type InProcessWorker } from '../test-support/target';
 import { addToBudget } from './budget';
 import { DEMO_PROFILE } from './data';
-import { handleKitchensRoute, writeWindowMs } from './kitchens';
+import { deletionBoundMs, handleKitchensRoute, writeWindowMs } from './kitchens';
 import { DELETE_EXPIRED_EVENTS, DELETE_EXPIRED_KITCHENS, expireKitchens, runScheduledSweep } from './retention';
 
 // 10:00 CDT on 2026-10-20; its UTC date is the budget row every write in these tests counts against.
@@ -138,10 +138,10 @@ describe('the daily row budget, the kitchen caps and retention', () => {
     });
 
     // Reads are not budgeted, so their cost per call is held here (ADR 0002, rows read). The guarded
-    // insert walks the kitchen's lines twice for the line cap when it writes (309 rows at 150 lines on
-    // local D1); the next line number comes from the day-line index, never from a third walk over the
-    // day (458 before). Seeded lines cost the same walk as readings (605 and 608 at 199 lines then).
-    it('reads the kitchen lines no more than twice for an accepted reading', async () => {
+    // insert walks the kitchen's lines once for the line cap; with its guards on the outer SELECT it
+    // walked them twice when it wrote (309 rows at 150 lines on local D1), and the next line number
+    // comes from the day-line index, never from a walk over the day (458 before that).
+    it('reads the kitchen lines once for an accepted reading', async () => {
       const kitchen = scratchKitchen();
       await worker.store.createKitchen(kitchenInput(kitchen, limits));
       const lines = 150;
@@ -151,7 +151,7 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       const outcome = await new D1Store(counted.db).append(appendInput(testEvent(kitchen.id), limits));
 
       expect(outcome.status).toBe('appended');
-      expect(counted.totals().rowsRead).toBeLessThan(2.5 * lines);
+      expect(counted.totals().rowsRead).toBeLessThan(1.5 * lines);
     });
 
     it('accepts a write 1 ms inside the write window and refuses one at its end, saying the kitchen has closed', async () => {
@@ -175,9 +175,13 @@ describe('the daily row budget, the kitchen caps and retention', () => {
     // PRIV-03 promises deletion within 24 hours. A kitchen past retention age waits for the next hourly
     // run, and that run can start after the hour it was scheduled for: the platform hands it the
     // scheduled instant and documents no start guarantee, so the age leaves room for a late start.
+    // The mint reports this same bound as expiresAt, so it must count the whole wait.
     it('deletes every scratch kitchen within 24 hours even when the hourly run starts 15 minutes late (PRIV-03)', () => {
       const lateStartAllowanceMs = 15 * MINUTE_MS;
-      expect(limits.retentionAgeHours * HOUR_MS + HOUR_MS + lateStartAllowanceMs).toBeLessThanOrEqual(24 * HOUR_MS);
+      expect(deletionBoundMs(limits)).toBeGreaterThanOrEqual(
+        limits.retentionAgeHours * HOUR_MS + HOUR_MS + lateStartAllowanceMs,
+      );
+      expect(deletionBoundMs(limits)).toBeLessThanOrEqual(24 * HOUR_MS);
     });
   });
 
@@ -201,8 +205,9 @@ describe('the daily row budget, the kitchen caps and retention', () => {
     });
 
     // ADR 0002 derives retention's daily ceiling from this figure: one row per deleted kitchen and
-    // per deleted line, whatever indexes the line filled when it was written.
-    it('counts one row per deleted kitchen and per deleted reading, plus budget_add', async () => {
+    // per deleted line, whatever indexes the line filled when it was written. Ten readings through
+    // the reference client took 6.1 s on a loaded machine, past the 5 s default.
+    it('counts one row per deleted kitchen and per deleted reading, plus budget_add', { timeout: 30_000 }, async () => {
       const minted = await mintThroughRoute(worker.fetch, worker.baseUrl);
       const readings = 10;
       for (let index = 0; index < readings; index++) {

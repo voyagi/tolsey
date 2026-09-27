@@ -45,10 +45,11 @@ nothing a visitor wrote outlives 24 hours. The 15 minutes are an allowance, not 
 is handed the instant it was scheduled for (`scheduledTime`, which the sweep uses as its clock) and
 Cloudflare documents no guarantee of how soon after it the run starts. A test in
 `src/server/budget.test.ts` holds the retention age, the hourly cadence and that allowance inside 24
-hours (PRIV-03). A run that fails is not retried: Cloudflare records it as failed in the Cron
-Trigger's past events, the Worker logs `[retention]` with the error's name and code, and the kitchens
-it left are deleted by the next hourly run or the next mint's sweep, so each failed run can stretch
-that bound by an hour. Writes close one retry window early so that a retry of the last accepted
+hours (PRIV-03), and the mint reports the same bound to the visitor as `expiresAt`
+(`deletionBoundMs` in `src/server/kitchens.ts`). A run that fails is not retried: Cloudflare records
+it as failed in the Cron Trigger's past events, the Worker logs `[retention]` with the error's name
+and code, and the kitchens it left are deleted by the next hourly run or the next mint's sweep, so
+each failed run can stretch that bound by an hour. Writes close one retry window early so that a retry of the last accepted
 write still finds its kitchen and gets its stored result before the sweep may take it; closing at the
 full retention age would let such a retry answer "not found" instead.
 
@@ -88,17 +89,19 @@ answers with the fixed server-fault sentence.
 
 Reads are not budgeted. The line cap counts the kitchen's lines on every call, so a call reads rows in
 proportion to the lines its kitchen already holds. Measured on local D1 by counting `meta.rows_read`
-over one append (2026-09-27): an accepted reading reads 9 rows in an empty kitchen, 309 at 150 lines
-and 409 at 199, because the guarded insert walks the kitchen's lines twice when it writes; a call
-refused at the 200-line cap reads 408, the insert's count once and the follow-up's once. The next line
-number is served by the `events_day_line` index and adds no walk. Filling one kitchen to the cap reads
-about 42,000 rows, so the roughly 25 full kitchens a day's write budget allows read about 1 million,
-inside the 5 million a day. Refused calls are capped by nothing: about 12,000 of them against one full
-kitchen spend the account's 5 million daily reads, and from then until 00:00 UTC no query runs against
-any D1 database on the account. The test "reads the kitchen lines no more than twice for an accepted
-reading" in `src/server/budget.test.ts` holds the accepted figure, the pass that attacks the running
-service decides a per-client or per-kitchen limit for the read flood together with the mint flood, and
-the read figures are measured again on remote D1 at the first deploy.
+over one append (2026-09-27): an accepted reading reads 8 rows in an empty kitchen, 159 at 150 lines
+and 207 at 199; a call refused at the 200-line cap reads 408, the insert's count once and the
+follow-up's once. The next line number is served by the `events_day_line` index and adds no walk. The
+insert's guards sit inside its derived table: on the outer SELECT, SQLite also pushed them down into
+it and checked them twice, so an insert that wrote walked the lines twice (309 rows at 150 lines).
+Filling one kitchen to the cap reads about 21,600 rows, so the roughly 25 full kitchens a day's write
+budget allows read about half a million, inside the 5 million a day. Refused calls are capped by
+nothing: about 12,000 of them against one full kitchen spend the account's 5 million daily reads, and
+from then until 00:00 UTC no query runs against any D1 database on the account. The test "reads the
+kitchen lines once for an accepted reading" in `src/server/budget.test.ts` holds the accepted figure,
+the pass that attacks the running service decides a per-client or per-kitchen limit for the read flood
+together with the mint flood, and the read figures are measured again on remote D1 at the first
+deploy.
 
 ## Events table
 

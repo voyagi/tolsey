@@ -15,6 +15,8 @@ import type {
 // the write window, the line cap and the daily budget in the same statement as the write. MAX skips
 // nulls anyway; saying day_line IS NOT NULL lets the partial index events_day_line serve the next line
 // number, where otherwise every line of the day is read to find it.
+// The WHERE sits inside the derived table: on the outer SELECT, SQLite also pushes it down into the
+// derived table and checks it in both places, so an insert that wrote walked the kitchen's lines twice.
 const INSERT_EVENT = `
 INSERT INTO events (
   id, kitchen_id, kind, occurred_at, business_day, time_zone, day_line, screen_id, request_id,
@@ -44,12 +46,12 @@ FROM (
         WHERE kitchen_id = ?2 AND business_day = ?5 AND day_line IS NOT NULL
       )
   END AS n
+  WHERE COALESCE((SELECT rows FROM budget WHERE utc_date = ?31), 0) + ?32 <= ?33
+    AND (SELECT COUNT(*) FROM events WHERE kitchen_id = ?2) < ?34
+    AND EXISTS (
+      SELECT 1 FROM kitchens WHERE id = ?2 AND kind = 'scratch' AND created_at + ?35 > ?36
+    )
 ) AS line
-WHERE COALESCE((SELECT rows FROM budget WHERE utc_date = ?31), 0) + ?32 <= ?33
-  AND (SELECT COUNT(*) FROM events WHERE kitchen_id = ?2) < ?34
-  AND EXISTS (
-    SELECT 1 FROM kitchens WHERE id = ?2 AND kind = 'scratch' AND created_at + ?35 > ?36
-  )
 RETURNING seq, day_line, result_json`;
 
 // Statement 2: the budget only counts a write that happened.

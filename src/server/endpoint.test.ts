@@ -88,7 +88,9 @@ describe('POST /api/kitchens and the kitchen a visitor writes to', () => {
     expect(minted).toEqual({
       id: minted.id,
       mcpPath: `/mcp/k/${String(minted.id)}`,
-      expiresAt: new Date(MINT_AT + limits.retentionAgeHours * HOUR_MS + HOUR_MS).toISOString(),
+      // The deletion bound (D-07): retention age, the wait for the next hourly run, and the 15 minutes
+      // that run may start late (PRIV-03).
+      expiresAt: new Date(MINT_AT + limits.retentionAgeHours * HOUR_MS + HOUR_MS + 15 * 60_000).toISOString(),
       closesAt: new Date(MINT_AT + limits.writeWindowHours * HOUR_MS - limits.retryWindowSeconds * 1000).toISOString(),
     });
     expect(await kitchenRow(String(minted.id))).toEqual({

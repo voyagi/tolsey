@@ -30,6 +30,9 @@ const SECOND_MS = 1000;
 const KITCHEN_ID_BYTES = 16;
 // The hourly Cron Trigger reaches a kitchen within one run of it turning retentionAgeHours old.
 const SWEEP_INTERVAL_MS = HOUR_MS;
+// A run is handed the instant it was scheduled for, with no documented start guarantee, so deletion is
+// promised for a run that starts within this allowance of it (ADR 0002, write model).
+const SWEEP_LATE_START_MS = 15 * 60_000;
 const LABELS: ReadonlySet<string> = new Set<KitchenLabel>(['capture', 'conformance']);
 const DEMO_FULL = 'The demo is full for today. Try the replay.';
 
@@ -39,6 +42,12 @@ type LabelChoice = { ok: true; label: KitchenLabel | null } | { ok: false; error
 // still find its kitchen and get its stored result before the sweep may delete it.
 export function writeWindowMs(limits: StoreLimits): number {
   return limits.writeWindowHours * HOUR_MS - limits.retryWindowSeconds * SECOND_MS;
+}
+
+// The latest a kitchen and its lines are deleted while the hourly runs succeed, reported as expiresAt:
+// it turns retentionAgeHours old, waits for the next hourly run, and that run may start late.
+export function deletionBoundMs(limits: StoreLimits): number {
+  return limits.retentionAgeHours * HOUR_MS + SWEEP_INTERVAL_MS + SWEEP_LATE_START_MS;
 }
 
 function newKitchenId(): string {
@@ -84,7 +93,7 @@ export async function mintKitchen(deps: KitchensDeps, label: KitchenLabel | null
   return {
     id,
     mcpPath: `/mcp/k/${id}`,
-    expiresAt: utcIso(createdAt + deps.limits.retentionAgeHours * HOUR_MS + SWEEP_INTERVAL_MS),
+    expiresAt: utcIso(createdAt + deletionBoundMs(deps.limits)),
     closesAt: utcIso(createdAt + writeWindowMs(deps.limits)),
   };
 }
