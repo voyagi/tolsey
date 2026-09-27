@@ -14,8 +14,13 @@ import { resolveScope } from './scope';
 
 export interface WorkerEnv {
   ASSETS: { fetch(request: Request): Promise<Response> };
-  ALLOWED_HOSTNAMES: string;
+  ALLOWED_HOSTNAMES?: string;
   DB: D1Like;
+}
+
+export interface WorkerOptions {
+  clock: Clock;
+  storeFor?: (env: WorkerEnv) => Store;
 }
 
 // The seeded kitchens row of kind demo: the adapter and the store both refuse every write aimed at it.
@@ -39,7 +44,7 @@ function familyOf(pathname: string): RouteFamily | null {
 }
 
 function allowedHostnames(env: WorkerEnv): string[] {
-  return env.ALLOWED_HOSTNAMES.split(',').map((name) => name.trim()).filter(Boolean);
+  return (env.ALLOWED_HOSTNAMES as string).split(',').map((name) => name.trim()).filter(Boolean);
 }
 
 // The handler does no Host or Origin checks of its own, so a page on another site could
@@ -80,7 +85,7 @@ async function handleMcp(request: Request, pathname: string, store: Store, clock
   return createMcpHandler(() => createServer(deps)).fetch(request);
 }
 
-export function createWorker({ clock }: { clock: Clock }) {
+export function createWorker({ clock, storeFor = (env) => new D1Store(env.DB) }: WorkerOptions) {
   return {
     async fetch(request: Request, env: WorkerEnv): Promise<Response> {
       const { pathname } = new URL(request.url);
@@ -88,7 +93,7 @@ export function createWorker({ clock }: { clock: Clock }) {
       if (family === null) return env.ASSETS.fetch(request);
       const rejected = hostOrOriginRejection(request, env);
       if (rejected) return rejected;
-      const store = new D1Store(env.DB);
+      const store = storeFor(env);
       if (family === 'api') return handleApi(request, pathname, store, clock);
       return handleMcp(request, pathname, store, clock);
     },
