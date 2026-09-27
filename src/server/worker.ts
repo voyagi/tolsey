@@ -3,9 +3,11 @@ import {
   hostHeaderValidationResponse,
   originValidationResponse,
 } from '@modelcontextprotocol/server';
+import { kitchenSettings } from '../domain/business-day';
 import { D1Store } from '../store/d1-store';
 import type { D1Like, KitchenRow, Store } from '../store/port';
-import { createServer, type Clock } from './mcp';
+import { DEMO_PROFILE, ROWS_PER_WRITE, RULES, RULES_VERSION, STORE_LIMITS } from './data';
+import { createServer, type Clock, type ServerDeps } from './mcp';
 
 export interface WorkerEnv {
   ASSETS: { fetch(request: Request): Promise<Response> };
@@ -18,8 +20,7 @@ const DEMO_KITCHEN: KitchenRow = {
   id: 'demo',
   kind: 'demo',
   label: null,
-  timeZone: 'America/Chicago',
-  dayStart: '04:00',
+  ...kitchenSettings({ timeZone: DEMO_PROFILE.timeZone, dayStart: DEMO_PROFILE.dayStart }),
   createdAt: 0,
 };
 
@@ -63,7 +64,16 @@ export function createWorker({ clock }: { clock: Clock }) {
       if (!kitchen) return notFound();
       // Deps are closed over per request, never keyed on requestInfo: for a POST the SDK hands
       // the factory a clone of the request.
-      const deps = { store, clock, kitchen };
+      const deps: ServerDeps = {
+        store,
+        clock,
+        kitchen,
+        rules: RULES,
+        rulesVersion: RULES_VERSION,
+        profile: DEMO_PROFILE,
+        limits: STORE_LIMITS,
+        rowsPerWrite: ROWS_PER_WRITE,
+      };
       return createMcpHandler(() => createServer(deps)).fetch(request);
     },
   };

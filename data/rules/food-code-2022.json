@@ -1,0 +1,31 @@
+{
+  "rulesVersion": "2026-09-27.1",
+  "edition": "FDA Food Code 2022",
+  "rows": [
+    {
+      "id": "cold_holding",
+      "kind": "temperature",
+      "comparator": "at_most",
+      "limitFTenths": 410,
+      "limitC": 5,
+      "source": {
+        "kind": "food_code",
+        "section": "3-501.16(A)(2)",
+        "page": "Chapter 3 - 28",
+        "edition": "2022",
+        "quote": "TIME/TEMPERATURE CONTROL FOR SAFETY FOOD shall be maintained: ... (2) At 5°C (41°F) or less."
+      }
+    },
+    {
+      "id": "unit_air_cold",
+      "kind": "temperature",
+      "comparator": "at_most",
+      "limitFTenths": 410,
+      "limitC": 5,
+      "source": {
+        "kind": "house_rule",
+        "reason": "operating check that food in this unit holds at 41°F or less; the unit's thermometer is required by 4-204.112"
+      }
+    }
+  ]
+}
