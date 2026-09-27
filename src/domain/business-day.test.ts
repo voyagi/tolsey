@@ -58,6 +58,26 @@ describe('the day start', () => {
   });
 });
 
+// A zone Intl does not know throws at the first reading of a shift, so it is refused where the
+// kitchen's settings load, the way a refused day start is.
+describe('the time zone', () => {
+  it.each(['America/Chicagoo', 'Mars/Olympus_Mons', 'Central Time', ''])(
+    'refuses a kitchen profile naming the unknown zone %j at load',
+    (timeZone) => {
+      expect(KitchenProfileSchema.safeParse({ ...demoJson, timeZone }).success).toBe(false);
+    },
+  );
+
+  it('throws for kitchen settings naming an unknown zone', () => {
+    expect(() => kitchenSettings({ timeZone: 'America/Chicagoo' })).toThrow(/time zone/);
+  });
+
+  it.each(['Europe/Amsterdam', 'UTC'])('accepts a kitchen in the real zone %s', (timeZone) => {
+    expect(KitchenProfileSchema.safeParse({ ...demoJson, timeZone }).success).toBe(true);
+    expect(kitchenSettings({ timeZone })).toEqual({ timeZone, dayStart: '04:00' });
+  });
+});
+
 describe('the printed line time', () => {
   it.each([
     ['2026-11-01T06:30:00Z', '1:30 AM CDT'],

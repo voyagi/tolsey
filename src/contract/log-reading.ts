@@ -12,11 +12,12 @@ type IdList = [string, ...string[]];
 const CHECK_POINT_IDS = demoProfile.checkPoints.map((point) => point.id) as IdList;
 const MEASURE_IDS = ['air', ...demoProfile.foods.map((food) => food.id)] as IdList;
 
-// Judged at the precision given and never rounded, so 41.4 stays above 41. The tolerance only
-// absorbs binary representation error in the multiplication.
+// Judged at the precision given and never rounded, so 41.4 stays above 41. A figure with one decimal
+// place survives the trip to tenths and back unchanged, because dividing the whole tenths by ten lands
+// on the same double the figure parses to. Any other number changes, however close it sits, so
+// 41.00000005 is refused rather than judged as 41.0.
 function hasAtMostOneDecimal(value: number): boolean {
-  const tenths = value * 10;
-  return Math.abs(tenths - Math.round(tenths)) < 1e-6;
+  return Math.round(value * 10) / 10 === value;
 }
 
 // Absolute zero, rounded up to the tenth, and a figure past any kitchen probe. The bound also keeps

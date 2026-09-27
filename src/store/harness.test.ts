@@ -5,6 +5,7 @@ import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/cli
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import demoJson from '../../data/kitchens/demo.json';
 import { openTestD1, type TestD1 } from '../test-support/d1';
 import { D1Store } from './d1-store';
 import type { NewEvent } from './port';
@@ -162,6 +163,13 @@ describe('the D1 test harness', () => {
       .bind(kitchenId, 'canary-2')
       .first<{ n: number }>();
     expect(count?.n).toBe(1);
+  });
+
+  // The migration writes the demo kitchen's zone and day start out in SQL, a copy of demo.json's that
+  // no import keeps in step, so a change to either shows up here.
+  it('seeds the demo kitchen with the zone and day start of the demo profile', async () => {
+    const demo = await new D1Store(d1.db).findKitchen('demo');
+    expect(demo).toMatchObject({ kind: 'demo', timeZone: demoJson.timeZone, dayStart: demoJson.dayStart });
   });
 
   it('refuses to open a D1 without the DB binding, naming the binding and wrangler.jsonc', async () => {

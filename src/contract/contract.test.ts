@@ -1,3 +1,4 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import demoJson from '../../data/kitchens/demo.json';
 import rulesJson from '../../data/rules/food-code-2022.json';
@@ -34,6 +35,15 @@ const inRange = storedResult(38);
 const outOfRange = storedResult(45);
 const stamp = { contractVersion: 1, serverTime: inRange.serverTime, businessDay: '2026-10-20', timeZone: 'America/Chicago' };
 const walkIn = { id: 'walk_in', name: 'Walk-in' };
+
+// The next double above a value, one step of its bit pattern: the smallest change a number can carry.
+function nextDoubleUp(value: number): number {
+  if (value === 0) return Number.MIN_VALUE;
+  const view = new DataView(new ArrayBuffer(8));
+  view.setFloat64(0, value);
+  view.setBigInt64(0, view.getBigInt64(0) + (value > 0 ? 1n : -1n));
+  return view.getFloat64(0);
+}
 
 function without(result: Record<string, unknown>, field: string): Record<string, unknown> {
   const copy = { ...result };
@@ -130,6 +140,28 @@ describe('the log_reading input contract', () => {
 
   it.each([-459.6, -5, 0, 1000])('accepts value %d at or inside the thermometer range', (value) => {
     expect(LogReadingInputSchema.safeParse({ ...base, value }).success).toBe(true);
+  });
+
+  // A number a hair off a tenth is not one decimal place. Taken as the tenth beside it, 41.00000005
+  // would be judged 41.0, in range against 41 or less, and 134.99999995 judged 135.0 against 135 or
+  // above, while the reply read back the number sent.
+  it.each([41.00000005, 134.99999995, 38.10000001, 5e-324])(
+    'refuses value %d, a hair off a tenth, naming one decimal place',
+    (value) => {
+      const parsed = LogReadingInputSchema.safeParse({ ...base, value });
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues.map((issue) => issue.message).join(' ')).toContain('one decimal place');
+    },
+  );
+
+  it('accepts every tenth in the thermometer range and refuses the next number above each', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: -4596, max: 9999 }), (tenths) => {
+        const value = tenths / 10;
+        expect(LogReadingInputSchema.safeParse({ ...base, value }).success, String(value)).toBe(true);
+        expect(LogReadingInputSchema.safeParse({ ...base, value: nextDoubleUp(value) }).success, String(value)).toBe(false);
+      }),
+    );
   });
 
   it('accepts words of 200 characters and refuses 201', () => {

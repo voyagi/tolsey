@@ -36,6 +36,17 @@ function formatterFor(timeZone: string): Intl.DateTimeFormat {
   return formatter;
 }
 
+// A zone Intl does not know would throw at the first reading of a shift, so settings are checked
+// with this when they load.
+export function isKnownTimeZone(timeZone: string): boolean {
+  try {
+    formatterFor(timeZone);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // The zone is always passed: local workerd inherits the host machine's zone as its default.
 export function localParts(instantMs: number, timeZone: string): LocalParts {
   const parts = Object.fromEntries(
@@ -136,6 +147,9 @@ export function kitchenSettings(partial: Partial<KitchenSettings>): KitchenSetti
     throw new RangeError(
       `day start ${settings.dayStart} is refused: give HH:MM outside 01:00 to 03:00, the hours a clock change repeats or skips`,
     );
+  }
+  if (!isKnownTimeZone(settings.timeZone)) {
+    throw new RangeError(`time zone ${settings.timeZone} is refused: give a zone name Intl knows, such as America/Chicago`);
   }
   return settings;
 }

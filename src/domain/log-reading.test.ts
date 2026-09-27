@@ -1,7 +1,8 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import demoJson from '../../data/kitchens/demo.json';
 import rulesJson from '../../data/rules/food-code-2022.json';
-import type { LogReadingInput } from '../contract/log-reading';
+import { LogReadingInputSchema, LogReadingOutputSchema, type LogReadingInput } from '../contract/log-reading';
 import { kitchenSettings } from './business-day';
 import { decideLogReading, type DecisionContext } from './log-reading';
 import { KitchenProfileSchema, RuleTableSchema } from './rule';
@@ -99,6 +100,24 @@ describe('the words stored with a reading', () => {
     ['a half said in words', { value: 38.5, words: 'the walk-in reads 38 and a half' }, 'walk-in 38.5'],
   ] as const)('never stores words without the number: %s falls back to the check point and value', (_label, overrides, words) => {
     expect(decided(walkIn({ measured: undefined, ...overrides })).event.words).toBe(words);
+  });
+});
+
+describe('the number judged and the number read back', () => {
+  // The walk-in air limit, 41 or less, in tenths.
+  const WALK_IN_AIR_LIMIT_TENTHS = 410;
+
+  it('judges exactly the number it stores and reads back, for every tenth the contract accepts', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: -4596, max: 10000 }), (tenths) => {
+        const input = LogReadingInputSchema.parse(walkIn({ value: tenths / 10, words: undefined }));
+        const { event, result } = decided(input);
+        expect(event.valueTenths).toBe(tenths);
+        expect(result.structuredContent.value).toBe(input.value);
+        expect(result.structuredContent.outcome).toBe(tenths <= WALK_IN_AIR_LIMIT_TENTHS ? 'in_range' : 'out_of_range');
+        expect(LogReadingOutputSchema.safeParse({ ...result.structuredContent, recordCode: '261020-001' }).success).toBe(true);
+      }),
+    );
   });
 });
 
