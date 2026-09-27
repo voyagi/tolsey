@@ -39,7 +39,8 @@ export interface ServerDeps {
 
 export const SERVER_INFO = { name: 'tolsey', version: '0.1.0' };
 
-// Module scope, once per isolate: the free plan bills request CPU, not module evaluation.
+// Module scope, so the conversion runs once per isolate rather than on every request. Startup code
+// must finish within the platform's 1-second startup limit.
 const LOG_READING_INPUT = frozenSchema(LogReadingInputSchema);
 const LOG_READING_OUTPUT = frozenSchema(LogReadingOutputSchema);
 preloadSchemas();
