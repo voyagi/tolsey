@@ -13,6 +13,9 @@ const StoreLimitsSchema = z
     writeWindowHours: z.number().positive(),
     retentionAgeHours: z.number().positive(),
     retryWindowSeconds: z.number().positive(),
+    sweepBatchLimit: z.number().int().positive(),
+    cronSweepBatchLimit: z.number().int().positive(),
+    maxSweepRounds: z.number().int().positive(),
   })
   .strict();
 export type StoreLimits = z.infer<typeof StoreLimitsSchema>;
@@ -25,6 +28,7 @@ const RowsPerWriteSchema = z
     event: z.number().int().positive(),
     event_superseding: z.number().int().positive(),
     event_answering: z.number().int().positive(),
+    budget_add: z.number().int().positive(),
   })
   .strict();
 

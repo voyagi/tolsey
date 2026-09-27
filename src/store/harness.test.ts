@@ -107,12 +107,17 @@ describe('the D1 test harness', () => {
     d1 = await openTestD1();
     const store = new D1Store(d1.db);
     await store.createKitchen({
-      id: kitchenId,
-      kind: 'scratch',
-      label: null,
-      timeZone: 'America/Chicago',
-      dayStart: '04:00',
-      createdAt: KITCHEN_CREATED_AT,
+      kitchen: {
+        id: kitchenId,
+        kind: 'scratch',
+        label: null,
+        timeZone: 'America/Chicago',
+        dayStart: '04:00',
+        createdAt: KITCHEN_CREATED_AT,
+      },
+      expectedRows: 20,
+      utcDate: '2026-10-20',
+      dailyRowCap: 40_000,
     });
     const handler = createMcpHandler(() => probeServer(store, kitchenId));
     const transport = new StreamableHTTPClientTransport(new URL('http://localhost/mcp'), {

@@ -1,4 +1,13 @@
-import type { AppendInput, AppendOutcome, D1Like, KitchenRow, Store, StoredLine } from './port';
+import type {
+  AppendInput,
+  AppendOutcome,
+  CreateKitchenInput,
+  CreateKitchenOutcome,
+  D1Like,
+  KitchenRow,
+  Store,
+  StoredLine,
+} from './port';
 
 // Statement 1 of the append batch. The day line and the record code are allocated inside the INSERT,
 // so two concurrent appends can never read the same MAX, and the stored result is complete at insert
@@ -58,9 +67,12 @@ SELECT
 FROM (SELECT 1) AS one
 LEFT JOIN events AS stored ON stored.kitchen_id = ?1 AND stored.request_id = ?2`;
 
+// The budget check sits in the same statement as the insert, so two concurrent mints cannot both read
+// room under the cap and both write; COUNT_BUDGET then counts it only when the row landed.
 const INSERT_KITCHEN = `
 INSERT INTO kitchens (id, kind, label, time_zone, day_start, created_at)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6)`;
+SELECT ?1, ?2, ?3, ?4, ?5, ?6
+WHERE COALESCE((SELECT rows FROM budget WHERE utc_date = ?7), 0) + ?8 <= ?9`;
 
 const SELECT_KITCHEN = `
 SELECT id, kind, label, time_zone, day_start, created_at FROM kitchens WHERE id = ?1`;
@@ -154,11 +166,17 @@ function toStoredLine(row: EventRecord): StoredLine {
 export class D1Store implements Store {
   constructor(private readonly db: D1Like) {}
 
-  async createKitchen(row: KitchenRow): Promise<void> {
-    await this.db
+  async createKitchen(input: CreateKitchenInput): Promise<CreateKitchenOutcome> {
+    const { kitchen } = input;
+    const insert = this.db
       .prepare(INSERT_KITCHEN)
-      .bind(row.id, row.kind, row.label, row.timeZone, row.dayStart, row.createdAt)
-      .run();
+      .bind(
+        kitchen.id, kitchen.kind, kitchen.label, kitchen.timeZone, kitchen.dayStart, kitchen.createdAt,
+        input.utcDate, input.expectedRows, input.dailyRowCap,
+      );
+    const count = this.db.prepare(COUNT_BUDGET).bind(input.utcDate, input.expectedRows);
+    const [inserted] = await this.db.batch([insert, count]);
+    return inserted.meta.changes > 0 ? { status: 'created' } : { status: 'refused', reason: 'budget_full' };
   }
 
   async findKitchen(id: string): Promise<KitchenRow | null> {

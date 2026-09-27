@@ -10,7 +10,7 @@ const WORDS = 'the walk-in reads 38';
 // The stub sits at the platform boundary: a D1 failure whose message carries the call's words and
 // initials, the way a constraint error can quote the values it refused.
 const faultingStore: Store = {
-  createKitchen: async () => {},
+  createKitchen: async () => ({ status: 'created' }),
   findKitchen: async () => null,
   linesForDay: async () => [],
   append: async () => {

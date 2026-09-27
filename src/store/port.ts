@@ -2,7 +2,7 @@
 // program has to see the generated D1Database global.
 export interface D1ResultLike<Row = Record<string, unknown>> {
   results: Row[];
-  meta: { changes: number; rows_written: number; last_row_id: number };
+  meta: { changes: number; rows_read: number; rows_written: number; last_row_id: number };
 }
 
 export interface D1StatementLike {
@@ -77,6 +77,7 @@ export interface RowsPerWrite {
   event: number;
   event_superseding: number;
   event_answering: number;
+  budget_add: number;
 }
 
 // The adapter cannot know before the batch runs whether the date's budget row exists yet, or which
@@ -102,6 +103,17 @@ export interface AppendInput {
 
 export type RefusalReason = 'budget_full' | 'kitchen_full' | 'kitchen_closed';
 
+// A mint spends the same daily allowance as a write, so the kitchen insert is guarded by the budget
+// the same way an event append is.
+export interface CreateKitchenInput {
+  kitchen: KitchenRow;
+  expectedRows: number;
+  utcDate: string;
+  dailyRowCap: number;
+}
+
+export type CreateKitchenOutcome = { status: 'created' } | { status: 'refused'; reason: 'budget_full' };
+
 export type AppendOutcome =
   | { status: 'appended'; seq: number; dayLine: number | null; resultJson: string }
   | { status: 'duplicate'; resultJson: string }
@@ -113,7 +125,7 @@ export type AppendOutcome =
 // No method edits or removes an event: the record is append-only, and expiring a whole scratch
 // kitchen is retention, which lives outside this port.
 export interface Store {
-  createKitchen(row: KitchenRow): Promise<void>;
+  createKitchen(input: CreateKitchenInput): Promise<CreateKitchenOutcome>;
   findKitchen(id: string): Promise<KitchenRow | null>;
   append(input: AppendInput): Promise<AppendOutcome>;
   linesForDay(kitchenId: string, businessDay: string): Promise<StoredLine[]>;

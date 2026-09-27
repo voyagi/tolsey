@@ -19,6 +19,7 @@ import {
 } from './guards';
 import { handleKitchensRoute } from './kitchens';
 import { createServer, type Clock, type ServerDeps } from './mcp';
+import { runScheduledSweep } from './retention';
 import { resolveScope } from './scope';
 
 export interface WorkerEnv {
@@ -30,6 +31,13 @@ export interface WorkerEnv {
 export interface WorkerOptions {
   clock: Clock;
   storeFor?: (env: WorkerEnv) => Store;
+}
+
+// Typed by what the handler reads, as D1Like types the database: the test program has no
+// ScheduledController.
+export interface ScheduledRun {
+  scheduledTime: number;
+  cron?: string;
 }
 
 interface ReadBody {
@@ -73,11 +81,17 @@ async function readBody(request: Request): Promise<ReadBody | 'too_large'> {
   return { forward, parsed: parseJsonBody(bytes) };
 }
 
-async function serveApi(request: Request, pathname: string, store: Store, clock: Clock): Promise<Response> {
+async function serveApi(request: Request, pathname: string, store: Store, db: D1Like, clock: Clock): Promise<Response> {
   const body = await readBody(request);
   if (body === 'too_large') return jsonError(413, { error: 'body_too_large' });
   if (pathname !== '/api/kitchens') return jsonError(404, { error: 'not_found' });
-  return handleKitchensRoute(request.method, body.parsed, { store, clock, limits: STORE_LIMITS });
+  return handleKitchensRoute(request.method, body.parsed, {
+    store,
+    db,
+    clock,
+    limits: STORE_LIMITS,
+    rowsPerWrite: ROWS_PER_WRITE,
+  });
 }
 
 async function serveMcp(request: Request, pathname: string, store: Store, clock: Clock): Promise<Response> {
@@ -125,10 +139,21 @@ export function createWorker({ clock, storeFor = (env) => new D1Store(env.DB) }:
       try {
         const store = storeFor(env);
         return family === 'api'
-          ? await serveApi(request, pathname, store, clock)
+          ? await serveApi(request, pathname, store, env.DB, clock)
           : await serveMcp(request, pathname, store, clock);
       } catch (error) {
         return serverFault(family, error);
+      }
+    },
+
+    // The Cron Trigger's own instant is the sweep's clock, so a late run deletes by the hour it was
+    // scheduled for. A failure is rethrown without its message, so the run still reads as failed.
+    async scheduled(controller: ScheduledRun, env: WorkerEnv): Promise<void> {
+      try {
+        await runScheduledSweep(env.DB, controller.scheduledTime, STORE_LIMITS, ROWS_PER_WRITE);
+      } catch (error) {
+        logFault('[retention]', error);
+        throw new Error('the retention sweep failed');
       }
     },
   };

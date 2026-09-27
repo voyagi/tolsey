@@ -17,6 +17,7 @@ import {
   type RowsPerWrite,
   type Store,
 } from '../store/port';
+import { utcDate } from './budget';
 import type { StoreLimits } from './data';
 import { logFault } from './guards';
 import { writeWindowMs } from './kitchens';
@@ -57,7 +58,7 @@ const REJECTION_TEXT: Record<Rejection, string> = {
 };
 
 const REFUSAL_TEXT: Record<RefusalReason, string> = {
-  kitchen_closed: 'This kitchen takes no new readings. Start a new kitchen to log one.',
+  kitchen_closed: 'This kitchen has closed. Start a new kitchen to keep logging.',
   kitchen_full: 'This kitchen is full. Start a new kitchen to keep logging.',
   budget_full: 'The demo is full for today. Try the replay.',
 };
@@ -79,10 +80,6 @@ async function argsHash(args: LogReadingInput): Promise<string> {
     .sort(([a], [b]) => (a < b ? -1 : 1));
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(Object.fromEntries(entries))));
   return hex(digest);
-}
-
-function utcDate(instantMs: number): string {
-  return new Date(instantMs).toISOString().slice(0, 10);
 }
 
 function expiredText(resultJson: string): string {

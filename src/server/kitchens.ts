@@ -1,14 +1,18 @@
 import { kitchenSettings } from '../domain/business-day';
 import { utcIso } from '../domain/instant';
-import type { KitchenLabel, Store } from '../store/port';
+import type { D1Like, KitchenLabel, RowsPerWrite, Store } from '../store/port';
+import { readBudgetRows, utcDate } from './budget';
 import type { StoreLimits } from './data';
 import { jsonError, type ParsedBody } from './guards';
 import type { Clock } from './mcp';
+import { expireKitchens } from './retention';
 
 export interface KitchensDeps {
   store: Store;
+  db: D1Like;
   clock: Clock;
   limits: StoreLimits;
+  rowsPerWrite: RowsPerWrite;
 }
 
 export interface MintedKitchen {
@@ -24,6 +28,7 @@ const KITCHEN_ID_BYTES = 16;
 // The hourly Cron Trigger reaches a kitchen within one run of it turning retentionAgeHours old.
 const SWEEP_INTERVAL_MS = HOUR_MS;
 const LABELS: ReadonlySet<string> = new Set<KitchenLabel>(['capture', 'conformance']);
+const DEMO_FULL = 'The demo is full for today. Try the replay.';
 
 type LabelChoice = { ok: true; label: KitchenLabel | null } | { ok: false; error: 'invalid_body' | 'invalid_label' };
 
@@ -54,10 +59,25 @@ function chooseLabel(body: ParsedBody): LabelChoice {
   return { ok: true, label: label as KitchenLabel };
 }
 
-export async function mintKitchen(deps: KitchensDeps, label: KitchenLabel | null): Promise<MintedKitchen> {
+// The budget is read before anything else, so a flood of mints refused at the cap costs one read each
+// and never a sweep. An admitted mint runs one bounded sweep round (deletion keeps happening even if
+// the Cron Trigger never fires) and then the guarded insert, which can still refuse: the budget may
+// fill between the read and the insert, this mint's own sweep included.
+export async function mintKitchen(deps: KitchensDeps, label: KitchenLabel | null): Promise<MintedKitchen | 'budget_full'> {
   const createdAt = deps.clock.now();
+  const date = utcDate(createdAt);
+  const expectedRows = deps.rowsPerWrite.kitchen_create;
+  if ((await readBudgetRows(deps.db, date)) + expectedRows > deps.limits.dailyRowCap) return 'budget_full';
+
+  await expireKitchens(deps.db, createdAt, deps.limits, deps.rowsPerWrite, deps.limits.sweepBatchLimit);
   const id = newKitchenId();
-  await deps.store.createKitchen({ id, kind: 'scratch', label, ...kitchenSettings({}), createdAt });
+  const outcome = await deps.store.createKitchen({
+    kitchen: { id, kind: 'scratch', label, ...kitchenSettings({}), createdAt },
+    expectedRows,
+    utcDate: date,
+    dailyRowCap: deps.limits.dailyRowCap,
+  });
+  if (outcome.status === 'refused') return 'budget_full';
   return {
     id,
     mcpPath: `/mcp/k/${id}`,
@@ -71,5 +91,6 @@ export async function handleKitchensRoute(method: string, body: ParsedBody, deps
   const choice = chooseLabel(body);
   if (!choice.ok) return jsonError(400, { error: choice.error });
   const minted = await mintKitchen(deps, choice.label);
+  if (minted === 'budget_full') return jsonError(503, { error: 'demo_full', message: DEMO_FULL });
   return Response.json(minted, { status: 201, headers: { 'cache-control': 'no-store' } });
 }

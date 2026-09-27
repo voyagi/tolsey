@@ -4,6 +4,7 @@ import {
   appendInput,
   HOUR_MS,
   KITCHEN_CREATED_AT,
+  kitchenInput,
   readLimits,
   readRowsPerWrite,
   RESULT_TEMPLATE,
@@ -85,7 +86,7 @@ describe('what local D1 guarantees for the record', () => {
 
   async function freshKitchen(createdAt = KITCHEN_CREATED_AT): Promise<string> {
     const kitchen = scratchKitchen(createdAt);
-    await store.createKitchen(kitchen);
+    expect(await store.createKitchen(kitchenInput(kitchen, limits))).toEqual({ status: 'created' });
     return kitchen.id;
   }
 
@@ -355,8 +356,14 @@ describe('what local D1 guarantees for the record', () => {
       return meter.rows;
     };
 
-    await metered.createKitchen(kitchen);
-    const measured: RowsPerWrite = {
+    // A mint as the first write of its UTC date: the kitchen row, its index rows and the budget row's
+    // insert, the safe direction, as event_first_of_day is for events.
+    const stored = readRowsPerWrite();
+    const created = await metered.createKitchen(
+      kitchenInput(kitchen, limits, { utcDate: '2026-12-31', expectedRows: stored.kitchen_create }),
+    );
+    expect(created).toEqual({ status: 'created' });
+    const measured: Omit<RowsPerWrite, 'budget_add'> = {
       kitchen_create: meter.rows,
       event_first_of_day: await write({}),
       event: await write({}),
@@ -364,7 +371,6 @@ describe('what local D1 guarantees for the record', () => {
       event_answering: await write({ answersId: crypto.randomUUID() }),
     };
     console.log('measured rows written per write kind', JSON.stringify(measured));
-    const stored = readRowsPerWrite();
     expect(measured).toEqual({
       kitchen_create: stored.kitchen_create,
       event_first_of_day: stored.event_first_of_day,

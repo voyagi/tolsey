@@ -37,12 +37,27 @@ scratch kitchen is addressed only through the path `/mcp/k/<id>` and never throu
 argument. A named kitchen is a scratch kitchen minted with a label from the closed list `capture`
 or `conformance`; the label gives it no special rights.
 
-A scratch kitchen accepts writes for 23 hours. An hourly Cron Trigger deletes each kitchen aged 23
-hours or more together with all its lines, so nothing a visitor wrote outlives 24 hours. A per-kitchen
-line cap of 200 and a daily budget of 40,000 rows written refuse further writes with a spoken reason.
-Both caps are held in `data/store/limits.json`. The line cap is 200 because a demo shift holds a few
-dozen lines, and 200 lines at the measured rows per event keeps many visitors inside the 100,000-row
-daily allowance.
+A scratch kitchen accepts writes until 23 hours less the 120-second retry window after it was minted
+(`writeWindowMs` in `src/server/kitchens.ts`, reported to the visitor as `closesAt`). An hourly Cron
+Trigger deletes each kitchen aged 23 hours or more together with all its lines, so nothing a visitor
+wrote outlives 24 hours. Writes close one retry window early so that a retry of the last accepted
+write still finds its kitchen and gets its stored result before the sweep may take it; closing at the
+full 23 hours would let such a retry answer "not found" instead.
+
+The sweep lives in `src/server/retention.ts`, outside the store adapter, and holds the only DELETE
+statements in the codebase. A round reads expired kitchens through the `kitchens_expiry` index, at most
+`sweepBatchLimit` of them on a mint and `cronSweepBatchLimit` on the hourly run, then deletes those
+kitchens and their lines with two statements over one bound JSON array of ids, so a round is at most
+four statements whatever its size. The hourly run repeats rounds up to `maxSweepRounds`, which keeps it
+under the free plan's 50 queries per Worker invocation while still clearing every kitchen the daily
+budget can mint. A mint reads the budget first and is refused at once when the day is full, with no
+sweep; an admitted mint runs one round before its guarded insert. A round that deletes nothing writes
+no budget row.
+
+A per-kitchen line cap of 200 and a daily budget of 40,000 rows written refuse further writes with a
+spoken reason, and the kitchen insert is guarded by the same budget. The caps and the sweep sizes are
+held in `data/store/limits.json`. The line cap is 200 because a demo shift holds a few dozen lines, and
+200 lines at the measured rows per event keeps many visitors inside the 100,000-row daily allowance.
 
 The free allowance belongs to the account, not to this database. Cloudflare's D1 pricing page says
 that once the account reaches its daily limits no query runs against D1 until the 00:00 UTC reset
@@ -117,15 +132,22 @@ is appended, so a later change of the schedule never moves an old reading to ano
 
 Measured on local D1 through `getPlatformProxy` on this schema (migrations 0001 and 0002) by the test
 "measures rows written per write kind equal to data/store/rows-per-write.json" in
-`src/store/d1-features.test.ts`, run with `npx vitest run --project store`:
+`src/store/d1-features.test.ts`, run with `npx vitest run --project store`, and, for `budget_add`, by
+"measures the rows the sweep budget add writes as the first write of a UTC date equal to budget_add"
+in `src/server/budget.test.ts`:
 
 | Write kind | Rows written |
 |------------|--------------|
-| `kitchen_create` | 3 |
+| `kitchen_create` | 5 |
 | `event_first_of_day` | 8 |
 | `event` | 7 |
 | `event_superseding` | 8 |
 | `event_answering` | 8 |
+| `budget_add` | 2 |
+
+`kitchen_create` is a mint as the first write of its UTC date: the kitchen row with its two index rows,
+plus the budget row's insert, the safe direction. `budget_add` is the retention sweep's own bookkeeping,
+the budget row's insert as the first write of a date; later adds of the same date write one row.
 
 `event_first_of_day` is an event plus the first budget upsert of its UTC date, and `event` a later
 event of the same date; the difference of one is the budget row's insert against its update. Every
@@ -141,9 +163,9 @@ later one, and holds the measured rows at or below the reserve in all 40 cells. 
 only by the budget insert on later events of a date and by the day-line index row a held,
 wrong_number or receipt event skips, which is the safe direction.
 
-Retention deletes count against the same daily allowance, one row per deleted row as measured on
-local D1 on 2026-09-25, before this schema's final indexes; the retention work measures it again on
-this schema. All numbers are measured again on remote D1 at the first deploy.
+Retention deletes count against the same daily allowance. A round adds the summed `meta.rows_written`
+of its delete batch, which counts index rows as well as table rows, plus `budget_add`, with no cap
+check: retention is never refused. All numbers are measured again on remote D1 at the first deploy.
 
 ## Append-only guard
 

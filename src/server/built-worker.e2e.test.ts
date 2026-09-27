@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestHarness } from 'wrangler';
 import { D1Store } from '../store/d1-store';
 import type { D1Like } from '../store/port';
-import { appendInput, readLimits, scratchKitchen, testEvent } from '../test-support/events';
+import { appendInput, kitchenInput, readLimits, scratchKitchen, testEvent } from '../test-support/events';
 
 // The built config, not wrangler.jsonc: vite build writes dist/tolsey/wrangler.json with the
 // bundled Worker, the ASSETS directory and migrations_dir pointing back at migrations/.
@@ -46,7 +46,7 @@ describe('the built Worker in workerd', () => {
   it('appends an event through a D1Store over the Worker binding and reads it back', async () => {
     const store = new D1Store(db);
     const kitchen = scratchKitchen();
-    await store.createKitchen(kitchen);
+    await store.createKitchen(kitchenInput(kitchen, readLimits()));
     const event = testEvent(kitchen.id);
 
     const outcome = await store.append(appendInput(event, readLimits()));
@@ -58,7 +58,7 @@ describe('the built Worker in workerd', () => {
   it('refuses an UPDATE of an events row through the Worker binding with the trigger', async () => {
     const store = new D1Store(db);
     const kitchen = scratchKitchen();
-    await store.createKitchen(kitchen);
+    await store.createKitchen(kitchenInput(kitchen, readLimits()));
     const event = testEvent(kitchen.id);
     await store.append(appendInput(event, readLimits()));
 
