@@ -65,7 +65,7 @@ const PromptResultSchema = z.object({ kind: z.string(), id: z.string() }).strict
 
 const FixResultSchema = z.object({ id: z.string(), deadline: z.string() }).strict();
 
-export const LogReadingOutputSchema = z
+const OutputObjectSchema = z
   .object({
     contractVersion: z.literal(CONTRACT_VERSION),
     outcome: z.enum(OUTCOMES),
@@ -85,5 +85,48 @@ export const LogReadingOutputSchema = z
     fix: FixResultSchema.optional(),
   })
   .strict();
+
+type OutputField = keyof z.infer<typeof OutputObjectSchema>;
+
+interface OutcomeFields {
+  requires: readonly OutputField[];
+  forbids: readonly OutputField[];
+}
+
+const LINE_FIELDS: readonly OutputField[] = ['lineId', 'recordCode', 'checkPoint', 'value', 'unit', 'initials'];
+
+// Refusing additional properties says nothing about which fields an outcome must carry, and the SDK
+// validates structuredContent only against this schema, so each outcome's shape is held here.
+const OUTCOME_FIELDS: Record<Outcome, OutcomeFields> = {
+  in_range: { requires: [...LINE_FIELDS, 'rule'], forbids: ['prompt'] },
+  out_of_range: { requires: [...LINE_FIELDS, 'rule'], forbids: ['prompt'] },
+  not_covered: { requires: LINE_FIELDS, forbids: ['rule', 'prompt'] },
+  refused: { requires: [], forbids: ['value', 'unit', 'rule', 'supersedesLineId'] },
+  held: { requires: ['prompt'], forbids: ['lineId', 'recordCode', 'rule', 'supersedesLineId'] },
+  nothing_to_fix: {
+    requires: [],
+    forbids: ['lineId', 'recordCode', 'value', 'unit', 'rule', 'prompt', 'supersedesLineId'],
+  },
+};
+
+function checkOutcomeFields(result: z.infer<typeof OutputObjectSchema>, ctx: z.RefinementCtx): void {
+  const { requires, forbids } = OUTCOME_FIELDS[result.outcome];
+  for (const field of requires) {
+    if (result[field] === undefined) {
+      ctx.addIssue({ code: 'custom', path: [field], message: `${result.outcome} requires ${field}` });
+    }
+  }
+  for (const field of forbids) {
+    if (result[field] !== undefined) {
+      ctx.addIssue({ code: 'custom', path: [field], message: `${result.outcome} carries no ${field}` });
+    }
+  }
+  // A refusal line carries both; a receipt reply such as "Log it by hand" carries neither.
+  if (result.outcome === 'refused' && result.recordCode !== undefined && result.lineId === undefined) {
+    ctx.addIssue({ code: 'custom', path: ['recordCode'], message: 'refused carries a recordCode only beside a lineId' });
+  }
+}
+
+export const LogReadingOutputSchema = OutputObjectSchema.superRefine(checkOutcomeFields);
 export type LogReadingOutput = z.infer<typeof LogReadingOutputSchema>;
 export type RuleResult = z.infer<typeof RuleResultSchema>;

@@ -1,10 +1,12 @@
-import { McpServer, type CallToolResult } from '@modelcontextprotocol/server';
+import { McpServer, preloadSchemas, type CallToolResult } from '@modelcontextprotocol/server';
+import { frozenSchema } from '../contract/frozen-schema';
 import {
   LOG_READING,
   LogReadingInputSchema,
   LogReadingOutputSchema,
   type LogReadingInput,
 } from '../contract/log-reading';
+import { TOOL_ANNOTATIONS, TOOL_DESCRIPTIONS } from '../contract/tools';
 import { decideLogReading, type Rejection } from '../domain/log-reading';
 import type { KitchenProfile, RuleRow } from '../domain/rule';
 import {
@@ -33,6 +35,11 @@ export interface ServerDeps {
 }
 
 export const SERVER_INFO = { name: 'tolsey', version: '0.1.0' };
+
+// Module scope, once per isolate: the free plan bills request CPU, not module evaluation.
+const LOG_READING_INPUT = frozenSchema(LogReadingInputSchema);
+const LOG_READING_OUTPUT = frozenSchema(LogReadingOutputSchema);
+preloadSchemas();
 
 const HOUR_MS = 3_600_000;
 const SECOND_MS = 1000;
@@ -137,16 +144,16 @@ async function logReading(args: LogReadingInput, deps: ServerDeps): Promise<Call
 }
 
 export function createServer(deps: ServerDeps): McpServer {
-  const server = new McpServer(SERVER_INFO, { capabilities: { tools: { listChanged: false } } });
+  const server = new McpServer(SERVER_INFO, {
+    capabilities: { tools: { listChanged: false }, resources: { listChanged: false } },
+  });
   server.registerTool(
     LOG_READING,
     {
-      description:
-        "Log a temperature reading in Fahrenheit. Pass the cook's words unchanged in words, and leave value out " +
-        'when no number was said so Tolsey can refuse it.',
-      inputSchema: LogReadingInputSchema,
-      outputSchema: LogReadingOutputSchema,
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      description: TOOL_DESCRIPTIONS.log_reading,
+      inputSchema: LOG_READING_INPUT,
+      outputSchema: LOG_READING_OUTPUT,
+      annotations: TOOL_ANNOTATIONS.log_reading,
     },
     async (args) => {
       try {
