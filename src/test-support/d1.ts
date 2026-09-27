@@ -23,6 +23,16 @@ async function applyMigrations(db: D1Like): Promise<void> {
   }
 }
 
+// Every row of the three tables in a fixed order, serialized, so two dumps compare as strings.
+export async function dumpRecordTables(db: D1Like): Promise<string> {
+  const rows = async (query: string) => (await db.prepare(query).all()).results;
+  return JSON.stringify({
+    events: await rows('SELECT * FROM events ORDER BY seq'),
+    kitchens: await rows('SELECT * FROM kitchens ORDER BY id'),
+    budget: await rows('SELECT * FROM budget ORDER BY utc_date'),
+  });
+}
+
 export async function openTestD1(configPath = 'wrangler.jsonc'): Promise<TestD1> {
   const proxy = await getPlatformProxy<{ DB?: D1Like }>({ configPath, persist: false, remoteBindings: false });
   const db = proxy.env.DB;
