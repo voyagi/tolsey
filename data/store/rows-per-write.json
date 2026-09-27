@@ -1,0 +1,8 @@
+{
+  "measuredOn": "local D1 through getPlatformProxy, schema migrations/0001_record.sql and migrations/0002_append_only_guard.sql, by src/store/d1-features.test.ts",
+  "kitchen_create": 3,
+  "event_first_of_day": 8,
+  "event": 7,
+  "event_superseding": 8,
+  "event_answering": 8
+}

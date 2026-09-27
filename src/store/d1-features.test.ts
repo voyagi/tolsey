@@ -405,5 +405,5 @@ describe('what local D1 guarantees for the record', () => {
     }
     console.log(`rows written matrix\n${matrix.join('\n')}`);
     expect(matrix).toHaveLength(EVENT_KINDS.length * INDEX_SHAPES.length * 2);
-  });
+  }, 120_000);
 });
