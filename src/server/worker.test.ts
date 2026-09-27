@@ -1,9 +1,20 @@
 import { describe, expect, it } from 'vitest';
+import type { D1Like } from '../store/port';
 import worker, { type WorkerEnv } from './worker';
+
+const unusedDb: D1Like = {
+  prepare: () => {
+    throw new Error('not used by this test');
+  },
+  batch: async () => {
+    throw new Error('not used by this test');
+  },
+};
 
 const env: WorkerEnv = {
   ASSETS: { fetch: async () => new Response('asset', { status: 200 }) },
   ALLOWED_HOSTNAMES: 'localhost',
+  DB: unusedDb,
 };
 
 function initializeRequest(host: string, origin?: string): Request {
