@@ -298,6 +298,7 @@ describe(`MCP conformance on the ${inject('target')} target`, () => {
       ['words of 201 characters', { words: 'a'.repeat(201) }, /words/],
       ['the near-miss check point walk_ins', { check_point: 'walk_ins' }, /check_point/],
       ['a value with two decimal places', { value: 38.55 }, /one decimal place/],
+      ['a value past any thermometer', { value: 1e300 }, /value/],
     ])('answers %s with isError true and stores nothing', async (_label, overrides, named) => {
       const freshKitchen = await target.createKitchen();
       const client = await connect(target, `/mcp/k/${freshKitchen}`);

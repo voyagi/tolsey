@@ -88,6 +88,18 @@ describe('the words stored with a reading', () => {
     const { event } = decided(walkIn({ words: '<b>the walk-in</b> reads 38 ünïcode' }));
     expect(event.words).toBe('the walk-in reads 38');
   });
+
+  it('writes the number the way the value is stored when the words spell it another way', () => {
+    expect(decided(walkIn({ words: 'the walk-in reads 38.0' })).event.words).toBe('the walk-in reads 38');
+  });
+
+  it.each([
+    ['a spoken negative', { check_point: 'freezer', value: -5, words: 'freezer reads minus five' }, 'freezer -5'],
+    ['a number said in words', { value: 38, words: 'the walk-in reads thirty eight' }, 'walk-in 38'],
+    ['a half said in words', { value: 38.5, words: 'the walk-in reads 38 and a half' }, 'walk-in 38.5'],
+  ] as const)('never stores words without the number: %s falls back to the check point and value', (_label, overrides, words) => {
+    expect(decided(walkIn({ measured: undefined, ...overrides })).event.words).toBe(words);
+  });
 });
 
 describe('kitchenSettings', () => {

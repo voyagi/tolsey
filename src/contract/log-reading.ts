@@ -19,9 +19,20 @@ function hasAtMostOneDecimal(value: number): boolean {
   return Math.abs(tenths - Math.round(tenths)) < 1e-6;
 }
 
+// Absolute zero, rounded up to the tenth, and a figure past any kitchen probe. The bound also keeps
+// the decimal check meaningful: far above it a number carries no tenths at all, so any huge value
+// would pass as "one decimal place".
+const LOWEST_READING_F = -459.6;
+const HIGHEST_READING_F = 1000;
+
 export const LogReadingInputSchema = z.object({
   check_point: z.enum(CHECK_POINT_IDS).optional(),
-  value: z.number().refine(hasAtMostOneDecimal, { message: 'value takes at most one decimal place' }).optional(),
+  value: z
+    .number()
+    .min(LOWEST_READING_F)
+    .max(HIGHEST_READING_F)
+    .refine(hasAtMostOneDecimal, { message: 'value takes at most one decimal place' })
+    .optional(),
   measured: z.enum(MEASURE_IDS).optional(),
   words: z.string().max(200).optional(),
   initials: z.string().max(8).optional(),
@@ -40,6 +51,7 @@ export const LogReadingInputSchema = z.object({
     ),
   pending_prompt_id: z
     .string()
+    .max(64)
     .optional()
     .describe(
       "The id of the question Tolsey just asked, taken from the last result's prompt.id. Send it with the cook's " +

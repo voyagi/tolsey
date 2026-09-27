@@ -66,7 +66,9 @@ function formatValue(value: number): string {
 }
 
 // Only recognised tokens and the number itself persist, so no visitor free text or markup reaches
-// the record (BUILD-SPEC A7).
+// the record (BUILD-SPEC A7). A token naming the value in another spelling ("38.0") is written the
+// way the value is stored. Words that never name the value ("minus five", "38 and a half") are
+// replaced by the check point and the number, so a stored line never reads as a reading without one.
 export function rebuildWords(
   raw: string | undefined,
   profile: KitchenProfile,
@@ -75,8 +77,10 @@ export function rebuildWords(
 ): string {
   const number = formatValue(value);
   const known = recognisedTokens(profile);
-  const kept = raw === undefined ? [] : tokensOf(raw).filter((token) => token === number || known.has(token));
-  return kept.length > 0 ? kept.join(' ') : `${checkPoint.name.toLowerCase()} ${number}`;
+  const kept = (raw === undefined ? [] : tokensOf(raw))
+    .map((token) => (Number(token) === value ? number : token))
+    .filter((token) => token === number || known.has(token));
+  return kept.includes(number) ? kept.join(' ') : `${checkPoint.name.toLowerCase()} ${number}`;
 }
 
 export function spokenReadback(outcome: LogReadingOutput): string {

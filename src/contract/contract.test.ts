@@ -124,9 +124,25 @@ describe('the log_reading input contract', () => {
     expect(LogReadingInputSchema.safeParse({ ...base, value: 38.5 }).success).toBe(true);
   });
 
+  it.each([-459.7, 1000.1, 1e300, -1e300])('refuses value %d, which no probe thermometer reads', (value) => {
+    expect(LogReadingInputSchema.safeParse({ ...base, value }).success).toBe(false);
+  });
+
+  it.each([-459.6, -5, 0, 1000])('accepts value %d at or inside the thermometer range', (value) => {
+    expect(LogReadingInputSchema.safeParse({ ...base, value }).success).toBe(true);
+  });
+
   it('accepts words of 200 characters and refuses 201', () => {
     expect(LogReadingInputSchema.safeParse({ ...base, words: 'a'.repeat(200) }).success).toBe(true);
     expect(LogReadingInputSchema.safeParse({ ...base, words: 'a'.repeat(201) }).success).toBe(false);
+  });
+
+  // An empty id stays accepted on purpose: a host model may fill an optional field with "", and
+  // refusing the whole call would lose the cook's reading over an argument phase 1 never reads.
+  it('caps pending_prompt_id at 64 characters like the other ids, and still accepts an empty one', () => {
+    expect(LogReadingInputSchema.safeParse({ ...base, pending_prompt_id: 'p'.repeat(64) }).success).toBe(true);
+    expect(LogReadingInputSchema.safeParse({ ...base, pending_prompt_id: 'p'.repeat(65) }).success).toBe(false);
+    expect(LogReadingInputSchema.safeParse({ ...base, pending_prompt_id: '' }).success).toBe(true);
   });
 
   it('refuses the near-miss check point id walk_ins', () => {
