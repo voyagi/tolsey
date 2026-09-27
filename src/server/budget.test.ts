@@ -13,6 +13,7 @@ import {
 import { callLogReading, walkInArguments, type ToolResult } from '../test-support/mcp-client';
 import { mintThroughRoute, openInProcessWorker, type InProcessWorker } from '../test-support/target';
 import { addToBudget } from './budget';
+import { DEMO_PROFILE } from './data';
 import { handleKitchensRoute, writeWindowMs } from './kitchens';
 import { DELETE_EXPIRED_EVENTS, DELETE_EXPIRED_KITCHENS, expireKitchens, runScheduledSweep } from './retention';
 
@@ -67,7 +68,8 @@ describe('the daily row budget, the kitchen caps and retention', () => {
   }
 
   function kitchensDeps(db: D1Like) {
-    return { store: new D1Store(db), db, clock: worker.clock, limits, rowsPerWrite };
+    const settings = { timeZone: DEMO_PROFILE.timeZone, dayStart: DEMO_PROFILE.dayStart };
+    return { store: new D1Store(db), db, clock: worker.clock, limits, rowsPerWrite, settings };
   }
 
   async function mintDirectly(db: D1Like): Promise<Response> {
@@ -266,6 +268,19 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       expect(counted.totals().rowsRead).toBeLessThanOrEqual(2);
       expect(counted.totals().rowsWritten).toBe(0);
       expect(await scratchKitchens()).toBe(1);
+    });
+
+    it('mints a kitchen in the zone and day start of the profile it copies, never a second default', async () => {
+      const deps = { ...kitchensDeps(worker.db), settings: { timeZone: 'Europe/Amsterdam', dayStart: '05:00' } };
+
+      const response = await handleKitchensRoute('POST', { kind: 'json', value: {} }, deps);
+
+      const { id } = (await response.json()) as { id: string };
+      const row = await worker.db
+        .prepare('SELECT time_zone, day_start FROM kitchens WHERE id = ?1')
+        .bind(id)
+        .first<{ time_zone: string; day_start: string }>();
+      expect(row).toEqual({ time_zone: 'Europe/Amsterdam', day_start: '05:00' });
     });
 
     it('adds exactly the kitchen_create figure to the budget for an accepted mint with nothing expired', async () => {

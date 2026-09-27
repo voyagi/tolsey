@@ -2,6 +2,7 @@ import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/cli
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { dumpRecordTables } from '../test-support/d1';
 import { HOUR_MS, readLimits } from '../test-support/events';
+import { callLogReading, walkInArguments } from '../test-support/mcp-client';
 import { mintThroughRoute, openInProcessWorker, type InProcessWorker } from '../test-support/target';
 
 // 10:00 CDT on 2026-10-20, inside the demo kitchen's business day of that date.
@@ -131,6 +132,26 @@ describe('POST /api/kitchens and the kitchen a visitor writes to', () => {
     const logged = await callWalkIn(minted.mcpPath);
     expect(logged.isError).toBeFalsy();
     expect(await dumpRecordTables(worker.db)).not.toBe(afterDemo);
+  });
+
+  it('answers the same call past the retry window as request_id_expired, naming the first line, and stores nothing new', async () => {
+    const limits = readLimits();
+    const minted = await mintThroughRoute(worker.fetch, worker.baseUrl);
+    const args = walkInArguments();
+    const first = await callLogReading(worker.fetch, new URL(minted.mcpPath, worker.baseUrl), args);
+
+    worker.clock.set(MINT_AT + limits.retryWindowSeconds * 1000 + 1);
+    const late = (await callLogReading(worker.fetch, new URL(minted.mcpPath, worker.baseUrl), args)) as ToolResult & {
+      _meta?: Record<string, unknown>;
+    };
+
+    expect(first.structuredContent?.recordCode).toBe('261020-001');
+    expect(late.isError).toBe(true);
+    expect(late._meta).toEqual({ error: 'request_id_expired' });
+    expect(late.content[0]?.text).toBe(
+      'Tolsey already logged this call earlier, record 261020-001. Use a new request_id only for a new reading.',
+    );
+    expect(await worker.store.linesForDay(minted.id, BUSINESS_DAY)).toHaveLength(1);
   });
 
   it('answers a label outside the closed list with 400 invalid_label and mints nothing', async () => {

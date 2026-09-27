@@ -1,4 +1,4 @@
-import { kitchenSettings } from '../domain/business-day';
+import type { KitchenSettings } from '../domain/business-day';
 import { utcIso } from '../domain/instant';
 import type { D1Like, KitchenLabel, RowsPerWrite, Store } from '../store/port';
 import { readBudgetRows, utcDate } from './budget';
@@ -13,6 +13,9 @@ export interface KitchensDeps {
   clock: Clock;
   limits: StoreLimits;
   rowsPerWrite: RowsPerWrite;
+  // The zone and day start of the profile a scratch kitchen copies, so its business days follow the
+  // profile it is judged and scheduled by, never a second default.
+  settings: KitchenSettings;
 }
 
 export interface MintedKitchen {
@@ -72,7 +75,7 @@ export async function mintKitchen(deps: KitchensDeps, label: KitchenLabel | null
   await expireKitchens(deps.db, createdAt, deps.limits, deps.rowsPerWrite, deps.limits.sweepBatchLimit);
   const id = newKitchenId();
   const outcome = await deps.store.createKitchen({
-    kitchen: { id, kind: 'scratch', label, ...kitchenSettings({}), createdAt },
+    kitchen: { id, kind: 'scratch', label, ...deps.settings, createdAt },
     expectedRows,
     utcDate: date,
     dailyRowCap: deps.limits.dailyRowCap,

@@ -45,12 +45,16 @@ interface ReadBody {
   parsed: ParsedBody;
 }
 
+// The demo profile's zone and day start, which the demo kitchen and every scratch kitchen minted from
+// it share.
+const DEMO_SETTINGS = kitchenSettings({ timeZone: DEMO_PROFILE.timeZone, dayStart: DEMO_PROFILE.dayStart });
+
 // The seeded kitchens row of kind demo: the adapter and the store both refuse every write aimed at it.
 const DEMO_KITCHEN: KitchenRow = {
   id: 'demo',
   kind: 'demo',
   label: null,
-  ...kitchenSettings({ timeZone: DEMO_PROFILE.timeZone, dayStart: DEMO_PROFILE.dayStart }),
+  ...DEMO_SETTINGS,
   createdAt: 0,
 };
 
@@ -91,6 +95,7 @@ async function serveApi(request: Request, pathname: string, store: Store, db: D1
     clock,
     limits: STORE_LIMITS,
     rowsPerWrite: ROWS_PER_WRITE,
+    settings: DEMO_SETTINGS,
   });
 }
 

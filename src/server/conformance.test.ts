@@ -13,6 +13,7 @@ interface ToolResult {
   isError?: boolean;
   content: { type: string; text?: string }[];
   structuredContent?: Record<string, unknown>;
+  _meta?: Record<string, unknown>;
 }
 
 interface ListedTool {
@@ -313,6 +314,44 @@ describe(`MCP conformance on the ${inject('target')} target`, () => {
       expect(result.content[0]?.text).toMatch(named);
       const lines = await linesBetween(freshKitchen, before, after);
       if (lines) expect(lines).toEqual([]);
+    });
+
+    // On the deployed target these are the only proof that remote D1 raises the unique-index error in
+    // the words the store reads to tell a retry from a new call.
+    it('answers a retry of the same call with the first result and stores one line', async () => {
+      const freshKitchen = await target.createKitchen();
+      const requestId = crypto.randomUUID();
+      const client = await connect(target, `/mcp/k/${freshKitchen}`);
+      const before = now();
+      const [first, retry] = (await withClient(client, async (c) => [
+        await c.callTool(walkInCall(requestId)),
+        await c.callTool(walkInCall(requestId)),
+      ])) as ToolResult[];
+      const after = now();
+
+      expect(first.isError).toBeFalsy();
+      expect(retry).toEqual(first);
+      const lines = await linesBetween(freshKitchen, before, after);
+      if (lines) expect(lines).toHaveLength(1);
+    });
+
+    it('refuses a request_id reused with other arguments as request_id_reused and stores no second line', async () => {
+      const freshKitchen = await target.createKitchen();
+      const requestId = crypto.randomUUID();
+      const client = await connect(target, `/mcp/k/${freshKitchen}`);
+      const before = now();
+      const [first, reused] = (await withClient(client, async (c) => [
+        await c.callTool(walkInCall(requestId)),
+        await c.callTool(walkInCall(requestId, { value: 39, words: 'the walk-in reads 39' })),
+      ])) as ToolResult[];
+      const after = now();
+
+      expect(first.isError).toBeFalsy();
+      expect(reused.isError).toBe(true);
+      expect(reused._meta).toEqual({ error: 'request_id_reused' });
+      expect(reused.content[0]?.text).toMatch(/request_id was already used/);
+      const lines = await linesBetween(freshKitchen, before, after);
+      if (lines) expect(lines.map((line) => line.valueTenths)).toEqual([380]);
     });
 
     it('stores two readings given at the same instant, ordered by sequence', async () => {
