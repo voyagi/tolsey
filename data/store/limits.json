@@ -1,0 +1,7 @@
+{
+  "dailyRowCap": 40000,
+  "kitchenLineCap": 200,
+  "writeWindowHours": 23,
+  "retentionAgeHours": 23,
+  "retryWindowSeconds": 120
+}
