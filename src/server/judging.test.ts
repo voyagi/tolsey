@@ -142,4 +142,46 @@ describe('readings routed to their own rule row, through MCP', () => {
     const line = await storedLine(kitchenId, AFTERNOON_DAY, result);
     expect(line).toMatchObject({ outcome: 'not_covered', valueTenths: 700, verdict: null, ruleId: null, ruleSnapshot: null });
   });
+
+  describe('receiving, where each delivered food names its own rule', () => {
+    it.each([
+      ['a milk delivery at 44 by the milk law', 'milk', 44, 'in_range', 'receiving_law_milk'],
+      ['a cold delivery at 44 by 3-202.11(A)', 'raw_chicken', 44, 'out_of_range', 'receiving_cold'],
+      ['a hot delivery at 135.0 by 3-202.11(D)', 'catered_chili', 135.0, 'in_range', 'receiving_hot'],
+    ])('judges %s', async (_label, measured, value, outcome, ruleId) => {
+      const kitchenId = await kitchenAt(AFTERNOON);
+      const result = await logAt(kitchenId, AFTERNOON, { check_point: 'receiving', value, measured, initials: 'MR' });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.structuredContent).toMatchObject({ outcome, rule: { id: ruleId } });
+    });
+  });
+
+  describe('a reading with no row for what was measured', () => {
+    it.each([
+      ['a receiving reading that names no food', { check_point: 'receiving', value: 40, initials: 'JT' }, 'Receiving, 40'],
+      [
+        'a freezer reading measured as chicken soup',
+        { check_point: 'freezer', value: 2, measured: 'chicken_soup', initials: 'JT' },
+        'Freezer, 2',
+      ],
+    ])('stores %s as not covered yet, never judged by another row', async (_label, reading, spoken) => {
+      const kitchenId = await kitchenAt(AFTERNOON);
+      const result = await logAt(kitchenId, AFTERNOON, reading);
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content[0]?.text).toBe(`${spoken}, not covered yet, JT`);
+      expect(result.structuredContent?.outcome).toBe('not_covered');
+      const line = await storedLine(kitchenId, AFTERNOON_DAY, result);
+      expect(line).toMatchObject({ outcome: 'not_covered', valueTenths: reading.value * 10, ruleId: null });
+    });
+  });
+
+  it('judges the freezer air at 5 below in range by the house freezer limit', async () => {
+    const kitchenId = await kitchenAt(AFTERNOON);
+    const result = await logAt(kitchenId, AFTERNOON, { check_point: 'freezer', value: -5, initials: 'KL' });
+
+    expect(result.content[0]?.text).toBe('Freezer, -5, in range, KL');
+    expect(result.structuredContent).toMatchObject({ outcome: 'in_range', rule: { id: 'freezer_limit' } });
+  });
 });
