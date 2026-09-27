@@ -20,17 +20,64 @@
 // Usage: node scripts/check-remote-migrations.mjs [--local] [--persist-to <dir>] [--selftest]
 // --local and --persist-to exist only to probe the real output shape against a local D1;
 // `npm run deploy` passes neither.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const PENDING = 'Migrations to be applied';
+const NONE_PENDING = 'No migrations to apply';
+const ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;
+
+function lastLines(text, n) {
+  return text.split(/\r?\n/).map((l) => l.trimEnd()).filter(Boolean).slice(-n).map((l) => `  ${l}`).join('\n');
+}
+
 function run(cwd, flags) {
-  void cwd;
-  void flags;
-  console.log('[remote-migrations] every migration is applied.');
-  return 0;
+  if (flags.persistTo !== null && (!flags.local || flags.persistTo === '' || flags.persistTo.startsWith('--'))) {
+    console.error('[remote-migrations] UNKNOWN: --persist-to needs --local and a directory after it. Nothing was deployed.');
+    return 2;
+  }
+  const where = flags.local ? 'local' : 'remote';
+  const entry = join(cwd, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
+  if (!existsSync(entry)) {
+    console.error('[remote-migrations] UNKNOWN: wrangler is not installed here (node_modules/wrangler/bin/wrangler.js is missing), so the migrations could not be listed. Nothing was deployed.');
+    return 2;
+  }
+  const args = ['d1', 'migrations', 'list', 'DB', flags.local ? '--local' : '--remote'];
+  if (flags.persistTo) args.push('--persist-to', flags.persistTo);
+  const result = spawnSync(process.execPath, [entry, ...args], {
+    cwd, encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024,
+  });
+  const stdout = String(result.stdout || '');
+  const stderr = String(result.stderr || '');
+  if (result.error || result.status !== 0) {
+    const why = result.error ? result.error.message : `exit ${result.status == null ? `signal ${result.signal}` : result.status}`;
+    console.error(`[remote-migrations] UNKNOWN: wrangler d1 migrations list DB --${where} failed (${why}):`);
+    console.error(lastLines(stderr || stdout, 8) || '  (no output)');
+    console.error('[remote-migrations] nothing was deployed.');
+    return 2;
+  }
+  const text = `${stdout}\n${stderr}`.replace(ANSI, '');
+  if (!text.trim()) {
+    console.error(`[remote-migrations] UNKNOWN: wrangler d1 migrations list DB --${where} printed nothing. A list that said nothing is not an empty list. Nothing was deployed.`);
+    return 2;
+  }
+  if (text.includes(PENDING)) {
+    const names = [...new Set(text.match(/\b\d{4}_[A-Za-z0-9_-]*\.sql\b/g) || [])];
+    console.error(`[remote-migrations] REFUSED: migrations left to apply on the ${where} database: ${names.length ? names.join(', ') : '(names not found in the output)'}`);
+    console.error('wrangler deploy did not run: apply these migrations (answer yes at the prompt) and deploy again');
+    return 1;
+  }
+  if (text.includes(NONE_PENDING)) {
+    console.log(`[remote-migrations] every migration is applied on the ${where} database.`);
+    return 0;
+  }
+  console.error(`[remote-migrations] UNKNOWN: did not recognise the output of wrangler d1 migrations list DB --${where}:`);
+  console.error(lastLines(text, 8));
+  console.error('[remote-migrations] nothing was deployed.');
+  return 2;
 }
 
 function parseFlags(argv) {

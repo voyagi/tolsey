@@ -7,8 +7,9 @@ on:
   pull_request:
   push:
     branches: [main, master]
-# Least privilege: `npm ci` executes third-party postinstall scripts, so the job's GITHUB_TOKEN
-# must not carry write scopes. Nothing in this workflow writes to the repo.
+# Least privilege: the install runs with scripts off and only esbuild and workerd are rebuilt, but
+# the build and test steps still execute dependency code, so the job's GITHUB_TOKEN must not carry
+# write scopes. Nothing in this workflow writes to the repo.
 permissions:
   contents: read
 # One run per ref: rapid PR pushes cancel their stale runs (metered minutes on private repos);
@@ -26,13 +27,33 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          # align with the product's .nvmrc / package.json engines.node; if it has a .nvmrc,
-          # prefer `node-version-file: '.nvmrc'` so CI and local never drift.
-          node-version: 22
+          # Matches package.json engines.node. Node 24 bundles npm 11, the first line that reads
+          # allowScripts and strict-allow-scripts; Node 22's npm 10 ignores both and would run every
+          # install script silently.
+          node-version: 24
           cache: npm
-      # Swap `npm ci` + the `npm run` calls below for the product's package manager (pnpm/bun/yarn)
-      # if it does not use npm - this file hardcodes npm.
-      - run: npm ci
+      # Scripts off for the whole install (--ignore-scripts also overrides strict-allow-scripts),
+      # then only the two reviewed packages that need their install step are rebuilt. Their
+      # allowScripts entries pin exact versions, so an esbuild or workerd bump moves both.
+      - run: npm ci --ignore-scripts
+      - run: npm rebuild esbuild workerd
+      # With scripts off, a NEW package that ships an install script would install quietly and
+      # never be reviewed. npm install-scripts ls lists every installed package whose script is
+      # not covered by allowScripts; any entry fails the job. An empty or unparsable report, or
+      # one without the allowScripts key, fails too: a check that printed nothing is not clean.
+      - name: fail on install scripts not covered by allowScripts
+        run: |
+          report="$RUNNER_TEMP/install-scripts.json"
+          npm install-scripts ls --json > "$report"
+          test -s "$report" || { echo 'npm install-scripts ls printed nothing - refusing to read that as clean'; exit 1; }
+          jq -e . "$report" > /dev/null || { echo 'npm install-scripts ls output did not parse'; exit 1; }
+          jq -e '.allowScripts | type == "array"' "$report" > /dev/null || { echo 'npm install-scripts ls output has no allowScripts array'; exit 1; }
+          uncovered=$(jq '.allowScripts | length' "$report")
+          if [ "$uncovered" -gt 0 ]; then
+            echo "packages with install scripts not covered by package.json allowScripts: $uncovered"
+            jq '.allowScripts' "$report"
+            exit 1
+          fi
       # Build first so the frontend size-limit gate has a bundle to measure. `--if-present` makes this
       # a no-op on backend/CLI products with no build script (without a build, size-limit errors "no
       # files found" and the gate fails for the wrong reason).
@@ -66,17 +87,22 @@ jobs:
       # the same full surface the local ship step verifies. With a separate test workflow,
       # keep `npm run gate` here to avoid running the suite twice.
       #
-      # SECURITY FLOOR (trivy), on DEFAULT-BRANCH PUSHES ONLY. Not on pull_request on purpose:
-      # a frozen repo's Dependabot PRs would print its unpatched CVEs into public CI logs while
-      # nobody may merge the fix. Push-only keeps the verdict on what actually landed.
+      # SECURITY FLOOR (trivy), on default-branch pushes AND on pull requests. This product owns a
+      # public endpoint, so a vulnerable dependency must be caught before it merges, not after.
+      # Dependabot's own pull requests are excluded: while a repo is frozen nobody may merge the
+      # fix, and its bot pull requests would print the unpatched CVEs into public CI logs.
+      # No path filter, so a pull request that changes no lockfile is still scanned.
+      # Dev dependencies are included (trivy fs drops them by default), and the verdict asserts
+      # package-lock.json was actually read, so a scan that skipped the lockfile cannot pass.
       # The action runs with exit-code 0 and a JSON report; the VERDICT is the jq step below,
       # which fails on HIGH/CRITICAL and fails LOUDLY on an empty or unparsable report - a scan
       # that produced nothing must never read as a scan that found nothing.
-      - if: github.event_name == 'push'
+      - if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.actor != 'dependabot[bot]')
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         env:
           # Two DB mirrors: ghcr alone rate-limits cold caches into false failures.
           TRIVY_DB_REPOSITORY: mirror.gcr.io/aquasec/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2
+          TRIVY_INCLUDE_DEV_DEPS: 'true'
         with:
           scan-type: fs
           scan-ref: .
@@ -85,15 +111,16 @@ jobs:
           output: trivy-vulns.json
           exit-code: '0'
           cache: 'true'
-      - if: github.event_name == 'push'
+      - if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.actor != 'dependabot[bot]')
         name: fail on HIGH/CRITICAL vulnerabilities
         run: |
           test -s trivy-vulns.json || { echo 'trivy produced no report - refusing to read that as clean'; exit 1; }
           # `jq -e .` = valid JSON, nothing more. NOT `jq -e '.Results'`: trivy omits the Results
           # key entirely on a scan with no targets (measured on 0.74.0, a no-lockfile directory),
-          # and -e treats that null as failure, so the stricter assertion fails a genuinely CLEAN
-          # repo. The count below already reads an absent key as zero via `.Results[]?`.
+          # and -e treats that null as failure. This repo has a lockfile, so the target assertion
+          # after it is what proves the scan read it.
           jq -e . trivy-vulns.json > /dev/null || { echo 'trivy report did not parse - refusing to read that as clean'; exit 1; }
+          jq -e '[.Results[]?.Target] | any(. == "package-lock.json")' trivy-vulns.json > /dev/null || { echo 'trivy did not scan package-lock.json'; exit 1; }
           count=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH" or .Severity=="CRITICAL")] | length' trivy-vulns.json)
           echo "HIGH/CRITICAL vulnerabilities: $count"
           if [ "$count" -gt 0 ]; then

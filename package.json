@@ -7,7 +7,7 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "scripts": {
     "dev": "vite",
@@ -16,6 +16,8 @@
     "types:worker": "wrangler types",
     "test": "vitest run --project unit --project store --project conformance && npm run test:e2e",
     "test:e2e": "vite build && vitest run --project e2e",
+    "test:deployed": "vitest run --project deployed",
+    "deploy": "npm run build && node scripts/deploy-preflight.mjs && wrangler d1 migrations apply DB --remote && node scripts/check-remote-migrations.mjs && wrangler deploy",
     "lint": "eslint .",
     "gate:complexity": "eslint .",
     "gate:dup": "jscpd .",
@@ -28,7 +30,7 @@
     "gate:tsconfig": "node scripts/check-tsconfig-coverage.mjs",
     "gate:artifacts": "node scripts/check-ship-artifacts.mjs",
     "gate:precommit": "eslint . && jscpd . && npm run gate:env && npm run gate:tsconfig && npm run gate:artifacts",
-    "gate": "npm run gate:artifacts && npm run gate:tsconfig && npm run gate:types &&npm run gate:complexity && npm run gate:dup && npm run gate:deps && npm run gate:env && npm run gate:size",
+    "gate": "npm run gate:artifacts && npm run gate:tsconfig && npm run gate:types && npm run gate:complexity && npm run gate:dup && npm run gate:deps && npm run gate:env && npm run gate:size",
     "verify:ship": "node verify-ship.mjs"
   },
   "dependencies": {

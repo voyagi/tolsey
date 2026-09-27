@@ -37,9 +37,105 @@ import { fileURLToPath } from 'node:url';
 const DEPLOYED_HOST = 'tolsey.taranity.com';
 const RETENTION_CRON = '0 * * * *';
 
+const DEPLOY_STEPS = [
+  { name: 'node scripts/deploy-preflight.mjs', re: /^node\s+scripts\/deploy-preflight\.mjs$/ },
+  { name: 'wrangler d1 migrations apply DB --remote', re: /^wrangler\s+d1\s+migrations\s+apply\s+DB\s+--remote$/ },
+  { name: 'node scripts/check-remote-migrations.mjs', re: /^node\s+scripts\/check-remote-migrations\.mjs$/ },
+  { name: 'wrangler deploy', re: /^wrangler\s+deploy$/ },
+];
+
+function readJson(file) {
+  try {
+    return { value: JSON.parse(readFileSync(file, 'utf8')) };
+  } catch (e) {
+    return { error: e && e.code === 'ENOENT' ? 'missing' : 'did not parse' };
+  }
+}
+
+function configProblems(config) {
+  const problems = [];
+  const dbs = Array.isArray(config.d1_databases) ? config.d1_databases : [];
+  const db = dbs.find((d) => d && d.binding === 'DB');
+  if (!db) {
+    problems.push('d1_databases has no entry with binding DB');
+  } else if (!('database_id' in db) || db.database_id == null) {
+    problems.push('database_id is not set on the DB binding: create the database with wrangler d1 create tolsey --jurisdiction=eu and put its id into wrangler.jsonc');
+  } else if (typeof db.database_id !== 'string' || db.database_id.trim() === '') {
+    problems.push('database_id is empty on the DB binding: put the id wrangler d1 create printed into wrangler.jsonc');
+  } else if (/^[0-]+$/.test(db.database_id.trim())) {
+    problems.push('database_id is the all-zero placeholder, not a real database');
+  }
+  const hosts = String((config.vars && config.vars.ALLOWED_HOSTNAMES) ?? '').split(',').map((h) => h.trim());
+  if (!hosts.includes(DEPLOYED_HOST)) {
+    problems.push(`vars.ALLOWED_HOSTNAMES does not name ${DEPLOYED_HOST}, so the Host check would refuse every request to the deployed Worker`);
+  }
+  for (const key of ['workers_dev', 'preview_urls']) {
+    if (config[key] !== false) {
+      const state = key in config ? JSON.stringify(config[key]) : 'absent';
+      problems.push(`${key} is ${state}, not false: it would publish a second public URL on the account's workers.dev subdomain`);
+    }
+  }
+  const routes = Array.isArray(config.routes) ? config.routes : [];
+  if (!routes.some((r) => r && r.pattern === DEPLOYED_HOST && r.custom_domain === true)) {
+    problems.push(`routes has no custom-domain route for ${DEPLOYED_HOST} ({ "pattern": "${DEPLOYED_HOST}", "custom_domain": true })`);
+  }
+  const crons = config.triggers && Array.isArray(config.triggers.crons) ? config.triggers.crons : [];
+  if (!crons.includes(RETENTION_CRON)) {
+    problems.push(`triggers.crons does not contain "${RETENTION_CRON}", so the hourly retention delete would never run`);
+  }
+  return problems;
+}
+
+// Splits on shell control operators, longest first, so "&&" and "||" never read as "&" or "|".
+function deployScriptProblems(deploy) {
+  if (typeof deploy !== 'string' || deploy.trim() === '') return ['package.json has no deploy script'];
+  const parts = deploy.split(/(&&|\|\||;|\||&|\r?\n)/);
+  const segments = parts.filter((_, i) => i % 2 === 0).map((s) => s.trim().replace(/\s+/g, ' '));
+  const joins = parts.filter((_, i) => i % 2 === 1).map((j) => (j.trim() === '' ? 'a newline' : j));
+  const problems = [];
+  for (const op of new Set(joins.filter((j) => j !== '&&'))) {
+    problems.push(`deploy script joins its steps with "${op}": only && stops the chain when a step fails`);
+  }
+  const positions = DEPLOY_STEPS.map((step) => segments.findIndex((s) => step.re.test(s)));
+  DEPLOY_STEPS.forEach((step, i) => {
+    if (positions[i] === -1) problems.push(`deploy script does not run ${step.name}`);
+  });
+  const deployAt = segments.findIndex((s) => /\bwrangler\s+deploy\b/.test(s));
+  const found = positions.filter((p) => p !== -1);
+  const ordered = found.every((p, i) => i === 0 || p > found[i - 1]);
+  if (!ordered || (deployAt !== -1 && deployAt < Math.max(...found))) {
+    problems.push(`deploy script runs its steps out of order: it must run ${DEPLOY_STEPS.map((s) => s.name).join(', then ')}`);
+  }
+  return problems;
+}
+
 function run(cwd) {
-  void cwd;
-  console.log('[deploy-preflight] cleared.');
+  const builtPath = join(cwd, 'dist', 'tolsey', 'wrangler.json');
+  const built = readJson(builtPath);
+  if (built.error === 'missing') {
+    console.error('[deploy-preflight] UNKNOWN: dist/tolsey/wrangler.json does not exist. Run npm run build first; the preflight judges the built config, never the source.');
+    return 2;
+  }
+  if (built.error || built.value === null || typeof built.value !== 'object' || Array.isArray(built.value)) {
+    console.error('[deploy-preflight] UNKNOWN: dist/tolsey/wrangler.json did not parse as a config object. Run npm run build again.');
+    return 2;
+  }
+  const pkg = readJson(join(cwd, 'package.json'));
+  if (pkg.error || pkg.value === null || typeof pkg.value !== 'object') {
+    console.error(`[deploy-preflight] UNKNOWN: package.json ${pkg.error || 'is not an object'}, so the deploy order cannot be checked.`);
+    return 2;
+  }
+  const problems = [
+    ...configProblems(built.value),
+    ...deployScriptProblems(pkg.value.scripts && pkg.value.scripts.deploy),
+  ];
+  if (problems.length) {
+    console.error(`[deploy-preflight] REFUSED, ${problems.length} problem(s) in dist/tolsey/wrangler.json and package.json:`);
+    for (const p of problems) console.error(`  ${p}`);
+    console.error('[deploy-preflight] Nothing was deployed. Fix wrangler.jsonc or package.json, then npm run deploy again.');
+    return 1;
+  }
+  console.log(`[deploy-preflight] cleared: database, ${DEPLOYED_HOST} route and allowlist, workers_dev and preview_urls off, hourly cron, deploy order.`);
   return 0;
 }
 
