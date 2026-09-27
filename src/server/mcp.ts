@@ -18,6 +18,7 @@ import {
   type Store,
 } from '../store/port';
 import type { StoreLimits } from './data';
+import { writeWindowMs } from './kitchens';
 
 export interface Clock {
   now(): number;
@@ -41,10 +42,11 @@ const LOG_READING_INPUT = frozenSchema(LogReadingInputSchema);
 const LOG_READING_OUTPUT = frozenSchema(LogReadingOutputSchema);
 preloadSchemas();
 
-const HOUR_MS = 3_600_000;
 const SECOND_MS = 1000;
 
 const SERVER_FAULT = 'Tolsey could not log that. Try again.';
+const DEMO_READ_ONLY =
+  'This is the demo kitchen, and its record is read only. Start your own kitchen to log readings.';
 const REQUEST_ID_REUSED =
   'Tolsey could not log that: this request_id was already used for a different call. Call again with a new request_id.';
 
@@ -117,6 +119,9 @@ function resultFor(outcome: AppendOutcome): CallToolResult {
 }
 
 async function logReading(args: LogReadingInput, deps: ServerDeps): Promise<CallToolResult> {
+  // The store's guarded insert refuses a demo write too; answering here keeps the judged kitchen's
+  // storage untouched by any attempt, and says what to do instead.
+  if (deps.kitchen.kind === 'demo') return errorResult(DEMO_READ_ONLY, 'demo_read_only');
   const now = deps.clock.now();
   const decision = decideLogReading(args, {
     now,
@@ -136,7 +141,7 @@ async function logReading(args: LogReadingInput, deps: ServerDeps): Promise<Call
     utcDate: utcDate(now),
     dailyRowCap: deps.limits.dailyRowCap,
     kitchenLineCap: deps.limits.kitchenLineCap,
-    writeWindowMs: deps.limits.writeWindowHours * HOUR_MS,
+    writeWindowMs: writeWindowMs(deps.limits),
     retryWindowMs: deps.limits.retryWindowSeconds * SECOND_MS,
     now,
   });
