@@ -18,6 +18,7 @@ import {
   type Store,
 } from '../store/port';
 import type { StoreLimits } from './data';
+import { logFault } from './guards';
 import { writeWindowMs } from './kitchens';
 
 export interface Clock {
@@ -64,15 +65,6 @@ const REFUSAL_TEXT: Record<RefusalReason, string> = {
 // The text is what the host's model reads; the machine code rides in _meta for code.
 function errorResult(text: string, code?: string): CallToolResult {
   return { content: [{ type: 'text', text }], isError: true, ...(code ? { _meta: { error: code } } : {}) };
-}
-
-// Never the message or the arguments: an error raised while handling a call can carry the cook's
-// words and initials, and the SDK would echo a thrown message straight back to the caller.
-function logFault(error: unknown): void {
-  const name = error instanceof Error ? error.name : typeof error;
-  const code =
-    typeof error === 'object' && error !== null && 'code' in error ? String((error as { code: unknown }).code) : undefined;
-  console.error('[log_reading]', { name, code });
 }
 
 function hex(bytes: ArrayBuffer): string {
@@ -164,7 +156,9 @@ export function createServer(deps: ServerDeps): McpServer {
       try {
         return await logReading(args, deps);
       } catch (error) {
-        logFault(error);
+        // The SDK would echo a thrown message straight back to the caller, and it can carry the
+        // cook's words and initials, so a fault answers with a fixed sentence instead.
+        logFault('[log_reading]', error);
         return errorResult(SERVER_FAULT);
       }
     },
