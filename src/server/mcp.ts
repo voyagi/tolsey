@@ -156,7 +156,7 @@ export function createServer(deps: ServerDeps): McpServer {
         // The SDK would echo a thrown message straight back to the caller, and it can carry the
         // cook's words and initials, so a fault answers with a fixed sentence instead.
         logFault('[log_reading]', error);
-        return errorResult(SERVER_FAULT);
+        return errorResult(SERVER_FAULT, 'server_fault');
       }
     },
   );

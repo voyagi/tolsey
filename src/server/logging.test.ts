@@ -1,6 +1,6 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import type { KitchenRow, Store } from '../store/port';
+import type { D1Like, KitchenRow, Store } from '../store/port';
 import { openTestD1, type TestD1 } from '../test-support/d1';
 import { errorById, sendRaw } from '../test-support/raw-mcp';
 import { createWorker, type WorkerEnv } from './worker';
@@ -23,6 +23,7 @@ const SCRATCH: KitchenRow = {
 interface ToolResult {
   isError?: boolean;
   content: { type: string; text?: string }[];
+  _meta?: Record<string, unknown>;
 }
 
 function carryingWords(where: string, words = WORDS): Error {
@@ -128,6 +129,7 @@ describe('what a fault leaves in the logs and the reply', () => {
 
     expect(result.isError).toBe(true);
     expect(result.content).toEqual([{ type: 'text', text: FIXED_SENTENCE }]);
+    expect(result._meta).toEqual({ error: 'server_fault' });
     expect(logged()).not.toContain(WORDS);
     expect(logged()).not.toContain(INITIALS);
     expect(logged()).not.toContain('failed on');
@@ -184,6 +186,26 @@ describe('what a fault leaves in the logs and the reply', () => {
     expectNameAndCodeOnly('[worker]');
     expect(logged()).not.toContain(WORDS);
     expect(logged()).not.toContain(INITIALS);
+  });
+
+  it('fails the hourly retention run with the fixed error and logs name and code only', async () => {
+    const worker = createWorker({ clock: { now: () => 0 } });
+    const failingDb = {
+      prepare: () => {
+        throw carryingWords('the sweep');
+      },
+      batch: async () => {
+        throw carryingWords('the sweep');
+      },
+    } as unknown as D1Like;
+    const env: WorkerEnv = { ASSETS: { fetch: async () => new Response('asset') }, ALLOWED_HOSTNAMES: 'localhost', DB: failingDb };
+
+    const run = worker.scheduled({ scheduledTime: Date.UTC(2026, 9, 21, 12, 0), cron: '0 * * * *' }, env);
+
+    await expect(run).rejects.toThrow(/^the retention sweep failed$/);
+    expectNameAndCodeOnly('[retention]');
+    expect(errorCalls()).toContainEqual(['[retention]', { name: 'Error', code: 'STORE_DOWN' }]);
+    expect(logged()).not.toContain('failed on');
   });
 
   // Each call's words must survive the rebuild to reach the store, so each carries its own value:
