@@ -1,36 +1,10 @@
-import { isLegacyRequest } from '@modelcontextprotocol/server';
+import { classifyInboundRequest, isLegacyRequest } from '@modelcontextprotocol/server';
 
 export const MAX_BODY_BYTES = 65536;
 
 export type ParsedBody = { kind: 'empty' } | { kind: 'json'; value: unknown } | { kind: 'invalid' };
-export type AllowlistParse = { ok: true; hostnames: string[] } | { ok: false; reason: string };
 
-const IPV6_LITERAL = /^\[[0-9a-f:.]+\]$/;
 const SUPPORTED_VERSIONS = 'Unsupported protocol version. Supported: 2025-11-25, 2025-06-18, 2025-03-26';
-
-// The SDK compares a request's hostname against the list exactly, so an entry with a scheme, a path
-// or a port can never match and would silently lock every visitor out; a bad list is refused loudly.
-function entryProblem(entry: string): string | null {
-  if (entry === '') return 'is empty: remove the stray comma';
-  if (entry.includes('://')) return 'is a URL: give the bare hostname';
-  if (entry.includes('/')) return 'holds a path: give the bare hostname';
-  if (/\s/.test(entry)) return 'holds whitespace';
-  if (entry.startsWith('[')) return IPV6_LITERAL.test(entry) ? null : 'is not a bracketed IPv6 literal';
-  if (entry.includes(':')) return 'holds a port: give the hostname without it';
-  return null;
-}
-
-export function parseAllowlist(raw: string | undefined): AllowlistParse {
-  if (raw === undefined || raw.trim() === '') {
-    return { ok: false, reason: 'ALLOWED_HOSTNAMES is not set: list the hostnames this Worker answers, comma separated' };
-  }
-  const hostnames = raw.split(',').map((entry) => entry.trim().toLowerCase());
-  for (const entry of hostnames) {
-    const problem = entryProblem(entry);
-    if (problem) return { ok: false, reason: `ALLOWED_HOSTNAMES entry "${entry}" ${problem}` };
-  }
-  return { ok: true, hostnames };
-}
 
 // The SDK sets no body limit, and a Content-Length header can lie, so the stream itself is counted
 // and cancelled the moment it passes the cap.
@@ -80,8 +54,18 @@ export function jsonRpcError(status: number, code: number, message: string): Res
 // Worker gains nothing from. A clean JSON-RPC error is what lets an auto-negotiating client fall back
 // to 2025-11-25. The request must be one whose body is still unread: with no parsed body the SDK
 // classifies from a clone, and cloning a used body throws.
+// Valid JSON that is no JSON-RPC message is neither era: it gets the SDK's own rejection, answered
+// here so that nothing short of a legacy request ever reaches the handler.
 export async function refuseModernEra(request: Request, parsedBody: unknown): Promise<Response | undefined> {
   if (await isLegacyRequest(request, parsedBody)) return undefined;
+  const outcome = classifyInboundRequest({
+    httpMethod: request.method,
+    protocolVersionHeader: request.headers.get('mcp-protocol-version') ?? undefined,
+    mcpMethodHeader: request.headers.get('mcp-method') ?? undefined,
+    mcpNameHeader: request.headers.get('mcp-name') ?? undefined,
+    body: parsedBody,
+  });
+  if (outcome.kind === 'reject') return jsonRpcError(outcome.httpStatus, outcome.code, outcome.message);
   return jsonRpcError(400, -32000, SUPPORTED_VERSIONS);
 }
 

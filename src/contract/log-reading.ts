@@ -25,6 +25,16 @@ function hasAtMostOneDecimal(value: number): boolean {
 const LOWEST_READING_F = -459.6;
 const HIGHEST_READING_F = 1000;
 
+// Both ids are stored with the line, so each is held to an opaque token: a sentence, a name or markup
+// sent as an id would otherwise persist as visitor free text (PRIV-01). A UUID, a ULID or a host's
+// stamped id fits.
+const OPAQUE_ID = /^[A-Za-z0-9._:-]+$/;
+const OPAQUE_ID_MESSAGE = 'give an opaque id: letters, digits, dot, underscore, colon and hyphen only';
+
+function opaqueId() {
+  return z.string().min(1).max(64).regex(OPAQUE_ID, { message: OPAQUE_ID_MESSAGE });
+}
+
 export const LogReadingInputSchema = z.object({
   check_point: z.enum(CHECK_POINT_IDS).optional(),
   value: z
@@ -36,16 +46,11 @@ export const LogReadingInputSchema = z.object({
   measured: z.enum(MEASURE_IDS).optional(),
   words: z.string().max(200).optional(),
   initials: z.string().max(8).optional(),
-  screen_id: z
-    .string()
-    .min(1)
-    .max(64)
-    .describe('Names the screen or device the cook speaks to. Send the same id on every call from that screen.'),
-  request_id: z
-    .string()
-    .min(1)
-    .max(64)
-    .describe(
+  screen_id: opaqueId().describe(
+    'Names the screen or device the cook speaks to, as an opaque id such as a UUID. Send the same id on every ' +
+      'call from that screen.',
+  ),
+  request_id: opaqueId().describe(
       'Send a new random id, such as a UUID, for every utterance, never a counter that starts again in a new ' +
         'conversation. Send the same id again only to retry the identical call right away: any other reuse is refused.',
     ),

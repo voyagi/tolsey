@@ -95,6 +95,11 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
       ['a URL', 'https://tolsey.taranity.com'],
       ['a path', 'localhost/mcp'],
       ['a port', 'localhost:8787'],
+      // Each of these can never equal a request's Host, so it would lock visitors out quietly.
+      ['a wildcard beside a good entry', 'localhost,*.taranity.com'],
+      ['a Unicode name beside a good entry', `localhost,${UNICODE_HOST}`],
+      ['a trailing dot beside a good entry', 'localhost,tolsey.taranity.com.'],
+      ['a label starting with a hyphen', 'localhost,-tolsey.example'],
     ];
 
     it.each(MALFORMED)('answers /mcp with a named 503 and never throws when ALLOWED_HOSTNAMES is %s', async (_label, allowed) => {
@@ -259,6 +264,19 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
       expect(response.status).toBe(400);
       expect(errorById(response, null).code).toBe(-32700);
     });
+
+    // Valid JSON that is no JSON-RPC message belongs to neither era, so the version refusal would
+    // send a client chasing a protocol version when its message is what is wrong.
+    it.each(['null', '{}', '[]', '[{}]', '1', 'true'])(
+      'answers the JSON body %s, which is no JSON-RPC message, with 400 and -32600, never the version refusal',
+      async (body) => {
+        const response = await send('/mcp', { body });
+        const error = errorById(response, null);
+        expect(response.status).toBe(400);
+        expect(error.code).toBe(-32600);
+        expect(error.message).not.toMatch(/protocol version/);
+      },
+    );
   });
 
   describe('the modern era', () => {

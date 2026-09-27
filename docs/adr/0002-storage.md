@@ -62,6 +62,13 @@ spoken reason, and the kitchen insert is guarded by the same budget. The caps an
 held in `data/store/limits.json`. The line cap is 200 because a demo shift holds a few dozen lines, and
 200 lines at the measured rows per event keeps many visitors inside the 100,000-row daily allowance.
 
+The budget protects the account, not the demo from one visitor: a single client that keeps minting
+can spend the day's 40,000 rows, and every visitor after it is told the demo is full until 00:00 UTC.
+Phase 1 has no per-client limit. Cloudflare's rate limiting binding counts per location over 10 or
+60 seconds and its documentation advises against IP keys, so it cannot cap one client's day, and a
+daily per-client count would need its own store. The zero-install replay is the fallback, and the
+pass that attacks the running service measures a mint flood against the deployed Worker.
+
 The free allowance belongs to the account, not to this database. Cloudflare's D1 pricing page says
 that once the account reaches its daily limits no query runs against D1 until the 00:00 UTC reset
 (read 2026-09-26). The cap refuses writes, never retention, so a day can also spend the deletion of
@@ -87,8 +94,9 @@ them can be filled in faithfully later:
 - `business_day`, `time_zone`: the kitchen's day as computed at write time; recomputing later under a
   changed zone or day start would move lines between days.
 - `day_line`: the line number in the record code; allocated inside the INSERT, never renumbered.
-- `screen_id`: which surface the call came from.
-- `request_id`: the host's id for the utterance; the idempotency key.
+- `screen_id`: which surface the call came from, an opaque id the surface generates.
+- `request_id`: the host's id for the utterance; the idempotency key. Both ids are held to letters,
+  digits, dot, underscore, colon and hyphen, so no sentence or markup sent as an id is stored.
 - `origin`: `person` or `seed`, so a seeded demo line never reads as a cook's.
 - `check_point_id`, `measured`: where the reading was taken and what was measured.
 - `initials`: who took it.

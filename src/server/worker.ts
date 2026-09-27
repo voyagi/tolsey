@@ -6,12 +6,12 @@ import {
 import { kitchenSettings } from '../domain/business-day';
 import { D1Store } from '../store/d1-store';
 import type { D1Like, KitchenRow, Store } from '../store/port';
+import { parseAllowlist } from './allowlist';
 import { DEMO_PROFILE, ROWS_PER_WRITE, RULES, RULES_VERSION, STORE_LIMITS } from './data';
 import {
   jsonError,
   jsonRpcError,
   logFault,
-  parseAllowlist,
   parseJsonBody,
   readCappedBody,
   refuseModernEra,

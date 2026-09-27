@@ -145,6 +145,21 @@ describe('the log_reading input contract', () => {
     expect(LogReadingInputSchema.safeParse({ ...base, pending_prompt_id: '' }).success).toBe(true);
   });
 
+  // Both ids are stored with the line, so free text in either would persist (PRIV-01).
+  it.each(['screen_id', 'request_id'])('refuses a %s carrying markup, spaces or a comma', (field) => {
+    for (const id of ['<img src=x onerror=alert(1)>', 'this is the cook speaking', 'wall,1']) {
+      const parsed = LogReadingInputSchema.safeParse({ ...base, [field]: id });
+      expect(parsed.success, id).toBe(false);
+      expect(parsed.error?.issues.map((issue) => issue.message).join(' ')).toContain('opaque id');
+    }
+  });
+
+  it.each(['screen_id', 'request_id'])('accepts a %s shaped like a UUID, a ULID or a stamped host id', (field) => {
+    for (const id of [crypto.randomUUID(), '01J8Z3K4Q5R6S7T8V9W0X1Y2Z3', 'wall.1:2026-10-20T15:00:00Z', 'utt_42-b']) {
+      expect(LogReadingInputSchema.safeParse({ ...base, [field]: id }).success, id).toBe(true);
+    }
+  });
+
   it('refuses the near-miss check point id walk_ins', () => {
     expect(LogReadingInputSchema.safeParse({ ...base, check_point: 'walk_ins' }).success).toBe(false);
   });
