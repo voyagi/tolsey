@@ -100,6 +100,10 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
       ['a Unicode name beside a good entry', `localhost,${UNICODE_HOST}`],
       ['a trailing dot beside a good entry', 'localhost,tolsey.taranity.com.'],
       ['a label starting with a hyphen', 'localhost,-tolsey.example'],
+      // The SDK compares the hostname a URL parser makes of the Host header, so these never match either.
+      ['a malformed IPv6 literal beside a good entry', 'localhost,[abc..def]'],
+      ['an IPv6 literal not in its compressed form', 'localhost,[0:0:0:0:0:0:0:1]'],
+      ['an IPv4 address in a short form', 'localhost,127.1'],
     ];
 
     it.each(MALFORMED)('answers /mcp with a named 503 and never throws when ALLOWED_HOSTNAMES is %s', async (_label, allowed) => {
@@ -118,6 +122,11 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
     it('names the malformed entry in the 503 message', async () => {
       const response = await send('/mcp', { allowed: 'localhost,localhost:8787' });
       expect(jsonBody(response).message).toMatch(/localhost:8787/);
+    });
+
+    it('names the form a Host header is compared in when an entry is written another way', async () => {
+      const response = await send('/mcp', { allowed: 'localhost,[0:0:0:0:0:0:0:1]' });
+      expect(jsonBody(response).message).toMatch(/give \[::1\]/);
     });
 
     it('accepts a bracketed IPv6 literal and a Host of [::1] with a port', async () => {
