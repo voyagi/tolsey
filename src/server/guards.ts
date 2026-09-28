@@ -1,6 +1,6 @@
 import { classifyInboundRequest, isLegacyRequest } from '@modelcontextprotocol/server';
 
-export const MAX_BODY_BYTES = 65536;
+const MAX_BODY_BYTES = 65536;
 
 export type ParsedBody = { kind: 'empty' } | { kind: 'json'; value: unknown } | { kind: 'invalid' };
 

@@ -12,7 +12,7 @@ declare module 'vitest' {
   }
 }
 
-export interface TestClock {
+interface TestClock {
   now(): number;
   set(instant: number): void;
 }

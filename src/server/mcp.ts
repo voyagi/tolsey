@@ -43,6 +43,7 @@ export interface ServerDeps {
   rowsPerWrite: RowsPerWrite;
 }
 
+/** @public The name and version the server reports when a client initializes. */
 export const SERVER_INFO = { name: 'tolsey', version: '0.1.0' };
 
 // Module scope, so the conversion runs once per isolate rather than on every request. Startup code

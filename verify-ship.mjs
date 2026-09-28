@@ -92,6 +92,7 @@ const STEP_TIMEOUT_MS =
 const STEPS = [
   { name: 'types', cmd: 'npm run gate:types' }, // tsc --noEmit
   { name: 'tests', cmd: 'npm test' },           // FULL suite, one-shot
+  { name: 'test-count', cmd: 'npm run gate:test-count', script: 'gate:test-count', appliesWhen: 'the test-count gate is installed' },
   { name: 'lint',  cmd: 'npm run lint' },       // WHOLE-repo lint
   { name: 'gate',  cmd: 'npm run gate' },       // committed gate chain (floors)
   { name: 'repo', cmd: 'npm run gate:repo', script: 'gate:repo', appliesWhen: 'the repo-hygiene gates (goals, gitignore, hookspath, license, identity, artifact metadata, compliance, icon decision) are installed with their gate:repo script' },

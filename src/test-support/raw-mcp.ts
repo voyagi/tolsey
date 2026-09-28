@@ -11,7 +11,7 @@ export interface JsonRpcError {
   data?: unknown;
 }
 
-export interface JsonRpcMessage {
+interface JsonRpcMessage {
   jsonrpc?: string;
   id?: string | number | null;
   method?: string;

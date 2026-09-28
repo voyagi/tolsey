@@ -24,19 +24,140 @@
 //
 // Usage: node scripts/check-test-count.mjs --floor N [--selftest]
 import { execFileSync, spawnSync } from 'node:child_process';
-import { writeFileSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const VITEST_BIN = join('node_modules', 'vitest', 'vitest.mjs');
 const REPORT = 'reports/vitest-count.json';
+const PROJECTS = ['unit', 'store', 'conformance'];
+const TIMEOUT_MS = 20 * 60 * 1000;
+const TEST_FILE_SPECS = [':(glob)src/**/*.test.ts', ':(glob)src/**/*.test.tsx', ':(glob)src/**/*.spec.ts', ':(glob)src/**/*.spec.tsx'];
+// Mirrors E2E_FILES in vitest.config.ts: those files run in `npm run test:e2e`, not in this report.
+const E2E_FILE = /^src\/server\/.*\.e2e\.test\.ts$/;
+// These suites throw without a D1 binding, so a test there that did not pass was skipped or lost.
+const STRICT_FOLDERS = /^src\/(store|server)\//;
 
-function run(cwd) {
-  const r = spawnSync(process.execPath, [join(cwd, VITEST_BIN), 'run', '--reporter=json', `--outputFile=${REPORT}`], {
-    cwd, encoding: 'utf8', windowsHide: true,
+function parseFloor(argv) {
+  const at = argv.indexOf('--floor');
+  if (at === -1) return null;
+  const raw = argv[at + 1];
+  return raw !== undefined && /^\d+$/.test(raw) ? Number(raw) : null;
+}
+
+function relName(cwd, file) {
+  return relative(cwd, file).split(sep).join('/');
+}
+
+function listTrackedTests(cwd) {
+  const out = execFileSync('git', ['ls-files', '-z', '--', ...TEST_FILE_SPECS], {
+    cwd, encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
   });
-  return r.status ?? 1;
+  return out.split('\0').filter((p) => p && !E2E_FILE.test(p));
+}
+
+function runVitest(cwd) {
+  const r = spawnSync(process.execPath, [join(cwd, VITEST_BIN), 'run', ...PROJECTS.flatMap((p) => ['--project', p]), '--reporter=json', `--outputFile=${REPORT}`], {
+    cwd, encoding: 'utf8', windowsHide: true, timeout: TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024,
+  });
+  if (r.error && r.error.code === 'ETIMEDOUT') return { code: `a timeout after ${TIMEOUT_MS / 60000} min`, stderr: r.stderr };
+  if (r.error) return { code: `an error (${r.error.message})`, stderr: r.stderr };
+  if (r.status === null) return { code: `signal ${r.signal}`, stderr: r.stderr };
+  return { code: r.status, stderr: r.stderr };
+}
+
+function readReport(cwd, vitestCode, stderr) {
+  const path = join(cwd, REPORT);
+  if (!existsSync(path)) {
+    const tail = String(stderr || '').trim().split(/\r?\n/).slice(-15).join('\n');
+    return { unknown: `vitest exited ${vitestCode} and wrote no report at ${REPORT}.${tail ? `\n${tail}` : ''}` };
+  }
+  let report;
+  try {
+    report = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return { unknown: `${REPORT} did not parse as JSON. Refusing to count from it.` };
+  }
+  if (!report || !Array.isArray(report.testResults)) return { unknown: `${REPORT} has no testResults array.` };
+  if (report.testResults.length === 0) return { unknown: 'the report lists no test files, which is a run that tested nothing.' };
+  return { report };
+}
+
+// Any sign of failure ends the gate before a count is compared, so enough passing tests elsewhere
+// can never outvote a failed one.
+function failedRunFindings(cwd, report, vitestCode) {
+  const findings = [];
+  if (vitestCode !== 0) findings.push(`vitest exited ${vitestCode}`);
+  if (report.success !== true) findings.push(`the report says success ${report.success}`);
+  if (Number(report.numFailedTests) > 0) findings.push(`the report counts ${report.numFailedTests} failed test(s)`);
+  for (const file of report.testResults) {
+    const name = relName(cwd, String(file.name));
+    if (file.status === 'failed') findings.push(`${name}: failed${file.message ? `: ${file.message}` : ''}`);
+    for (const t of file.assertionResults ?? []) {
+      if (t.status === 'failed') findings.push(`${name}: failed test: ${t.fullName}`);
+    }
+  }
+  return findings;
+}
+
+function countFindings(cwd, report, floor, tracked) {
+  const findings = [];
+  const seen = new Set();
+  let passed = 0;
+  for (const file of report.testResults) {
+    const name = relName(cwd, String(file.name));
+    seen.add(name);
+    for (const t of file.assertionResults ?? []) {
+      if (t.status === 'passed') passed++;
+      else if (STRICT_FOLDERS.test(name)) findings.push(`${name}: ${t.status}: ${t.fullName}`);
+    }
+  }
+  if (passed < floor) findings.push(`only ${passed} tests passed, below the floor of ${floor}`);
+  for (const path of tracked) {
+    if (!seen.has(path)) findings.push(`${path}: tracked but not in the report, so no Vitest project collects it`);
+  }
+  return { passed, findings };
+}
+
+function run(cwd, argv) {
+  const floor = parseFloor(argv);
+  if (floor === null) {
+    console.error('[test-count] UNKNOWN: no floor given. Usage: node scripts/check-test-count.mjs --floor N');
+    return 2;
+  }
+  if (!existsSync(join(cwd, VITEST_BIN))) {
+    console.error(`[test-count] UNKNOWN: vitest is not installed (${VITEST_BIN} is missing). Nothing was counted.`);
+    return 2;
+  }
+  let tracked;
+  try {
+    tracked = listTrackedTests(cwd);
+  } catch (e) {
+    console.error(`[test-count] UNKNOWN: git ls-files could not list the tracked test files (${String((e && e.stderr) || (e && e.message) || e).trim()}).`);
+    return 2;
+  }
+  rmSync(join(cwd, REPORT), { force: true });
+  const { code, stderr } = runVitest(cwd);
+  const { report, unknown } = readReport(cwd, code, stderr);
+  if (unknown) {
+    console.error(`[test-count] UNKNOWN: ${unknown}`);
+    return 2;
+  }
+  const failed = failedRunFindings(cwd, report, code);
+  if (failed.length) {
+    console.error(`[test-count] FAILED RUN: ${failed.length} sign(s) of failure, so nothing was counted:`);
+    for (const f of failed) console.error(`  ${f}`);
+    return 1;
+  }
+  const { passed, findings } = countFindings(cwd, report, floor, tracked);
+  if (findings.length) {
+    console.error(`[test-count] FINDINGS: ${findings.length}. ${passed} tests passed (floor ${floor}):`);
+    for (const f of findings) console.error(`  ${f}`);
+    return 1;
+  }
+  console.log(`[test-count] CLEAN: ${passed} tests passed (floor ${floor}) in ${report.testResults.length} files; every tracked test file was collected and no store or conformance test was skipped.`);
+  return 0;
 }
 
 // --- selftest ---------------------------------------------------------------
@@ -180,4 +301,4 @@ function selftest() {
 }
 
 if (process.argv.includes('--selftest')) process.exit(selftest());
-process.exit(run(process.cwd()));
+process.exit(run(process.cwd(), process.argv.slice(2)));

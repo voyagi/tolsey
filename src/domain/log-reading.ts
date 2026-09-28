@@ -23,7 +23,7 @@ import type { CheckPoint, CheckPointKind, KitchenProfile, RuleRow, RuleSource, T
 import { needsDigitRepeat } from './twins';
 import { classifyNumberWords, formatValue, rebuildWords, tokensOf } from './words';
 
-export type { Decided, Decision, DecisionContext, Rejection, ToolResultTemplate } from './decision';
+export type { Decided, Decision, DecisionContext, Rejection } from './decision';
 
 const WHO_IS_LOGGING_REPLY = 'Who is logging?';
 const LOG_BY_HAND_REPLY = 'Log it by hand.';
@@ -32,6 +32,7 @@ const ALREADY_ANSWERED_REPLY = 'That question was already answered. Say the chec
 // READ-07: a different number is asked back once more, and the third miss in a row ends the chain.
 const MISSES_BEFORE_LOG_BY_HAND = 3;
 
+/** @public The read-back sentence of a judged reading, which the simulated wall speaks from phase 2. */
 export function spokenReadback(outcome: LogReadingOutput): string {
   const parts = [outcome.checkPoint?.name, outcome.value === undefined ? undefined : formatValue(outcome.value)];
   return [...parts, outcome.verdict, outcome.initials].filter((part) => part !== undefined).join(', ');
@@ -117,9 +118,13 @@ interface ReadingFacts extends ValueFacts {
 
 type ReceiptCall = Pick<LogReadingInput, 'screen_id' | 'request_id' | 'words'>;
 
-// The one shape of a stored answer that records no line: it takes no day line and no record code,
-// holds no value or verdict, and is skipped by open checks and counts. Storing it is what lets a
-// retry inside the window get this reply back instead of being decided again against changed state.
+/**
+ * @public The wrong-number correction, still to come in phase 1, stores its no-line replies through it.
+ *
+ * The one shape of a stored answer that records no line: it takes no day line and no record code,
+ * holds no value or verdict, and is skipped by open checks and counts. Storing it is what lets a
+ * retry inside the window get this reply back instead of being decided again against changed state.
+ */
 export function receiptEvent(
   input: ReceiptCall,
   ctx: DecisionContext,

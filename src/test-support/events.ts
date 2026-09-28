@@ -32,8 +32,8 @@ FROM line`;
 
 export const HOUR_MS = 3_600_000;
 export const KITCHEN_CREATED_AT = Date.UTC(2026, 9, 20, 14, 0, 0);
-export const BUSINESS_DAY = '2026-10-20';
-export const UTC_DATE = '2026-10-20';
+const BUSINESS_DAY = '2026-10-20';
+const UTC_DATE = '2026-10-20';
 
 export const RESULT_TEMPLATE = JSON.stringify({
   content: [{ type: 'text', text: 'Logged the walk-in at 38 degrees.' }],

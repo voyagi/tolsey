@@ -18,7 +18,7 @@ export interface KitchensDeps {
   settings: KitchenSettings;
 }
 
-export interface MintedKitchen {
+interface MintedKitchen {
   id: string;
   mcpPath: string;
   expiresAt: string;
@@ -71,10 +71,14 @@ function chooseLabel(body: ParsedBody): LabelChoice {
   return { ok: true, label: label as KitchenLabel };
 }
 
-// The budget is read before anything else, so a flood of mints refused at the cap costs one read each
-// and never a sweep. An admitted mint runs one bounded sweep round (deletion keeps happening even if
-// the Cron Trigger never fires) and then the guarded insert, which can still refuse: the budget may
-// fill between the read and the insert, this mint's own sweep included.
+/**
+ * @public The one place a scratch kitchen id is made, whichever route asks for one.
+ *
+ * The budget is read before anything else, so a flood of mints refused at the cap costs one read each
+ * and never a sweep. An admitted mint runs one bounded sweep round (deletion keeps happening even if
+ * the Cron Trigger never fires) and then the guarded insert, which can still refuse: the budget may
+ * fill between the read and the insert, this mint's own sweep included.
+ */
 export async function mintKitchen(deps: KitchensDeps, label: KitchenLabel | null): Promise<MintedKitchen | 'budget_full'> {
   const createdAt = deps.clock.now();
   const date = utcDate(createdAt);

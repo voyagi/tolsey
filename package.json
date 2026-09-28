@@ -30,8 +30,9 @@
     "gate:env": "node scripts/check-env-example.mjs",
     "gate:tsconfig": "node scripts/check-tsconfig-coverage.mjs",
     "gate:artifacts": "node scripts/check-ship-artifacts.mjs",
-    "gate:precommit": "eslint . && jscpd . && npm run gate:env && npm run gate:tsconfig && npm run gate:artifacts",
-    "gate": "npm run gate:artifacts && npm run gate:tsconfig && npm run gate:types && npm run gate:complexity && npm run gate:dup && npm run gate:deps && npm run gate:env && npm run gate:size",
+    "gate:precommit": "eslint . && jscpd . && npm run gate:env && npm run gate:tsconfig && npm run gate:artifacts && vitest run --project unit",
+    "gate": "npm run gate:artifacts && npm run gate:tsconfig && npm run gate:types && npm run gate:complexity && npm run gate:dup && npm run gate:deps && npm run gate:env && npm run gate:size && npm run gate:dead",
+    "gate:test-count": "node scripts/check-test-count.mjs --floor 480",
     "verify:ship": "node verify-ship.mjs",
     "mutate": "node scripts/mutate-incremental.mjs",
     "mutate:full": "stryker run"

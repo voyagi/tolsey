@@ -17,7 +17,7 @@ export interface D1Like {
   batch<Row = Record<string, unknown>>(statements: D1StatementLike[]): Promise<D1ResultLike<Row>[]>;
 }
 
-export type KitchenKind = 'demo' | 'scratch';
+type KitchenKind = 'demo' | 'scratch';
 export type KitchenLabel = 'capture' | 'conformance';
 
 export interface KitchenRow {

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import demoProfile from '../../data/kitchens/demo.json';
 
 export const LOG_READING = 'log_reading';
+/** @public The version every log_reading result carries, for the cards and captures of phase 2 to check. */
 export const CONTRACT_VERSION = 1;
 
 export const OUTCOMES = ['in_range', 'out_of_range', 'refused', 'held', 'not_covered', 'nothing_to_fix'] as const;

@@ -1,6 +1,6 @@
 import type { D1Like, D1ResultLike, D1StatementLike } from '../store/port';
 
-export interface CountedStatement {
+interface CountedStatement {
   query: string;
   via: 'run' | 'all' | 'first' | 'batch';
 }

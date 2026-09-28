@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { isKnownTimeZone, validateDayStart } from './business-day';
 
-export const ComparatorSchema = z.enum(['at_most', 'at_least']);
+const ComparatorSchema = z.enum(['at_most', 'at_least']);
 export type Comparator = z.infer<typeof ComparatorSchema>;
 
 const IdSchema = z.string().regex(/^[a-z][a-z0-9_]*$/);
@@ -10,7 +10,7 @@ const PositiveIntSchema = z.number().int().positive();
 
 // A house rule carries a reason and never a section (strict refuses one), so no surface can show it
 // with a Code citation. supports and device name the Code rules it serves without citing its value.
-export const RuleSourceSchema = z.discriminatedUnion('kind', [
+const RuleSourceSchema = z.discriminatedUnion('kind', [
   z
     .object({
       kind: z.literal('food_code'),
@@ -87,7 +87,7 @@ const ObservationRowSchema = z
 
 // One strict member per kind, so a clock, deadline or observation row can never be handed an
 // invented temperature limit, and only a temperature row reaches the judge.
-export const RuleRowSchema = z.discriminatedUnion('kind', [
+const RuleRowSchema = z.discriminatedUnion('kind', [
   TemperatureRowSchema,
   TimedTemperatureRowSchema,
   DurationRowSchema,
@@ -130,7 +130,7 @@ export const RuleTableSchema = z
 export type RuleTable = z.infer<typeof RuleTableSchema>;
 
 // Cooling and reheat readings are kept but not judged in phase 1, so those kinds carry no rules.
-export const CheckPointKindSchema = z.enum(['cold', 'hot', 'receiving', 'freezer', 'cooling', 'reheat']);
+const CheckPointKindSchema = z.enum(['cold', 'hot', 'receiving', 'freezer', 'cooling', 'reheat']);
 export type CheckPointKind = z.infer<typeof CheckPointKindSchema>;
 
 const CheckPointSchema = z
@@ -157,7 +157,6 @@ const FoodSchema = z
     roast: z.literal(true).optional(),
   })
   .strict();
-export type Food = z.infer<typeof FoodSchema>;
 
 const ScheduleEntrySchema = z
   .object({
@@ -169,7 +168,6 @@ const ScheduleEntrySchema = z
     graceMinutes: PositiveIntSchema,
   })
   .strict();
-export type ScheduleEntry = z.infer<typeof ScheduleEntrySchema>;
 
 const ChecklistItemSchema = z.object({ id: IdSchema, text: z.string().min(1) }).strict();
 

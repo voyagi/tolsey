@@ -4,6 +4,7 @@ import { rebuildWords } from './words';
 
 const NO_CHECK_REPLY = 'I need a check and the number on the thermometer.';
 
+/** @public The question asked back for a check given without a number. */
 export function refusalReply(checkPoint: CheckPoint | undefined): string {
   if (checkPoint === undefined) return NO_CHECK_REPLY;
   return `I need the number on the thermometer. What does ${checkPoint.askAs} read?`;
