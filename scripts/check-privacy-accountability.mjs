@@ -86,9 +86,9 @@ function selftest() {
     }
     return root;
   };
-  const runCli = (cwd) => {
+  const runCli = (cwd, args = []) => {
     try {
-      const out = execFileSync(process.execPath, [self], { cwd, encoding: 'utf8', windowsHide: true, stdio: 'pipe' });
+      const out = execFileSync(process.execPath, [self, ...args], { cwd, encoding: 'utf8', windowsHide: true, stdio: 'pipe' });
       return { code: 0, out };
     } catch (e) {
       return { code: e.status == null ? -1 : e.status, out: String((e && e.stdout) || '') + String((e && e.stderr) || '') };
@@ -116,6 +116,18 @@ function selftest() {
     check('an empty section fails', runCli(fixture('# x\n\n## Determinations\n\nnothing here\n')), 1, /holds no table rows/);
     check('a section followed by another heading is bounded correctly', runCli(fixture(HEAD +
       '| DPIA required | N-A - static site, no personal data stored | 2026-08-29 | register |\n\n## Retention\n\n| not | a determination |\n')), 0, /settled: 1 determination/);
+    check('an absent file with --require exits 1 naming the missing document', runCli(fixture(null), ['--require']),
+      1, /MISSING: docs\/privacy-accountability\.md is required here \(--require\)/);
+    check('a present, determined file with --require exits 0', runCli(fixture(HEAD +
+      '| DPIA required | N-A - static site, no personal data stored | 2026-08-29 | register |\n'), ['--require']), 0, /settled: 1 determination/);
+    check('"N-A - tbd" is a placeholder reason and fails naming the row', runCli(fixture(HEAD +
+      '| DPIA required | N-A - tbd | 2026-08-29 | register |\n')), 1, /"DPIA required": the reason "tbd" is a placeholder/);
+    check('"APPLIES - todo" is a placeholder reason and fails naming the row', runCli(fixture(HEAD +
+      '| AI Act Article 50 | APPLIES - todo | 2026-08-29 | docs/ai-act.md |\n')), 1, /"AI Act Article 50": the reason "todo" is a placeholder/);
+    check('"N-A - ?" is a placeholder reason and fails naming the row', runCli(fixture(HEAD +
+      '| DPIA required | N-A - ? | 2026-08-29 | register |\n')), 1, /"DPIA required": the reason "\?" is a placeholder/);
+    check('"N-A - " with nothing after it fails naming the row', runCli(fixture(HEAD +
+      '| DPIA required | N-A - | 2026-08-29 | register |\n')), 1, /"DPIA required": verdict "N-A -" is not OPEN/);
   } finally {
     for (const r of roots) { try { rmSync(r, { recursive: true, force: true }); } catch {} }
   }

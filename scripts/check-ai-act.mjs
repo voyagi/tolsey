@@ -104,9 +104,9 @@ function selftest() {
     }
     return root;
   };
-  const runCli = (cwd) => {
+  const runCli = (cwd, args = []) => {
     try {
-      const out = execFileSync(process.execPath, [self], { cwd, encoding: 'utf8', windowsHide: true, stdio: 'pipe' });
+      const out = execFileSync(process.execPath, [self, ...args], { cwd, encoding: 'utf8', windowsHide: true, stdio: 'pipe' });
       return { code: 0, out };
     } catch (e) {
       return { code: e.status == null ? -1 : e.status, out: String((e && e.stdout) || '') + String((e && e.stderr) || '') };
@@ -141,6 +141,29 @@ function selftest() {
       '# AI Act\n\n## Article 50(1), interaction: APPLIES\n\nSee `src/gone.ts` and `src/gone.test.ts`.\n\n' + OTHERS)), 1, /names no existing mechanism path/);
     check('a falls-on verdict needs no mechanism here', runCli(fixture(
       '# AI Act\n\n## Article 50(1), interaction: DOES NOT APPLY\n\ntext\n\n' + OTHERS)), 0, /determined/);
+    check('an absent file with --require exits 1 naming the missing document', runCli(fixture(null), ['--require']),
+      1, /MISSING: docs\/ai-act\.md is required here \(--require\)/);
+    check('a present, determined file with --require exits 0', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: DOES NOT APPLY\n\ntext\n\n' + OTHERS), ['--require']), 0, /determined/);
+    check('DOES NOT APPLY written only in body prose, under a heading with no verdict, fails with no verdict', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction\n\nThis paragraph DOES NOT APPLY to us, we think.\n\n' + OTHERS)), 1, /Article 50\(1\): no verdict/);
+    check('a heading verdict "falls on" with no party fails', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: falls on\n\ntext\n\n' + OTHERS)), 1, /Article 50\(1\): "falls on" names no party/);
+    check('"Verdict: falls on" with no party fails', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction\n\nVerdict: falls on\n\n' + OTHERS)), 1, /Article 50\(1\): "falls on" names no party/);
+    check('"falls on tbd" is not a named party and fails', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: falls on tbd\n\ntext\n\n' + OTHERS)), 1, /Article 50\(1\): "falls on" names no party/);
+    check('a "Verdict: DOES NOT APPLY" line passes', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction\n\nVerdict: DOES NOT APPLY\n\n' + OTHERS)), 0, /determined/);
+    check('a "**Verdict:** DOES NOT APPLY" line passes', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction\n\n**Verdict:** DOES NOT APPLY\n\n' + OTHERS)), 0, /determined/);
+    check('a "**Verdict**: DOES NOT APPLY" line passes', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction\n\n**Verdict**: DOES NOT APPLY\n\n' + OTHERS)), 0, /determined/);
+    check('the four sections in the order 50(4), 50(2), 50(1), 50(3) pass', runCli(fixture(
+      '# AI Act\n\n## Article 50(4), deepfakes: DOES NOT APPLY\n\ntext\n\n' +
+      '## Article 50(2), marking: falls on the speech vendor\n\ntext\n\n' +
+      '## Article 50(1), interaction: DOES NOT APPLY\n\ntext\n\n' +
+      '## Article 50(3), emotion recognition: DOES NOT APPLY\n\ntext\n')), 0, /determined: all four/);
   } finally {
     for (const r of roots) { try { rmSync(r, { recursive: true, force: true }); } catch {} }
   }
