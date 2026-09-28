@@ -17,17 +17,84 @@
 //
 // Usage: node scripts/mutate-incremental.mjs [--selftest]
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const STRYKER_BIN = join('node_modules', '@stryker-mutator', 'core', 'bin', 'stryker.js');
+const INCREMENTAL_FILE = join('reports', 'stryker-incremental.json');
+const HASH_FILE = join('reports', 'stryker-inputs.sha256');
+const INPUT_PATHSPECS = [
+  'src', 'data', 'migrations', 'package.json', 'package-lock.json', 'stryker.config.json',
+  'vitest.config.ts', 'tsconfig*.json', 'wrangler.jsonc',
+];
+
+// Mirrors the mutate list in stryker.config.json: Stryker already diffs these files itself.
+function mutatedByStryker(path) {
+  return /^src\/(domain|server)\//.test(path) && path.endsWith('.ts') && !path.endsWith('.test.ts');
+}
+
+// Untracked files count too (--others): a new test file must clear results before it is committed.
+function listInputs(cwd) {
+  const out = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ...INPUT_PATHSPECS], {
+    cwd, encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  return [...new Set(out.split('\0').filter(Boolean))].filter((p) => !mutatedByStryker(p)).sort();
+}
+
+function hashInputs(cwd, paths) {
+  const all = createHash('sha256');
+  for (const path of paths) {
+    const abs = join(cwd, path);
+    const content = existsSync(abs) ? createHash('sha256').update(readFileSync(abs)).digest('hex') : 'deleted';
+    all.update(`${path}\0${content}\n`);
+  }
+  return all.digest('hex');
+}
 
 function run(cwd) {
   const stryker = join(cwd, STRYKER_BIN);
+  if (!existsSync(stryker)) {
+    console.error(`[mutate] Stryker is not installed (${STRYKER_BIN} is missing). Run npm ci first.`);
+    return 2;
+  }
+  let inputs;
+  try {
+    inputs = listInputs(cwd);
+  } catch (e) {
+    const why = String((e && e.stderr) || (e && e.message) || e).trim();
+    console.error(`[mutate] could not list Stryker's untracked inputs with git ls-files (${why}). Refusing to reuse incremental results nothing can vouch for.`);
+    return 2;
+  }
+  if (inputs.length === 0) {
+    console.error('[mutate] git ls-files listed no inputs at all, which cannot be right for this repository. Refusing to run.');
+    return 2;
+  }
+  const hash = hashInputs(cwd, inputs);
+  const hashPath = join(cwd, HASH_FILE);
+  const stored = existsSync(hashPath) ? readFileSync(hashPath, 'utf8').trim() : null;
+  if (stored === hash) {
+    console.log(`[mutate] ${inputs.length} inputs Stryker cannot see are unchanged since the last successful run; only changed mutants are re-tested.`);
+  } else {
+    rmSync(join(cwd, INCREMENTAL_FILE), { force: true });
+    console.log(`[mutate] inputs changed, incremental results cleared: this is a full run (${inputs.length} inputs hashed).`);
+  }
   const result = spawnSync(process.execPath, [stryker, 'run', '--incremental'], { cwd, stdio: 'inherit' });
-  return result.status ?? 1;
+  if (result.error) {
+    console.error(`[mutate] Stryker could not start: ${result.error.message}`);
+    return 1;
+  }
+  if (result.status === null) {
+    console.error(`[mutate] Stryker was killed by signal ${result.signal}; the stored hash is left as it was.`);
+    return 1;
+  }
+  if (result.status === 0) {
+    mkdirSync(dirname(hashPath), { recursive: true });
+    writeFileSync(hashPath, `${hash}\n`);
+  }
+  return result.status;
 }
 
 // --- selftest ---------------------------------------------------------------

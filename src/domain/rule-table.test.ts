@@ -425,6 +425,39 @@ describe('RuleTableSchema', () => {
     expect(RuleTableSchema.safeParse({ ...base, rows: [durationRow] }).success).toBe(true);
     expect(RuleTableSchema.safeParse({ ...base, rows: [cited] }).success).toBe(false);
   });
+
+  const refusal = (rows: unknown[]): string[] => {
+    const parsed = RuleTableSchema.safeParse({ ...base, rows });
+    return parsed.success ? [] : parsed.error.issues.map((issue) => issue.message);
+  };
+
+  it('refuses two rows that share an id', () => {
+    expect(refusal([durationRow, { ...durationRow, minutes: 30 }])).toContain('two rows share an id');
+  });
+
+  it('refuses a timed temperature row with no time bound, and accepts it with one', () => {
+    const timed = {
+      kind: 'timed_temperature',
+      id: 'cooling_stage',
+      comparator: 'at_most',
+      limitFTenths: 700,
+      limitC: 21,
+      source: { kind: 'house_rule', reason: 'the kitchen cools in stages' },
+    };
+    expect(refusal([timed])).toContain('cooling_stage is timed but carries no time bound');
+    expect(refusal([{ ...timed, withinMinutes: 120 }])).toEqual([]);
+  });
+
+  it('refuses an observation row that passes a state it does not list', () => {
+    expect(refusal([{ ...observationRow, passingStates: ['frozen hard'] }])).toContain(
+      'frozen_check passes a state it does not list',
+    );
+  });
+
+  it('refuses a house rule that tightens a row the table lacks', () => {
+    const tightening = { ...durationRow, source: { ...durationRow.source, tightens: 'reheat_time' } };
+    expect(refusal([tightening])).toContain('check_interval tightens reheat_time, which the table lacks');
+  });
 });
 
 describe('describeSource', () => {
@@ -453,6 +486,22 @@ describe('describeSource', () => {
     expect(describeSource(tighter, withTighter)).toBe(
       'house rule: this kitchen holds its walk-in at 38°F or less, stricter than Food Code 2022 3-501.16(A)(2), 41°F or less',
     );
+  });
+
+  it.each([
+    ['reheat_time', 'Food Code 2022 3-403.11(D), 120 minutes'],
+    ['frozen_storage', 'Food Code 2022 3-501.11, frozen solid'],
+    ['hot_holding', 'Food Code 2022 3-501.16(A)(1), 135°F or above'],
+  ])('shows a house rule tightening %s beside that Code figure', (tightens, codeFigure) => {
+    const tighter: RuleRow = {
+      kind: 'duration',
+      id: 'house_tighter',
+      minutes: 30,
+      times: 'the kitchen acts sooner',
+      source: { kind: 'house_rule', reason: 'this kitchen acts sooner', tightens },
+    };
+    const withTighter: RuleTable = { ...table, rows: [...table.rows, tighter] };
+    expect(describeSource(tighter, withTighter)).toBe(`house rule: this kitchen acts sooner, stricter than ${codeFigure}`);
   });
 
   it.each(['hot_holding_fix_deadline', 'cold_holding_fix_deadline'])(
