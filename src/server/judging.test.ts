@@ -25,10 +25,11 @@ interface ToolResult {
 }
 
 interface Reading {
-  check_point: string;
+  check_point?: string;
   value: number;
   initials: string;
   measured?: string;
+  pending_prompt_id?: string;
 }
 
 describe('readings routed to their own rule row, through MCP', () => {
@@ -129,6 +130,23 @@ describe('readings routed to their own rule row, through MCP', () => {
     expect(roast.structuredContent?.rule).toBeUndefined();
     const lines = (await target.readLines?.(kitchenId, AFTERNOON_DAY)) ?? [];
     expect(lines.filter((line) => line.kind === 'reading')).toHaveLength(0);
+  });
+
+  it('judges prime rib at 130 in range by the roast row once a second request repeats 130', async () => {
+    const kitchenId = await kitchenAt(AFTERNOON);
+    const held = await logAt(kitchenId, AFTERNOON, {
+      check_point: 'carving_station',
+      value: 130,
+      measured: 'prime_rib',
+      initials: 'KL',
+    });
+    const promptId = (held.structuredContent as { prompt?: { id: string } } | undefined)?.prompt?.id;
+
+    const roast = await logAt(kitchenId, AFTERNOON, { value: 130, initials: 'KL', pending_prompt_id: promptId });
+
+    expect(roast.structuredContent).toMatchObject({ outcome: 'in_range', rule: { id: 'hot_holding_roast' } });
+    const line = await storedLine(kitchenId, AFTERNOON_DAY, roast);
+    expect(line).toMatchObject({ ruleId: 'hot_holding_roast', measured: 'prime_rib', answersId: promptId });
   });
 
   it('judges chicken soup at 130 out of range by hot holding', async () => {
