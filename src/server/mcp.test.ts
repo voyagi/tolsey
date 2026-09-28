@@ -13,6 +13,7 @@ const faultingStore: Store = {
   createKitchen: async () => ({ status: 'created' }),
   findKitchen: async () => null,
   linesForDay: async () => [],
+  openChecks: async () => [],
   append: async () => {
     throw Object.assign(new Error(`D1_ERROR near "${WORDS}" for AB`), { code: 'SQLITE_ERROR' });
   },

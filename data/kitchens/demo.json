@@ -13,6 +13,7 @@
     {
       "id": "walk_in",
       "name": "Walk-in",
+      "askAs": "the walk-in",
       "kind": "cold",
       "aliases": ["walk-in", "walk in", "walk-in cooler"],
       "airRule": "unit_air_cold",
@@ -22,6 +23,7 @@
     {
       "id": "reach_in_1",
       "name": "Reach-in one",
+      "askAs": "reach-in one",
       "kind": "cold",
       "aliases": ["reach-in one", "reach in one", "reach-in 1", "first reach-in"],
       "airRule": "unit_air_cold",
@@ -31,6 +33,7 @@
     {
       "id": "reach_in_2",
       "name": "Reach-in two",
+      "askAs": "reach-in two",
       "kind": "cold",
       "aliases": ["reach-in two", "reach in two", "reach-in 2", "second reach-in"],
       "airRule": "unit_air_cold",
@@ -40,6 +43,7 @@
     {
       "id": "soup_well",
       "name": "Soup well",
+      "askAs": "the soup well",
       "kind": "hot",
       "aliases": ["soup well", "well", "steam well"],
       "airRule": "unit_air_hot",
@@ -49,6 +53,7 @@
     {
       "id": "carving_station",
       "name": "Carving station",
+      "askAs": "the carving station",
       "kind": "hot",
       "aliases": ["carving station", "carving", "carvery"],
       "airRule": "unit_air_hot",
@@ -59,6 +64,7 @@
     {
       "id": "receiving",
       "name": "Receiving",
+      "askAs": "the delivery",
       "kind": "receiving",
       "aliases": ["receiving", "delivery", "back door"],
       "foodRules": {
@@ -70,6 +76,7 @@
     {
       "id": "freezer",
       "name": "Freezer",
+      "askAs": "the freezer",
       "kind": "freezer",
       "aliases": ["freezer", "walk-in freezer"],
       "airRule": "freezer_limit",
@@ -78,12 +85,14 @@
     {
       "id": "cooling",
       "name": "Cooling",
+      "askAs": "the cooling pan",
       "kind": "cooling",
       "aliases": ["cooling", "cool down", "cooling pan"]
     },
     {
       "id": "reheat",
       "name": "Reheat",
+      "askAs": "the reheat",
       "kind": "reheat",
       "aliases": ["reheat", "reheating"]
     }
@@ -156,6 +165,7 @@
   "vocabulary": {
     "verbs": ["reads", "is", "at", "reading", "came", "in"],
     "articles": ["the", "a"],
-    "nouns": ["air", "degrees", "delivery", "temp", "temperature"]
+    "nouns": ["air", "degrees", "delivery", "temp", "temperature"],
+    "states": ["fine", "good", "ok", "okay", "normal", "cold", "cool", "warm", "hot", "everything", "all"]
   }
 }

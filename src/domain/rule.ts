@@ -137,6 +137,7 @@ const CheckPointSchema = z
   .object({
     id: IdSchema,
     name: z.string().min(1),
+    askAs: z.string().min(1),
     kind: CheckPointKindSchema,
     aliases: z.array(z.string().min(1)),
     airRule: IdSchema.optional(),
@@ -199,6 +200,7 @@ export const KitchenProfileSchema = z
         verbs: z.array(z.string().min(1)),
         articles: z.array(z.string().min(1)),
         nouns: z.array(z.string().min(1)),
+        states: z.array(z.string().min(1)).min(1),
       })
       .strict(),
   })

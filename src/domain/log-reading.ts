@@ -1,87 +1,22 @@
-import type { LogReadingInput, LogReadingOutput, Outcome, RuleResult } from '../contract/log-reading';
-import type { NewEvent } from '../store/port';
-import { businessDay } from './business-day';
-import { utcIso } from './instant';
+import type { LogReadingInput, LogReadingOutput, RuleResult } from '../contract/log-reading';
 import { judgeReading } from './judge';
+import {
+  baseEvent,
+  baseOutput,
+  decided,
+  NO_LINKS,
+  type Decision,
+  type DecisionContext,
+  type Facts,
+  type Links,
+} from './decision';
+import { decideRefusal } from './refusal';
 import type { CheckPoint, CheckPointKind, KitchenProfile, RuleRow, RuleSource, TemperatureRow } from './rule';
+import { formatValue, rebuildWords } from './words';
 
-export interface DecisionContext {
-  now: number;
-  newId: () => string;
-  kitchen: { id: string; timeZone: string; dayStart: string };
-  rules: ReadonlyMap<string, RuleRow>;
-  rulesVersion: string;
-  profile: KitchenProfile;
-}
-
-export interface ToolResultTemplate {
-  content: [{ type: 'text'; text: string }];
-  structuredContent: LogReadingOutput;
-}
-
-export type Rejection = 'initials_not_on_roster' | 'not_handled_yet';
-
-export type Decision =
-  | { status: 'decided'; event: Omit<NewEvent, 'argsHash'>; result: ToolResultTemplate }
-  | { status: 'rejected'; code: Rejection };
+export type { Decision, DecisionContext, Rejection, ToolResultTemplate } from './decision';
 
 const TENTHS_PER_DEGREE = 10;
-
-const VERDICT_WORDS: Record<Outcome, string> = {
-  in_range: 'in range',
-  out_of_range: 'out of range',
-  refused: 'refused',
-  held: 'held',
-  not_covered: 'not covered yet',
-  nothing_to_fix: 'nothing to fix',
-};
-
-const recognisedByProfile = new WeakMap<KitchenProfile, ReadonlySet<string>>();
-
-function recognisedTokens(profile: KitchenProfile): ReadonlySet<string> {
-  let tokens = recognisedByProfile.get(profile);
-  if (!tokens) {
-    const phrases = [...profile.checkPoints, ...profile.foods].flatMap((named) => [named.name, ...named.aliases]);
-    tokens = new Set([
-      ...phrases.flatMap((phrase) => [phrase.toLowerCase(), ...tokensOf(phrase)]),
-      ...profile.vocabulary.verbs,
-      ...profile.vocabulary.articles,
-      ...profile.vocabulary.nouns,
-    ]);
-    recognisedByProfile.set(profile, tokens);
-  }
-  return tokens;
-}
-
-function tokensOf(text: string): string[] {
-  return text
-    .toLowerCase()
-    .split(/[^a-z0-9.-]+/)
-    .map((token) => token.replace(/^\.+|\.+$/g, ''))
-    .filter(Boolean);
-}
-
-function formatValue(value: number): string {
-  return String(value);
-}
-
-// Only recognised tokens and the number itself persist, so no visitor free text or markup reaches
-// the record (BUILD-SPEC A7). A token naming the value in another spelling ("38.0") is written the
-// way the value is stored. Words that never name the value ("minus five", "38 and a half") are
-// replaced by the check point and the number, so a stored line never reads as a reading without one.
-export function rebuildWords(
-  raw: string | undefined,
-  profile: KitchenProfile,
-  value: number,
-  checkPoint: CheckPoint,
-): string {
-  const number = formatValue(value);
-  const known = recognisedTokens(profile);
-  const kept = (raw === undefined ? [] : tokensOf(raw))
-    .map((token) => (Number(token) === value ? number : token))
-    .filter((token) => token === number || known.has(token));
-  return kept.includes(number) ? kept.join(' ') : `${checkPoint.name.toLowerCase()} ${number}`;
-}
 
 export function spokenReadback(outcome: LogReadingOutput): string {
   const parts = [outcome.checkPoint?.name, outcome.value === undefined ? undefined : formatValue(outcome.value)];
@@ -137,12 +72,14 @@ export function selectRule(
   return row?.kind === 'temperature' ? row : undefined;
 }
 
+// A host transcribing spelled letters sends "ab", "A.B." or "a b"; a stored line carries the
+// roster's own form.
 function rosterInitials(initials: string): string {
   return initials.replace(/[^A-Za-z]/g, '').toUpperCase();
 }
 
 interface Judged {
-  outcome: Outcome;
+  outcome: 'in_range' | 'out_of_range' | 'not_covered';
   rule: TemperatureRow | undefined;
 }
 
@@ -150,70 +87,65 @@ function judge(valueTenths: number, rule: TemperatureRow | undefined): Judged {
   return rule === undefined ? { outcome: 'not_covered', rule } : { outcome: judgeReading(valueTenths, rule), rule };
 }
 
-export function decideLogReading(input: LogReadingInput, ctx: DecisionContext): Decision {
-  const { check_point: checkPointId, value, initials } = input;
-  if (checkPointId === undefined || value === undefined || initials === undefined) {
-    return { status: 'rejected', code: 'not_handled_yet' };
-  }
-  const person = rosterInitials(initials);
-  if (!ctx.profile.roster.includes(person)) return { status: 'rejected', code: 'initials_not_on_roster' };
+interface ReadingFacts extends Facts {
+  checkPoint: CheckPoint;
+  value: number;
+  initials: string;
+}
 
-  const checkPoint = checkPointFor(ctx.profile, checkPointId);
-  const measured = input.measured ?? checkPoint.defaultMeasured;
+function readingDecision(facts: ReadingFacts, ctx: DecisionContext, links: Links): Decision {
+  const { checkPoint, value } = facts;
+  const measured = facts.measured ?? checkPoint.defaultMeasured;
   const valueTenths = Math.round(value * TENTHS_PER_DEGREE);
   const { outcome, rule } = judge(valueTenths, selectRule(checkPoint, measured, ctx.profile, ctx.rules));
-  const day = businessDay(ctx.now, ctx.kitchen.timeZone, ctx.kitchen.dayStart);
   const lineId = ctx.newId();
-
   const structured: LogReadingOutput = {
-    contractVersion: 1,
-    outcome,
+    ...baseOutput(ctx, facts, outcome),
     lineId,
-    checkPoint: { id: checkPoint.id, name: checkPoint.name },
     value,
     unit: 'F',
-    verdict: VERDICT_WORDS[outcome],
     ...(rule === undefined ? {} : { rule: ruleResult(rule) }),
-    serverTime: utcIso(ctx.now),
-    businessDay: day,
-    timeZone: ctx.kitchen.timeZone,
-    initials: person,
   };
-
-  const event: Omit<NewEvent, 'argsHash'> = {
-    id: lineId,
-    kitchenId: ctx.kitchen.id,
-    kind: 'reading',
-    occurredAt: ctx.now,
-    businessDay: day,
-    timeZone: ctx.kitchen.timeZone,
-    screenId: input.screen_id,
-    requestId: input.request_id,
-    origin: 'person',
-    checkPointId: checkPoint.id,
-    measured: measured ?? null,
-    initials: person,
-    words: rebuildWords(input.words, ctx.profile, value, checkPoint),
+  const event = {
+    ...baseEvent(ctx, { ...facts, measured }, 'reading', lineId, links),
+    words: rebuildWords(facts.words, ctx.profile, value, checkPoint),
     valueTenths,
-    unit: 'F',
+    unit: 'F' as const,
     outcome,
     verdict: rule === undefined ? null : structured.verdict,
     ruleId: rule?.id ?? null,
     ruleSnapshot: rule === undefined ? null : JSON.stringify(rule),
     rulesVersion: ctx.rulesVersion,
-    supersedesId: null,
-    rootId: null,
-    refId: null,
-    answersId: null,
-    promptKind: null,
-    expiresAt: null,
-    dueSlotId: null,
-    dueAt: null,
   };
+  return decided(event, spokenReadback(structured), structured);
+}
 
+function callFacts(input: LogReadingInput, ctx: DecisionContext, initials: string | undefined): Facts {
   return {
-    status: 'decided',
-    event,
-    result: { content: [{ type: 'text', text: spokenReadback(structured) }], structuredContent: structured },
+    checkPoint: input.check_point === undefined ? undefined : checkPointFor(ctx.profile, input.check_point),
+    value: input.value,
+    measured: input.measured,
+    initials,
+    words: input.words,
+    screenId: input.screen_id,
+    requestId: input.request_id,
   };
+}
+
+// The roster check is the first decision: a refusal or a hold stores the call's initials, so text
+// that is not a roster entry must be turned away before anything can be written (PRIV-01).
+export function decideLogReading(input: LogReadingInput, ctx: DecisionContext): Decision {
+  const initials = input.initials === undefined ? undefined : rosterInitials(input.initials);
+  if (initials !== undefined && !ctx.profile.roster.includes(initials)) {
+    return { status: 'rejected', code: 'initials_not_on_roster' };
+  }
+  const facts = callFacts(input, ctx, initials);
+  const refusal = decideRefusal(facts, ctx, NO_LINKS);
+  if (refusal) return refusal;
+
+  const { checkPoint, value } = facts;
+  if (checkPoint === undefined || value === undefined || initials === undefined) {
+    return { status: 'rejected', code: 'not_handled_yet' };
+  }
+  return readingDecision({ ...facts, checkPoint, value, initials }, ctx, NO_LINKS);
 }

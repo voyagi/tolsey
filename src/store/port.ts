@@ -71,6 +71,22 @@ export interface StoredLine extends NewEvent {
   resultJson: string;
 }
 
+// An event that asked a question, as the call answering it needs it. repeats counts the digit
+// repeats already held along the chain this prompt belongs to.
+export interface PendingPrompt {
+  id: string;
+  promptKind: string;
+  checkPointId: string | null;
+  measured: string | null;
+  valueTenths: number | null;
+  initials: string | null;
+  screenId: string;
+  expiresAt: number;
+  refId: string | null;
+  answered: boolean;
+  repeats: number;
+}
+
 export interface RowsPerWrite {
   kitchen_create: number;
   event_first_of_day: number;
@@ -129,4 +145,5 @@ export interface Store {
   findKitchen(id: string): Promise<KitchenRow | null>;
   append(input: AppendInput): Promise<AppendOutcome>;
   linesForDay(kitchenId: string, businessDay: string): Promise<StoredLine[]>;
+  openChecks(kitchenId: string, businessDay: string): Promise<string[]>;
 }

@@ -87,6 +87,20 @@ SELECT id, kind, label, time_zone, day_start, created_at FROM kitchens WHERE id 
 const SELECT_DAY = `
 SELECT * FROM events WHERE kitchen_id = ?1 AND business_day = ?2 ORDER BY seq`;
 
+// A check is open while the newest event naming it asks for a number: a refusal or a hold. Only the
+// kind column decides, never a stored status or the outcome, so a retake closes the check without
+// touching the refusal line, which stays counted. A receipt answers a call and never moves a check.
+const OPEN_CHECKS = `
+SELECT line.check_point_id AS check_point_id
+FROM (
+  SELECT MAX(seq) AS seq FROM events
+  WHERE kitchen_id = ?1 AND business_day = ?2 AND check_point_id IS NOT NULL AND kind <> 'receipt'
+  GROUP BY check_point_id
+) AS newest
+JOIN events AS line ON line.seq = newest.seq
+WHERE line.kind IN ('refusal', 'held')
+ORDER BY line.check_point_id`;
+
 interface InsertedRow {
   seq: number;
   day_line: number | null;
@@ -228,6 +242,11 @@ export class D1Store implements Store {
   async linesForDay(kitchenId: string, businessDay: string): Promise<StoredLine[]> {
     const rows = await this.db.prepare(SELECT_DAY).bind(kitchenId, businessDay).all<EventRecord>();
     return rows.results.map(toStoredLine);
+  }
+
+  async openChecks(kitchenId: string, businessDay: string): Promise<string[]> {
+    const rows = await this.db.prepare(OPEN_CHECKS).bind(kitchenId, businessDay).all<{ check_point_id: string }>();
+    return rows.results.map((row) => row.check_point_id);
   }
 
   private async followUp(input: AppendInput): Promise<FollowUpRow> {
