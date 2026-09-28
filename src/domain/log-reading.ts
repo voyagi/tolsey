@@ -5,14 +5,16 @@ import {
   baseOutput,
   decided,
   NO_LINKS,
+  promptExpiry,
   type Decision,
   type DecisionContext,
   type Facts,
   type Links,
 } from './decision';
-import { decideRefusal } from './refusal';
+import { decideRefusal, refusalDecision } from './refusal';
 import type { CheckPoint, CheckPointKind, KitchenProfile, RuleRow, RuleSource, TemperatureRow } from './rule';
-import { formatValue, rebuildWords } from './words';
+import { needsDigitRepeat } from './twins';
+import { classifyNumberWords, formatValue, rebuildWords, tokensOf } from './words';
 
 export type { Decision, DecisionContext, Rejection, ToolResultTemplate } from './decision';
 
@@ -87,17 +89,56 @@ function judge(valueTenths: number, rule: TemperatureRow | undefined): Judged {
   return rule === undefined ? { outcome: 'not_covered', rule } : { outcome: judgeReading(valueTenths, rule), rule };
 }
 
-interface ReadingFacts extends Facts {
-  checkPoint: CheckPoint;
+function tenthsOf(value: number): number {
+  return Math.round(value * TENTHS_PER_DEGREE);
+}
+
+interface ValueFacts extends Facts {
   value: number;
+}
+
+interface ReadingFacts extends ValueFacts {
+  checkPoint: CheckPoint;
   initials: string;
 }
 
-function readingDecision(facts: ReadingFacts, ctx: DecisionContext, links: Links): Decision {
+// A hold stores the number it holds, so the answer can be compared with it and the reading logged
+// from it, and the question it asks is the prompt the answer names.
+function heldDecision(facts: ValueFacts, ctx: DecisionContext, links: Links, promptKind: string, text: string): Decision {
+  const promptId = ctx.newId();
+  const measured = facts.measured ?? facts.checkPoint?.defaultMeasured;
+  const event = {
+    ...baseEvent(ctx, { ...facts, measured }, 'held', promptId, links),
+    words: rebuildWords(facts.words, ctx.profile, facts.value, facts.checkPoint),
+    valueTenths: tenthsOf(facts.value),
+    unit: 'F' as const,
+    outcome: 'held',
+    rulesVersion: ctx.rulesVersion,
+    promptKind,
+    expiresAt: promptExpiry(ctx),
+  };
+  const structured: LogReadingOutput = {
+    ...baseOutput(ctx, facts, 'held'),
+    value: facts.value,
+    unit: 'F',
+    prompt: { kind: promptKind, id: promptId },
+  };
+  return decided(event, text, structured);
+}
+
+function digitRepeatReply(checkPoint: CheckPoint): string {
+  return `Say it one digit at a time. What does ${checkPoint.askAs} read?`;
+}
+
+function readingDecision(
+  facts: ReadingFacts,
+  ctx: DecisionContext,
+  links: Links,
+  row: TemperatureRow | undefined,
+): Decision {
   const { checkPoint, value } = facts;
-  const measured = facts.measured ?? checkPoint.defaultMeasured;
-  const valueTenths = Math.round(value * TENTHS_PER_DEGREE);
-  const { outcome, rule } = judge(valueTenths, selectRule(checkPoint, measured, ctx.profile, ctx.rules));
+  const valueTenths = tenthsOf(value);
+  const { outcome, rule } = judge(valueTenths, row);
   const lineId = ctx.newId();
   const structured: LogReadingOutput = {
     ...baseOutput(ctx, facts, outcome),
@@ -107,7 +148,7 @@ function readingDecision(facts: ReadingFacts, ctx: DecisionContext, links: Links
     ...(rule === undefined ? {} : { rule: ruleResult(rule) }),
   };
   const event = {
-    ...baseEvent(ctx, { ...facts, measured }, 'reading', lineId, links),
+    ...baseEvent(ctx, facts, 'reading', lineId, links),
     words: rebuildWords(facts.words, ctx.profile, value, checkPoint),
     valueTenths,
     unit: 'F' as const,
@@ -118,6 +159,31 @@ function readingDecision(facts: ReadingFacts, ctx: DecisionContext, links: Links
     rulesVersion: ctx.rulesVersion,
   };
   return decided(event, spokenReadback(structured), structured);
+}
+
+// A reading with no row is kept unjudged, and nothing unjudged can be misjudged, so only a reading
+// with a row can be held; a confirmed digit repeat is judged without asking again.
+function judgedOrHeld(facts: ReadingFacts, ctx: DecisionContext, links: Links, confirmed: boolean): Decision {
+  const { checkPoint } = facts;
+  const measured = facts.measured ?? checkPoint.defaultMeasured;
+  const measuredFacts = { ...facts, measured };
+  const row = selectRule(checkPoint, measured, ctx.profile, ctx.rules);
+  const band = ctx.profile.coarseBands[checkPoint.kind];
+  if (row !== undefined && !confirmed && needsDigitRepeat(tenthsOf(facts.value), row, band)) {
+    return heldDecision(measuredFacts, ctx, links, 'digit_repeat', digitRepeatReply(checkPoint));
+  }
+  return readingDecision(measuredFacts, ctx, links, row);
+}
+
+// A hedge refuses the call even with a value attached, so a limit or a guess is never stored as the
+// number the host put beside it (N1). "5 below" makes the value negative only when its digits are the
+// value's own; any other pairing of words and value is not a reading.
+function valueFromWords(facts: Facts, ctx: DecisionContext): { value: number } | undefined {
+  if (facts.value === undefined) return undefined;
+  const said = classifyNumberWords(tokensOf(facts.words ?? ''), ctx.profile.vocabulary);
+  if (said.kind === 'hedge') return undefined;
+  if (said.kind === 'plain') return { value: facts.value };
+  return Math.abs(facts.value) === Math.abs(said.value) ? { value: said.value } : undefined;
 }
 
 function callFacts(input: LogReadingInput, ctx: DecisionContext, initials: string | undefined): Facts {
@@ -142,10 +208,12 @@ export function decideLogReading(input: LogReadingInput, ctx: DecisionContext): 
   const facts = callFacts(input, ctx, initials);
   const refusal = decideRefusal(facts, ctx, NO_LINKS);
   if (refusal) return refusal;
+  const reading = valueFromWords(facts, ctx);
+  if (reading === undefined) return refusalDecision(facts, ctx, NO_LINKS);
 
-  const { checkPoint, value } = facts;
-  if (checkPoint === undefined || value === undefined || initials === undefined) {
+  const { checkPoint } = facts;
+  if (checkPoint === undefined || initials === undefined) {
     return { status: 'rejected', code: 'not_handled_yet' };
   }
-  return readingDecision({ ...facts, checkPoint, value, initials }, ctx, NO_LINKS);
+  return judgedOrHeld({ ...facts, checkPoint, value: reading.value, initials }, ctx, NO_LINKS, false);
 }

@@ -106,16 +106,26 @@ describe('the words stored with a reading', () => {
 describe('the number judged and the number read back', () => {
   // The walk-in air limit, 41 or less, in tenths.
   const WALK_IN_AIR_LIMIT_TENTHS = 410;
+  // The demo cold coarse band, 20 to 60, and the walk-in readings whose ten twin would fail 41.
+  const COLD_BAND_TENTHS = { low: 200, high: 600 };
+  const WALK_IN_TWIN_TENTHS = new Set([150, 160, 170, 180, 190]);
 
-  it('judges exactly the number it stores and reads back, for every tenth the contract accepts', () => {
+  function expectedOutcome(tenths: number): string {
+    if (tenths < COLD_BAND_TENTHS.low || tenths > COLD_BAND_TENTHS.high || WALK_IN_TWIN_TENTHS.has(tenths)) return 'held';
+    return tenths <= WALK_IN_AIR_LIMIT_TENTHS ? 'in_range' : 'out_of_range';
+  }
+
+  it('stores and reads back exactly the number given, judging it or holding it for a repeat, for every tenth the contract accepts', () => {
     fc.assert(
       fc.property(fc.integer({ min: -4596, max: 10000 }), (tenths) => {
         const input = LogReadingInputSchema.parse(walkIn({ value: tenths / 10, words: undefined }));
         const { event, result } = decided(input);
+        const outcome = expectedOutcome(tenths);
         expect(event.valueTenths).toBe(tenths);
         expect(result.structuredContent.value).toBe(input.value);
-        expect(result.structuredContent.outcome).toBe(tenths <= WALK_IN_AIR_LIMIT_TENTHS ? 'in_range' : 'out_of_range');
-        expect(LogReadingOutputSchema.safeParse({ ...result.structuredContent, recordCode: '261020-001' }).success).toBe(true);
+        expect(result.structuredContent.outcome).toBe(outcome);
+        const stored = outcome === 'held' ? result.structuredContent : { ...result.structuredContent, recordCode: '261020-001' };
+        expect(LogReadingOutputSchema.safeParse(stored).success).toBe(true);
       }),
     );
   });

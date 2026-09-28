@@ -164,8 +164,18 @@
   },
   "vocabulary": {
     "verbs": ["reads", "is", "at", "reading", "came", "in"],
-    "articles": ["the", "a"],
+    "articles": ["the", "a", "its"],
     "nouns": ["air", "degrees", "delivery", "temp", "temperature"],
-    "states": ["fine", "good", "ok", "okay", "normal", "cold", "cool", "warm", "hot", "everything", "all"]
+    "states": ["fine", "good", "ok", "okay", "normal", "cold", "cool", "warm", "hot", "everything", "all"],
+    "hedges": {
+      "limits": ["under", "over", "below", "above", "less", "more"],
+      "below": "below",
+      "zero": "zero",
+      "approximations": ["about", "around", "roughly", "approximately", "nearly", "almost", "maybe"],
+      "decades": ["high", "mid", "low"],
+      "tens": ["twenties", "thirties", "forties", "fifties", "sixties", "seventies", "eighties", "nineties"],
+      "ranges": ["or", "to"],
+      "phrases": ["same as before", "same as last time", "as usual"]
+    }
   }
 }

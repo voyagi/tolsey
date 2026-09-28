@@ -201,6 +201,22 @@ export const KitchenProfileSchema = z
         articles: z.array(z.string().min(1)),
         nouns: z.array(z.string().min(1)),
         states: z.array(z.string().min(1)).min(1),
+        // How a number said as a limit, a range or a guess is told from a reading (REFU-01).
+        hedges: z
+          .object({
+            limits: z.array(z.string().min(1)).min(1),
+            below: z.string().min(1),
+            zero: z.string().min(1),
+            approximations: z.array(z.string().min(1)).min(1),
+            decades: z.array(z.string().min(1)).min(1),
+            tens: z.array(z.string().min(1)).min(1),
+            ranges: z.array(z.string().min(1)).min(1),
+            phrases: z.array(z.string().min(1)).min(1),
+          })
+          .strict()
+          .refine((hedges) => hedges.limits.includes(hedges.below), {
+            message: 'the word that makes a negative ("5 below") is also a limit word ("below 5")',
+          }),
       })
       .strict(),
   })

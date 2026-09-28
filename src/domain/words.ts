@@ -1,18 +1,27 @@
 import type { CheckPoint, KitchenProfile } from './rule';
 
+type Vocabulary = KitchenProfile['vocabulary'];
+type Hedges = Vocabulary['hedges'];
+
 const recognisedByProfile = new WeakMap<KitchenProfile, ReadonlySet<string>>();
+
+function hedgeWords(hedges: Hedges): string[] {
+  const { limits, below, zero, approximations, decades, tens, ranges, phrases } = hedges;
+  return [...limits, below, zero, ...approximations, ...decades, ...tens, ...ranges, ...phrases.flatMap(tokensOf)];
+}
 
 function recognisedTokens(profile: KitchenProfile): ReadonlySet<string> {
   let tokens = recognisedByProfile.get(profile);
   if (!tokens) {
     const phrases = [...profile.checkPoints, ...profile.foods].flatMap((named) => [named.name, ...named.aliases]);
-    const { verbs, articles, nouns, states } = profile.vocabulary;
+    const { verbs, articles, nouns, states, hedges } = profile.vocabulary;
     tokens = new Set([
       ...phrases.flatMap((phrase) => [phrase.toLowerCase(), ...tokensOf(phrase)]),
       ...verbs,
       ...articles,
       ...nouns,
       ...states,
+      ...hedgeWords(hedges),
     ]);
     recognisedByProfile.set(profile, tokens);
   }
@@ -31,6 +40,52 @@ export function tokensOf(text: string): string[] {
 
 export function formatValue(value: number): string {
   return String(value);
+}
+
+export type NumberWords = { kind: 'plain' } | { kind: 'negative'; value: number } | { kind: 'hedge' };
+
+const PLAIN: NumberWords = { kind: 'plain' };
+const HEDGE: NumberWords = { kind: 'hedge' };
+
+const NUMBER_TOKEN = /^-?\d+(\.\d+)?$/;
+const DECADE_FIGURE = /^\d0s$/;
+
+function isNumber(token: string | undefined): boolean {
+  return token !== undefined && NUMBER_TOKEN.test(token);
+}
+
+// "below" is a hedge before a number ("below 5") and a sign after one ("5 below"), so it is judged
+// by what precedes it; every other limit word hedges wherever it stands.
+function hedgesAt(tokens: readonly string[], index: number, hedges: Hedges): boolean {
+  const token = tokens[index];
+  if (hedges.approximations.includes(token) || hedges.tens.includes(token) || DECADE_FIGURE.test(token)) return true;
+  if (hedges.limits.includes(token)) return !(token === hedges.below && isNumber(tokens[index - 1]));
+  if (hedges.ranges.includes(token)) return isNumber(tokens[index - 1]) && isNumber(tokens[index + 1]);
+  return false;
+}
+
+function saysHedge(tokens: readonly string[], hedges: Hedges): boolean {
+  const said = ` ${tokens.join(' ')} `;
+  if (hedges.phrases.some((phrase) => said.includes(` ${tokensOf(phrase).join(' ')} `))) return true;
+  return tokens.some((_, index) => hedgesAt(tokens, index, hedges));
+}
+
+function negativeOf(tokens: readonly string[], hedges: Hedges): number | undefined {
+  const index = tokens.findIndex((token, at) => token === hedges.below && isNumber(tokens[at - 1]));
+  if (index < 0) return undefined;
+  const magnitude = Number(tokens[index - 1]);
+  return magnitude > 0 ? -magnitude : undefined;
+}
+
+// Number words are not parsed into values here (that grammar is the intent layer's); this only says
+// whether the words give a reading, a reading below zero, or something other than a reading. A state
+// word counts only when no number was said at all: "fine at 38" still names its number.
+export function classifyNumberWords(tokens: readonly string[], vocabulary: Vocabulary): NumberWords {
+  if (saysHedge(tokens, vocabulary.hedges)) return HEDGE;
+  const negative = negativeOf(tokens, vocabulary.hedges);
+  if (negative !== undefined) return { kind: 'negative', value: negative };
+  if (!tokens.some(isNumber) && tokens.some((token) => vocabulary.states.includes(token))) return HEDGE;
+  return PLAIN;
 }
 
 // A figure a thermometer could show, kept in a refused line so it quotes "under 41" as said; a
