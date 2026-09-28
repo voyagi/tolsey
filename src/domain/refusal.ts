@@ -2,7 +2,7 @@ import { baseEvent, baseOutput, decided, promptExpiry, type Decision, type Decis
 import type { CheckPoint } from './rule';
 import { rebuildWords } from './words';
 
-export const NO_CHECK_REPLY = 'I need a check and the number on the thermometer.';
+const NO_CHECK_REPLY = 'I need a check and the number on the thermometer.';
 
 export function refusalReply(checkPoint: CheckPoint | undefined): string {
   if (checkPoint === undefined) return NO_CHECK_REPLY;

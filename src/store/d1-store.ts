@@ -5,6 +5,7 @@ import type {
   CreateKitchenOutcome,
   D1Like,
   KitchenRow,
+  PendingPrompt,
   Store,
   StoredLine,
 } from './port';
@@ -101,6 +102,25 @@ JOIN events AS line ON line.seq = newest.seq
 WHERE line.kind IN ('refusal', 'held')
 ORDER BY line.check_point_id`;
 
+// Null for an id naming nothing this kitchen asked, a reading or a receipt among them, so a stale or
+// foreign id is a fresh call rather than a fault. Any event carrying the id as answers_id answers it,
+// a receipt included, which is how "Log it by hand" closes the prompt it answers. The repeat count
+// walks only this kitchen's events, since ref_id has no index of its own.
+const PENDING_PROMPT = `
+SELECT
+  asked.id AS id, asked.prompt_kind AS prompt_kind, asked.check_point_id AS check_point_id,
+  asked.measured AS measured, asked.value_tenths AS value_tenths, asked.initials AS initials,
+  asked.screen_id AS screen_id, asked.expires_at AS expires_at, asked.ref_id AS ref_id,
+  EXISTS (SELECT 1 FROM events AS answer WHERE answer.answers_id = asked.id) AS answered,
+  (
+    SELECT COUNT(*) FROM events AS chain
+    WHERE chain.kitchen_id = asked.kitchen_id AND chain.ref_id = COALESCE(asked.ref_id, asked.id)
+      AND chain.kind = 'held' AND chain.prompt_kind = 'digit_repeat'
+  ) AS repeats
+FROM events AS asked
+WHERE asked.kitchen_id = ?1 AND asked.id = ?2
+  AND asked.prompt_kind IS NOT NULL AND asked.expires_at IS NOT NULL`;
+
 interface InsertedRow {
   seq: number;
   day_line: number | null;
@@ -113,6 +133,20 @@ interface FollowUpRow {
   occurred_at: number | null;
   kitchen_open: number;
   line_count: number;
+}
+
+interface PromptRecord {
+  id: string;
+  prompt_kind: string;
+  check_point_id: string | null;
+  measured: string | null;
+  value_tenths: number | null;
+  initials: string | null;
+  screen_id: string;
+  expires_at: number;
+  ref_id: string | null;
+  answered: number;
+  repeats: number;
 }
 
 interface KitchenRecord {
@@ -247,6 +281,24 @@ export class D1Store implements Store {
   async openChecks(kitchenId: string, businessDay: string): Promise<string[]> {
     const rows = await this.db.prepare(OPEN_CHECKS).bind(kitchenId, businessDay).all<{ check_point_id: string }>();
     return rows.results.map((row) => row.check_point_id);
+  }
+
+  async pendingPrompt(kitchenId: string, promptId: string): Promise<PendingPrompt | null> {
+    const row = await this.db.prepare(PENDING_PROMPT).bind(kitchenId, promptId).first<PromptRecord>();
+    if (!row) return null;
+    return {
+      id: row.id,
+      promptKind: row.prompt_kind,
+      checkPointId: row.check_point_id,
+      measured: row.measured,
+      valueTenths: row.value_tenths,
+      initials: row.initials,
+      screenId: row.screen_id,
+      expiresAt: row.expires_at,
+      refId: row.ref_id,
+      answered: row.answered !== 0,
+      repeats: row.repeats,
+    };
   }
 
   private async followUp(input: AppendInput): Promise<FollowUpRow> {

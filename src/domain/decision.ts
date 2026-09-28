@@ -21,13 +21,17 @@ export interface ToolResultTemplate {
   structuredContent: LogReadingOutput;
 }
 
-export type Rejection = 'initials_not_on_roster' | 'not_handled_yet';
+export type Rejection = 'initials_not_on_roster';
 
 export type DecidedEvent = Omit<NewEvent, 'argsHash'>;
 
-export type Decision =
-  | { status: 'decided'; event: DecidedEvent; result: ToolResultTemplate }
-  | { status: 'rejected'; code: Rejection };
+export interface Decided {
+  status: 'decided';
+  event: DecidedEvent;
+  result: ToolResultTemplate;
+}
+
+export type Decision = Decided | { status: 'rejected'; code: Rejection };
 
 // What a decision works from: the call's own facts, with an answered prompt's held facts filled in,
 // and initials already in the roster's form.
@@ -48,7 +52,7 @@ export interface Links {
 
 export const NO_LINKS: Links = { answersId: null, refId: null };
 
-export const VERDICT_WORDS: Record<Outcome, string> = {
+const VERDICT_WORDS: Record<Outcome, string> = {
   in_range: 'in range',
   out_of_range: 'out of range',
   refused: 'refused',
@@ -57,7 +61,7 @@ export const VERDICT_WORDS: Record<Outcome, string> = {
   nothing_to_fix: 'nothing to fix',
 };
 
-export function dayOf(ctx: DecisionContext): string {
+function dayOf(ctx: DecisionContext): string {
   return businessDay(ctx.now, ctx.kitchen.timeZone, ctx.kitchen.dayStart);
 }
 
@@ -117,6 +121,12 @@ export function baseEvent(
 
 export function decided(event: DecidedEvent, text: string, structuredContent: LogReadingOutput): Decision {
   return { status: 'decided', event, result: { content: [{ type: 'text', text }], structuredContent } };
+}
+
+export const TENTHS_PER_DEGREE = 10;
+
+export function tenthsOf(value: number): number {
+  return Math.round(value * TENTHS_PER_DEGREE);
 }
 
 const SECOND_MS = 1000;

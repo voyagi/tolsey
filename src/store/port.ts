@@ -146,4 +146,5 @@ export interface Store {
   append(input: AppendInput): Promise<AppendOutcome>;
   linesForDay(kitchenId: string, businessDay: string): Promise<StoredLine[]>;
   openChecks(kitchenId: string, businessDay: string): Promise<string[]>;
+  pendingPrompt(kitchenId: string, promptId: string): Promise<PendingPrompt | null>;
 }

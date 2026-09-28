@@ -7,7 +7,13 @@ import {
   type LogReadingInput,
 } from '../contract/log-reading';
 import { TOOL_ANNOTATIONS, TOOL_DESCRIPTIONS } from '../contract/tools';
-import { decideLogReading, type Rejection } from '../domain/log-reading';
+import {
+  alreadyAnswered,
+  decideLogReading,
+  type Decided,
+  type DecisionContext,
+  type Rejection,
+} from '../domain/log-reading';
 import type { KitchenProfile, RuleRow } from '../domain/rule';
 import {
   expectedRowsFor,
@@ -54,8 +60,7 @@ const REQUEST_ID_REUSED =
   'Tolsey could not log that: this request_id was already used for a different call. Call again with a new request_id.';
 
 const REJECTION_TEXT: Record<Rejection, string> = {
-  initials_not_on_roster: "Tolsey could not log that: those initials are not on this kitchen's roster.",
-  not_handled_yet: 'Tolsey could not log that: give a check point, a number and initials.',
+  initials_not_on_roster: "Those initials are not on this kitchen's roster. Who is logging?",
 };
 
 const REFUSAL_TEXT: Record<RefusalReason, string> = {
@@ -101,30 +106,16 @@ function resultFor(outcome: AppendOutcome): CallToolResult {
     case 'refused':
       return errorResult(REFUSAL_TEXT[outcome.reason], outcome.reason);
     case 'conflict': {
-      const error = new Error('a plain reading tripped a correction or answer index');
+      const error = new Error(`an event tripped the ${outcome.constraint} index outside its own path`);
       error.name = 'UnexpectedConflict';
       throw error;
     }
   }
 }
 
-async function logReading(args: LogReadingInput, deps: ServerDeps): Promise<CallToolResult> {
-  // The store's guarded insert refuses a demo write too; answering here keeps the judged kitchen's
-  // storage untouched by any attempt, and says what to do instead.
-  if (deps.kitchen.kind === 'demo') return errorResult(DEMO_READ_ONLY, 'demo_read_only');
-  const now = deps.clock.now();
-  const decision = decideLogReading(args, {
-    now,
-    newId: () => crypto.randomUUID(),
-    kitchen: deps.kitchen,
-    rules: deps.rules,
-    rulesVersion: deps.rulesVersion,
-    profile: deps.profile,
-  });
-  if (decision.status === 'rejected') return errorResult(REJECTION_TEXT[decision.code], decision.code);
-
-  const event = { ...decision.event, argsHash: await argsHash(args) };
-  const outcome = await deps.store.append({
+async function append(decision: Decided, hash: string, deps: ServerDeps, now: number): Promise<AppendOutcome> {
+  const event = { ...decision.event, argsHash: hash };
+  return deps.store.append({
     event,
     resultTemplate: JSON.stringify(decision.result),
     expectedRows: expectedRowsFor(event, deps.rowsPerWrite),
@@ -135,7 +126,38 @@ async function logReading(args: LogReadingInput, deps: ServerDeps): Promise<Call
     retryWindowMs: deps.limits.retryWindowSeconds * SECOND_MS,
     now,
   });
-  return resultFor(outcome);
+}
+
+async function decisionContext(args: LogReadingInput, deps: ServerDeps, now: number): Promise<DecisionContext> {
+  const promptId = args.pending_prompt_id;
+  return {
+    now,
+    newId: () => crypto.randomUUID(),
+    kitchen: deps.kitchen,
+    rules: deps.rules,
+    rulesVersion: deps.rulesVersion,
+    profile: deps.profile,
+    prompt: promptId ? await deps.store.pendingPrompt(deps.kitchen.id, promptId) : null,
+  };
+}
+
+async function logReading(args: LogReadingInput, deps: ServerDeps): Promise<CallToolResult> {
+  // The store's guarded insert refuses a demo write too; answering here keeps the judged kitchen's
+  // storage untouched by any attempt, and says what to do instead.
+  if (deps.kitchen.kind === 'demo') return errorResult(DEMO_READ_ONLY, 'demo_read_only');
+  const now = deps.clock.now();
+  const ctx = await decisionContext(args, deps, now);
+  const decision = decideLogReading(args, ctx);
+  if (decision.status === 'rejected') return errorResult(REJECTION_TEXT[decision.code], decision.code);
+
+  const hash = await argsHash(args);
+  const outcome = await append(decision, hash, deps, now);
+  if (outcome.status !== 'conflict' || outcome.constraint !== 'answers') return resultFor(outcome);
+  // Another request answered the prompt between this call's read and its write (a repeat of that
+  // request's own id never gets here: the store answers it as a duplicate first). This call still
+  // stores exactly one event, a receipt under its own request id, and a refusal of that append is
+  // answered like any refused append.
+  return resultFor(await append(alreadyAnswered(args, ctx), hash, deps, now));
 }
 
 export function createServer(deps: ServerDeps): McpServer {
