@@ -57,6 +57,14 @@ const timeoutOverride = Number(process.env.VERIFY_SHIP_TIMEOUT_MS);
 const STEP_TIMEOUT_MS =
   Number.isFinite(timeoutOverride) && timeoutOverride > 0 ? timeoutOverride : 30 * 60 * 1000;
 
+// The first full mutation run over src/domain and src/server (1608 mutants, concurrency 4) took
+// 220 min 47 s here on 2026-09-28. The step gets twice that: the machine is shared with other work
+// and the mutant count grows with the code, and a fixed 4 hours left only 8 percent. Replace the
+// figure when a later full run is measured; src/server/verify-ship-timeout.test.ts pins the step
+// between two and three times it.
+const MUTATION_FULL_RUN_MS = 13_247_000;
+const MUTATION_TIMEOUT_MS = 2 * MUTATION_FULL_RUN_MS;
+
 // The CORE four are unconditional: a missing script exits non-zero, which is the correct
 // fail-closed behavior for surfaces every product has.
 //
@@ -100,7 +108,7 @@ const STEPS = [
   { name: 'coverage', cmd: 'npm run test:coverage', script: 'test:coverage', appliesWhen: 'a test:coverage script with floors exists' },
   { name: 'e2e', cmd: 'npm run test:e2e', script: 'test:e2e', appliesWhen: 'a test:e2e script exists' },
   { name: 'a11y', cmd: 'npm run a11y:live', script: 'a11y:live', appliesWhen: 'the product renders HTML and a11y-live.mjs is installed' },
-  { name: 'mutation', cmd: 'npm run mutate', script: 'mutate', appliesWhen: 'stryker is configured', timeoutMs: 4 * 60 * 60 * 1000 },
+  { name: 'mutation', cmd: 'npm run mutate', script: 'mutate', appliesWhen: 'stryker is configured', timeoutMs: MUTATION_TIMEOUT_MS },
 ];
 
 // Read once; an unreadable or unparsable package.json means the optional steps cannot be told
