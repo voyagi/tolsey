@@ -93,4 +93,78 @@ describe('a check given without a number, through MCP', () => {
     expect(refusals[1]).toMatchObject({ checkPointId: null, promptKind: null, expiresAt: null });
     expect(await worker.store.openChecks(kitchenId, DAY)).toEqual(openBefore);
   });
+
+  describe('a number given as a limit, a range or a guess', () => {
+    it('refuses value 41 said as "the walk-in is under 41" and never stores 41', async () => {
+      const kitchenId = await kitchen();
+      const result = await call(kitchenId, {
+        check_point: 'walk_in',
+        value: 41,
+        words: 'the walk-in is under 41',
+        initials: 'AB',
+      });
+
+      expect(result.isError).not.toBe(true);
+      expect(result.content[0]?.text).toBe('I need the number on the thermometer. What does the walk-in read?');
+      expect(result.structuredContent?.outcome).toBe('refused');
+      expect(result.structuredContent).not.toHaveProperty('value');
+      const stored = await lines(kitchenId);
+      expect(stored.filter((line) => line.valueTenths === 410)).toHaveLength(0);
+      expect(ofKind(stored, 'reading')).toHaveLength(0);
+      expect(ofKind(stored, 'refusal')[0]?.words).toBe('the walk-in is under 41');
+      expect(await worker.store.openChecks(kitchenId, DAY)).toEqual(['walk_in']);
+    });
+
+    it.each([
+      ['38 or 39', 38],
+      ['about 40', 40],
+      ['below 5', 5],
+    ])('refuses "%s" even with a value attached (E22)', async (words, value) => {
+      const kitchenId = await kitchen();
+      const result = await call(kitchenId, { check_point: 'walk_in', value, words, initials: 'AB' });
+
+      expect(result.structuredContent?.outcome).toBe('refused');
+      expect(ofKind(await lines(kitchenId), 'reading')).toHaveLength(0);
+    });
+  });
+
+  describe('a reading below zero (E21)', () => {
+    it.each([
+      [-5, '5 below'],
+      [5, '5 below zero'],
+    ])('logs value %d said as "%s" at the freezer as -5, judged in range by the freezer limit', async (value, words) => {
+      const kitchenId = await kitchen();
+      const result = await call(kitchenId, { check_point: 'freezer', value, words, initials: 'AB' });
+
+      expect(result.isError).not.toBe(true);
+      expect(result.structuredContent).toMatchObject({ outcome: 'in_range', value: -5, rule: { id: 'freezer_limit' } });
+      expect(ofKind(await lines(kitchenId), 'reading')[0]?.valueTenths).toBe(-50);
+    });
+  });
+
+  describe('a number that may be a misheard teen or ten', () => {
+    it.each([15, 13])('holds walk-in %d for a digit-by-digit repeat, judges nothing and keeps the check open', async (value) => {
+      const kitchenId = await kitchen();
+      const result = await call(kitchenId, {
+        check_point: 'walk_in',
+        value,
+        words: `the walk-in reads ${value}`,
+        initials: 'AB',
+      });
+
+      expect(result.isError).not.toBe(true);
+      expect(result.content[0]?.text).toBe('Say it one digit at a time. What does the walk-in read?');
+      const structured = result.structuredContent ?? {};
+      expect(structured.outcome).toBe('held');
+      expect(structured).not.toHaveProperty('rule');
+      expect(structured).not.toHaveProperty('lineId');
+      expect(structured.prompt).toMatchObject({ kind: 'digit_repeat' });
+      const stored = await lines(kitchenId);
+      expect(ofKind(stored, 'reading')).toHaveLength(0);
+      expect(ofKind(stored, 'held')).toEqual([
+        expect.objectContaining({ valueTenths: value * 10, promptKind: 'digit_repeat', verdict: null, dayLine: null }),
+      ]);
+      expect(await worker.store.openChecks(kitchenId, DAY)).toEqual(['walk_in']);
+    });
+  });
 });

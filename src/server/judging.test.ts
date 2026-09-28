@@ -88,7 +88,8 @@ describe('readings routed to their own rule row, through MCP', () => {
 
   it('stores 1:30 AM CDT and 1:30 AM CST in sequence on 2026-10-31 and labels each with its zone', async () => {
     const kitchenId = await kitchenAt(FIRST_130);
-    const first = await logAt(kitchenId, FIRST_130, { check_point: 'soup_well', value: 150, initials: 'AB' });
+    // 152, not a round 150: 150 passes hot holding while its twin 115 fails, so it would be held.
+    const first = await logAt(kitchenId, FIRST_130, { check_point: 'soup_well', value: 152, initials: 'AB' });
     const second = await logAt(kitchenId, SECOND_130, { check_point: 'soup_well', value: 151, initials: 'AB' });
 
     const lines = (await target.readLines?.(kitchenId, REPEATED_HOUR_DAY)) ?? [];
@@ -112,7 +113,9 @@ describe('readings routed to their own rule row, through MCP', () => {
     expect(result.structuredContent).toMatchObject({ outcome: 'in_range', rule: { id: 'hot_holding' } });
   });
 
-  it('judges prime rib at 130 in range by the roast row, and chicken soup at 130 out of range', async () => {
+  // 130 passes the roast row while its twin 113 fails it, so the first call is held for a digit
+  // repeat and nothing is judged yet (READ-07).
+  it('holds prime rib at 130 for a digit repeat on the first call, storing no reading', async () => {
     const kitchenId = await kitchenAt(AFTERNOON);
     const roast = await logAt(kitchenId, AFTERNOON, {
       check_point: 'carving_station',
@@ -120,6 +123,16 @@ describe('readings routed to their own rule row, through MCP', () => {
       measured: 'prime_rib',
       initials: 'KL',
     });
+
+    expect(roast.isError).toBeFalsy();
+    expect(roast.structuredContent).toMatchObject({ outcome: 'held', prompt: { kind: 'digit_repeat' } });
+    expect(roast.structuredContent?.rule).toBeUndefined();
+    const lines = (await target.readLines?.(kitchenId, AFTERNOON_DAY)) ?? [];
+    expect(lines.filter((line) => line.kind === 'reading')).toHaveLength(0);
+  });
+
+  it('judges chicken soup at 130 out of range by hot holding', async () => {
+    const kitchenId = await kitchenAt(AFTERNOON);
     const soup = await logAt(kitchenId, AFTERNOON, {
       check_point: 'soup_well',
       value: 130,
@@ -127,7 +140,6 @@ describe('readings routed to their own rule row, through MCP', () => {
       initials: 'KL',
     });
 
-    expect(roast.structuredContent).toMatchObject({ outcome: 'in_range', rule: { id: 'hot_holding_roast' } });
     expect(soup.structuredContent).toMatchObject({ outcome: 'out_of_range', rule: { id: 'hot_holding' } });
   });
 
