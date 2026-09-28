@@ -10,19 +10,21 @@
 //
 // WHAT IT CHECKS in docs/ai-act.md:
 //   - one section heading per paragraph, all four of 50(1) 50(2) 50(3) 50(4)
-//   - each section carries a verdict: APPLIES, DOES NOT APPLY, or FALLS ON <third party>
+//   - each section carries a verdict on its heading line or on a Verdict: line, never in body
+//     prose: APPLIES, DOES NOT APPLY, or falls on <a named third party> (not empty, tbd, todo, ?)
 //   - every APPLIES section names at least one backticked repo path that EXISTS (the mechanism)
 //     and at least one backticked path that is a TEST file and exists (what pins it)
 //
 // An ABSENT file prints SKIPPED and exits 0: whether a product is AI-facing is decided
 // before release, where the Determinations table in docs/privacy-accountability.md demands the
 // verdict. This gate makes a
-// WRITTEN determination mechanically honest; it cannot detect an unwritten one.
+// WRITTEN determination mechanically honest; it cannot detect an unwritten one. A repository that
+// has decided it needs the document passes --require, and then an absent file exits 1.
 //
-// Exit codes: 0 determined (or absent, SKIPPED), 1 missing/undetermined/unbacked sections,
-// 2 could not run.
+// Exit codes: 0 determined (or absent without --require, SKIPPED), 1 missing/undetermined/unbacked
+// sections or absent with --require, 2 could not run.
 //
-// Usage: node scripts/check-ai-act.mjs [path] [--selftest]
+// Usage: node scripts/check-ai-act.mjs [path] [--require] [--selftest]
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -31,10 +33,39 @@ import { fileURLToPath } from 'node:url';
 
 const PARAGRAPHS = ['1', '2', '3', '4'];
 const TEST_PATH_RE = /\.(test|spec)\.[\w.]+$|(^|\/)tests?\//i;
+// "Verdict: X", "**Verdict**: X" and "**Verdict:** X", each pinned by its own selftest case.
+const VERDICT_LINE_RE = /^\**Verdict\**:\**[ \t]*(.*)$/im;
+const PLACEHOLDER_PARTY_RE = /^(tbd|todo|\?+)$/i;
 
-function run(cwd, explicitPath) {
+// A verdict is read only where one is written: the heading line and a Verdict line. A phrase in the
+// body prose ("this DOES NOT APPLY to us, we think") is never a verdict.
+function verdictOf(section) {
+  const places = [section.split('\n', 1)[0]];
+  const line = VERDICT_LINE_RE.exec(section);
+  if (line) places.push(line[1]);
+  let applies = false;
+  let notApply = false;
+  let unnamedParty = false;
+  for (const text of places) {
+    if (/\bAPPLIES\b/i.test(text)) applies = true;
+    if (/\b(DOES NOT APPLY|NOT APPLICABLE)\b/i.test(text)) notApply = true;
+    const fallsOn = /\bfalls on\b(.*)$/i.exec(text);
+    if (fallsOn) {
+      const party = fallsOn[1].replace(/[*_`]/g, '').replace(/^[\s:,.-]+|[\s,.;]+$/g, '');
+      if (party === '' || PLACEHOLDER_PARTY_RE.test(party)) unnamedParty = true;
+      else notApply = true;
+    }
+  }
+  return { applies, notApply, unnamedParty };
+}
+
+function run(cwd, explicitPath, required) {
   const file = explicitPath || join(cwd, 'docs', 'ai-act.md');
   if (!existsSync(file)) {
+    if (required) {
+      console.error(`[ai-act] MISSING: ${explicitPath || 'docs/ai-act.md'} is required here (--require). This repository decided it needs a written Article 50 determination.`);
+      return 1;
+    }
     console.log(`[ai-act] SKIPPED: no ${explicitPath || 'docs/ai-act.md'}. An AI-facing product without a written Article 50 determination is refused at sign-off, not here.`);
     return 0;
   }
@@ -56,8 +87,11 @@ function run(cwd, explicitPath) {
     const rest = body.slice(head.index);
     const end = rest.slice(head[0].length).search(/^##\s/m);
     const section = end === -1 ? rest : rest.slice(0, head[0].length + end);
-    const applies = /\bAPPLIES\b/i.test(section.split('\n', 1)[0]) || /^\*\*?Verdict\*\*?:?\s*APPLIES/im.test(section);
-    const notApply = /\b(DOES NOT APPLY|NOT APPLICABLE)\b/i.test(section) || /falls on\b/i.test(section.split('\n', 1)[0]) || /:\s*falls on/i.test(section);
+    const { applies, notApply, unnamedParty } = verdictOf(section);
+    if (unnamedParty) {
+      problems.push(`Article 50(${p}): "falls on" names no party - write who the obligation falls on`);
+      continue;
+    }
     if (!applies && !notApply) {
       problems.push(`Article 50(${p}): no verdict found - the heading or a Verdict line must say APPLIES, DOES NOT APPLY, or falls on <the third party>`);
       continue;
@@ -177,4 +211,4 @@ function selftest() {
 
 if (process.argv.includes('--selftest')) process.exit(selftest());
 const pathArg = process.argv.slice(2).find((a) => !a.startsWith('-'));
-process.exit(run(process.cwd(), pathArg));
+process.exit(run(process.cwd(), pathArg, process.argv.includes('--require')));

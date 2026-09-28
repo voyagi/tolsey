@@ -26,7 +26,7 @@
     "gate:size": "vite build && size-limit",
     "gate:types": "wrangler types && tsc -p tsconfig.app.json && tsc -p tsconfig.worker.json && tsc -p tsconfig.test.json && tsc -p tsconfig.node.json",
     "gate:dead": "node scripts/check-dead.mjs",
-    "gate:repo": "node scripts/check-goals.mjs && node scripts/check-tracked-gitignore.mjs && node scripts/check-hookspath.mjs && node scripts/check-license.mjs && node scripts/check-git-identity.mjs && node scripts/check-artifact-metadata.mjs && node scripts/check-privacy-accountability.mjs && node scripts/check-ai-act.mjs && node scripts/check-icon-decision.mjs",
+    "gate:repo": "node scripts/check-goals.mjs && node scripts/check-tracked-gitignore.mjs && node scripts/check-hookspath.mjs && node scripts/check-license.mjs && node scripts/check-git-identity.mjs && node scripts/check-artifact-metadata.mjs && node scripts/check-privacy-accountability.mjs --require && node scripts/check-ai-act.mjs --require && node scripts/check-icon-decision.mjs",
     "gate:env": "node scripts/check-env-example.mjs",
     "gate:tsconfig": "node scripts/check-tsconfig-coverage.mjs",
     "gate:artifacts": "node scripts/check-ship-artifacts.mjs",

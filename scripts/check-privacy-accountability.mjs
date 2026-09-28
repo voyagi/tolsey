@@ -13,12 +13,15 @@
 //
 // An ABSENT file prints SKIPPED and exits 0: the release checklist decides
 // WHICH products must carry the file; this gate only refuses to call a carried file settled
-// while a row is OPEN. A file WITHOUT the table fails: it predates the standard shape, and the
-// fix is adding the Determinations section in the shape shown above.
+// while a row is OPEN. A repository that has decided it carries the file passes --require, and
+// then an absent file exits 1. A file WITHOUT the table fails: it predates the standard shape,
+// and the fix is adding the Determinations section in the shape shown above. A reason that is
+// only tbd, todo or ? is refused like OPEN.
 //
-// Exit codes: 0 settled or absent (SKIPPED), 1 OPEN or malformed rows, 2 could not run.
+// Exit codes: 0 settled (or absent without --require, SKIPPED), 1 OPEN, placeholder or malformed
+// rows, or absent with --require, 2 could not run.
 //
-// Usage: node scripts/check-privacy-accountability.mjs [path] [--selftest]
+// Usage: node scripts/check-privacy-accountability.mjs [path] [--require] [--selftest]
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -26,10 +29,16 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const VERDICT_RE = /^(OPEN\b|APPLIES\s*-\s*\S|N-A\s*-\s*\S)/i;
+// A reason that is only a marker to come back later is not a decision.
+const PLACEHOLDER_REASON_RE = /^(tbd|todo|\?+)$/i;
 
-function run(cwd, explicitPath) {
+function run(cwd, explicitPath, required) {
   const file = explicitPath || join(cwd, 'docs', 'privacy-accountability.md');
   if (!existsSync(file)) {
+    if (required) {
+      console.error(`[privacy-accountability] MISSING: ${explicitPath || 'docs/privacy-accountability.md'} is required here (--require). This repository decided it carries a privacy register.`);
+      return 1;
+    }
     console.log(`[privacy-accountability] SKIPPED: no ${explicitPath || 'docs/privacy-accountability.md'}. Whether this product needs one is the sign-off rubric's question, not this gate's.`);
     return 0;
   }
@@ -61,6 +70,11 @@ function run(cwd, explicitPath) {
       problems.push(`"${name}": verdict "${verdict || ''}" is not OPEN, "APPLIES - <what ships>", or "N-A - <reason>"`);
     } else if (/^OPEN\b/i.test(verdict)) {
       problems.push(`"${name}" is still OPEN - decide it, date it, and point at the evidence`);
+    } else {
+      const reason = verdict.replace(/^(APPLIES|N-A)\s*-\s*/i, '').trim();
+      if (reason === '' || PLACEHOLDER_REASON_RE.test(reason)) {
+        problems.push(`"${name}": the reason "${reason}" is a placeholder - write what ships, or why it does not apply`);
+      }
     }
   }
   if (problems.length) {
@@ -141,4 +155,4 @@ function selftest() {
 
 if (process.argv.includes('--selftest')) process.exit(selftest());
 const pathArg = process.argv.slice(2).find((a) => !a.startsWith('-'));
-process.exit(run(process.cwd(), pathArg));
+process.exit(run(process.cwd(), pathArg, process.argv.includes('--require')));
