@@ -409,7 +409,7 @@ describe('the daily row budget, the kitchen caps and retention', () => {
   });
 
   describe('the retry window against the sweep', () => {
-    it('keeps the last accepted write retryable until its window ends, and the 23-hour sweep deletes it after', async () => {
+    it('keeps the last accepted write retryable until its window ends, and the retention-age sweep deletes it after', async () => {
       const minted = await mintThroughRoute(worker.fetch, worker.baseUrl);
       const args = walkInArguments();
       const lastAccepted = await logAt(T0 + writeWindowMs(limits) - 1, minted.mcpPath, args);
