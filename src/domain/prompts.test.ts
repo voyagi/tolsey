@@ -120,6 +120,15 @@ describe('decideLogReading with a pending prompt', () => {
     expect(decide(answer({ value: 50 }), repeat).event).toMatchObject({ kind: 'held', valueTenths: 500 });
   });
 
+  // A hedge in answer to "Say it one digit at a time" is no repeat: the call is refused, and that
+  // refusal answers the hold and asks for the number again.
+  it('refuses a digit repeat answered with a hedge, answering the hold with a refusal that asks again', () => {
+    const repeat = prompt({ promptKind: 'digit_repeat', valueTenths: 150, initials: 'AB' });
+    const { event, result } = decide(answer({ value: 15, words: 'about 15' }), repeat);
+    expect(result.structuredContent).toMatchObject({ outcome: 'refused', prompt: { kind: 'number' } });
+    expect(event).toMatchObject({ kind: 'refusal', answersId: 'prompt-1', checkPointId: 'walk_in', valueTenths: null });
+  });
+
   // The repeat is compared once its words are read, so "5 below" beside the value 5 is the held -5.
   it('confirms a held -5 when the repeat says "5 below" beside the value 5', () => {
     const repeat = prompt({ promptKind: 'digit_repeat', valueTenths: -50, initials: 'AB' });

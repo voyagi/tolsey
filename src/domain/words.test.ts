@@ -101,7 +101,6 @@ describe('classifyNumberWords', () => {
     'the reach-in 2 reads 40',
     'walk-in cooler is at 38',
     'delivery came in at 38',
-    '-5',
   ])('classifies "%s" as plain', (words) => {
     expect(classify(words)).toEqual({ kind: 'plain' });
   });
@@ -123,6 +122,56 @@ describe('classifyNumberWords', () => {
       expect(classify(words)).toEqual({ kind: 'hedge' });
     },
   );
+});
+
+// Written to break the classifier: the shapes a host's transcript can take that the cases above do
+// not. A range or limit must never read as the number beside it, and a reading must never be refused
+// for its punctuation.
+describe('classifyNumberWords against transcript shapes', () => {
+  it.each([
+    ['38\u201340', 'an en dash range'],
+    ['38\u201440', 'an em dash range'],
+    ['38 - 40', 'a spaced hyphen range'],
+    ['38 through 40', 'a through range'],
+    ['38 thru 40', 'a thru range'],
+    ['41°F or less', 'a degree sign before a limit'],
+    ['no more than 41', 'a limit in a longer phrase'],
+  ])('classifies "%s" (%s) as a hedge', (words) => {
+    expect(classify(words)).toEqual({ kind: 'hedge' });
+  });
+
+  it.each([
+    ['\u22125', 'a true minus sign'],
+    ['the freezer reads \u20135', 'an en dash as a minus'],
+    ['the freezer reads -5', 'a hyphen as a minus'],
+    ['5 degree below zero', 'the singular unit word'],
+  ])('reads "%s" (%s) as 5 below zero', (words) => {
+    expect(classify(words)).toEqual({ kind: 'negative', magnitude: 5 });
+  });
+
+  it.each([
+    ['38 1/2', 'a fraction beside the figure'],
+    ['the reach-in two is at 40', 'a check point named in words'],
+    ['walk-in: 38!', 'punctuation around the figure'],
+  ])('classifies "%s" (%s) as plain', (words) => {
+    expect(classify(words)).toEqual({ kind: 'plain' });
+  });
+
+  it('refuses a state said about a check point whose name holds no digit', () => {
+    expect(classify('the reach-in two is fine')).toEqual({ kind: 'hedge' });
+  });
+
+  // Every limit and approximation word, before or after a figure, is a hedge; "below" after a figure
+  // is the one exception, the sign.
+  it('classifies every limit and approximation word in the vocabulary as a hedge on either side of a figure', () => {
+    const { hedges } = profile.vocabulary;
+    const words = [...hedges.limits, ...hedges.approximations].filter((word) => word !== hedges.below);
+    for (const word of words) {
+      expect(classify(`${word} 41`), `${word} 41`).toEqual({ kind: 'hedge' });
+      expect(classify(`41 ${word}`), `41 ${word}`).toEqual({ kind: 'hedge' });
+    }
+    expect(classify(`${hedges.below} 41`)).toEqual({ kind: 'hedge' });
+  });
 });
 
 describe('rebuildWords on a refused line', () => {

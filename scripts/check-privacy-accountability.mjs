@@ -54,13 +54,14 @@ function run(cwd, explicitPath, required) {
     console.error('[privacy-accountability] FAIL: the file has no "## Determinations" section. It predates the standard shape; add a Determinations table in the shape shown at the top of this script and decide each row.');
     return 1;
   }
-  // A markdown table's header is the line its separator follows, so a row is never skipped for what
-  // its name says ("Determination of ...") and a colon-aligned separator is never read as a row.
+  // The header is the standard one, "| Determination | ...", on the line its separator follows. A row
+  // is never skipped for what its name says ("Determination of ...") or for a stray separator after
+  // it, and a colon-aligned separator is never read as a row.
+  const cellsOf = (l) => l.split('|').map((c) => c.trim()).filter((c, i, arr) => i > 0 && i < arr.length - 1);
   const tableLines = section[1].split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith('|'));
   const isSeparator = (l) => /^\|[\s:|-]*-[\s:|-]*$/.test(l);
-  const rows = tableLines
-    .filter((l, i) => !isSeparator(l) && !isSeparator(tableLines[i + 1] ?? ''))
-    .map((l) => l.split('|').map((c) => c.trim()).filter((c, i, arr) => i > 0 && i < arr.length - 1));
+  const isHeader = (l, i) => isSeparator(tableLines[i + 1] ?? '') && /^determination$/i.test(cellsOf(l)[0] ?? '');
+  const rows = tableLines.filter((l, i) => !isSeparator(l) && !isHeader(l, i)).map(cellsOf);
   if (rows.length === 0) {
     console.error('[privacy-accountability] FAIL: the Determinations section holds no table rows. Every deferred decision needs a row, even if its verdict is OPEN.');
     return 1;
@@ -150,6 +151,9 @@ function selftest() {
       '| Determination of the DPIA need | OPEN | | |\n')), 1, /"Determination of the DPIA need" is still OPEN/);
     check('an OPEN row with no name fails', runCli(fixture(HEAD +
       '|  | OPEN | | |\n')), 1, /a row with no determination name/);
+    check('an OPEN row followed by a stray separator is still a row and fails naming it', runCli(fixture(HEAD +
+      '| DPIA required | N-A - static site, no personal data stored | 2026-08-29 | register |\n' +
+      '| AI Act Article 50 | OPEN | | |\n| --- | --- | --- | --- |\n')), 1, /"AI Act Article 50" is still OPEN/);
     check('a colon-aligned separator row is not read as a row', runCli(fixture(
       '# x\n\n## Determinations\n\n| Determination | Verdict | Date | Evidence |\n| :--- | :---: | ---: | --- |\n' +
       '| DPIA required | N-A - static site, no personal data stored | 2026-08-29 | register |\n')), 0, /settled: 1 determination/);

@@ -80,11 +80,16 @@ function withoutNames(parts: readonly string[], names: Phrases): string[] {
   return left;
 }
 
+// Every dash and the minus sign a transcript may carry, read as the hyphen, so "38" en dash "40" is
+// the range "38-40" and a minus sign before 5 is "-5".
+const DASHES = /[\u2010-\u2015\u2212]/g;
+
 // An apostrophe joins its word rather than splitting it, so "it's" stays one token.
 export function tokensOf(text: string): string[] {
   return text
     .toLowerCase()
     .replace(/['’]/g, '')
+    .replace(DASHES, '-')
     .split(/[^a-z0-9.-]+/)
     .map((token) => token.replace(/^\.+|\.+$/g, ''))
     .filter(Boolean);
@@ -116,6 +121,8 @@ function isNumber(token: string | undefined): boolean {
 // split at its hyphens; a negative number stays whole.
 function spokenParts(token: string): string[] {
   if (NUMBER_TOKEN.test(token)) return [token];
+  // A dash standing alone between two figures, "38 - 40", is the same range as "38-40".
+  if (/^-+$/.test(token)) return ['to'];
   const range = RANGE_FIGURE.exec(token);
   if (range) return [range[1], 'to', range[2]];
   const ish = ISH_FIGURE.exec(token);
@@ -168,6 +175,9 @@ function below(figure: string | undefined): NumberWords | undefined {
 function signedOf(tokens: readonly string[], hedges: Hedges): NumberWords | undefined {
   const signBelow = tokens.findIndex((_, at) => isSignBelow(tokens, at, hedges));
   if (signBelow >= 0) return below(figureBefore(tokens, signBelow));
+  // A figure written with its own minus, "-5", names its magnitude the way "minus 5" does.
+  const minusFigure = tokens.find((token) => isNumber(token) && token.startsWith('-'));
+  if (minusFigure !== undefined) return below(minusFigure.slice(1));
   const sign = tokens.findIndex((token) => hedges.signs.includes(token));
   if (sign < 0) return undefined;
   const figure = tokens[sign + 1];

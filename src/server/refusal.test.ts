@@ -133,6 +133,8 @@ describe('a check given without a number, through MCP', () => {
       ['38-40', 39],
       ['the walk-in is 38, below 41', 38],
       ['2 below the limit', 2],
+      ['38\u201340', 39],
+      ['38 through 40', 39],
     ])('refuses "%s" even with a value attached (E22)', async (words, value) => {
       const kitchenId = await kitchen();
       const result = await call(kitchenId, { check_point: 'walk_in', value, words, initials: 'AB' });
