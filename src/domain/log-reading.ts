@@ -236,20 +236,22 @@ function nextRepeat(facts: ReadingFacts, ctx: DecisionContext, prompt: PendingPr
 }
 
 // A hedge refuses the call even with a value attached, so a limit or a guess is never stored as the
-// number the host put beside it (N1). "5 below" makes the value negative only when its digits are the
-// value's own; any other pairing of words and value is not a reading.
+// number the host put beside it (N1). "5 below" and "minus 5" make the value negative only when their
+// digits are the value's own; any other pairing of words and value is not a reading. A sign said
+// before a number in words ("minus five") makes the value negative whatever sign the host gave it.
 function valueFromWords(facts: Facts, ctx: DecisionContext): number | undefined {
   if (facts.value === undefined) return undefined;
-  const said = classifyNumberWords(tokensOf(facts.words ?? ''), ctx.profile.vocabulary);
+  const said = classifyNumberWords(tokensOf(facts.words ?? ''), ctx.profile);
   if (said.kind === 'hedge') return undefined;
-  if (said.kind === 'plain') return facts.value;
-  return Math.abs(facts.value) === Math.abs(said.value) ? said.value : undefined;
+  const magnitude = Math.abs(facts.value);
+  if (said.kind === 'plain' || magnitude === 0) return facts.value;
+  return said.magnitude === undefined || said.magnitude === magnitude ? -magnitude : undefined;
 }
 
 interface Answering {
   links: Links;
   valueFromCall: boolean;
-  repeat?: { prompt: PendingPrompt; confirms: boolean };
+  repeat?: PendingPrompt;
 }
 
 const FRESH: Answering = { links: NO_LINKS, valueFromCall: true };
@@ -270,8 +272,12 @@ function decideFacts(facts: Facts, ctx: DecisionContext, answering: Answering): 
   if (initials === undefined) return heldDecision({ ...facts, value }, ctx, links, 'who_is_logging', WHO_IS_LOGGING_REPLY);
   const reading = { ...facts, value, checkPoint, initials };
   const { repeat } = answering;
-  if (repeat !== undefined && !repeat.confirms) return nextRepeat(reading, ctx, repeat.prompt);
-  return judgedOrHeld(reading, ctx, links, repeat?.confirms ?? false);
+  // A digit repeat holds exactly one number, the last one said, and only that number confirms it: the
+  // number this call gives once its words are read, so "5 below" beside the value 5 repeats a held -5.
+  // A yes or a call with no value never gets here, since a call with no number is refused above.
+  const confirms = repeat !== undefined && tenthsOf(value) === repeat.valueTenths;
+  if (repeat !== undefined && !confirms) return nextRepeat(reading, ctx, repeat);
+  return judgedOrHeld(reading, ctx, links, confirms);
 }
 
 function callFacts(input: LogReadingInput, ctx: DecisionContext, initials: string | undefined): Facts {
@@ -299,7 +305,7 @@ function decideAnswer(input: LogReadingInput, ctx: DecisionContext, answer: Answ
     screenId: input.screen_id,
     requestId: input.request_id,
   };
-  const repeat = prompt.promptKind === 'digit_repeat' ? { prompt, confirms: answer.confirms } : undefined;
+  const repeat = prompt.promptKind === 'digit_repeat' ? prompt : undefined;
   return decideFacts(facts, ctx, { links: { answersId: prompt.id, refId: null }, valueFromCall: answer.valueFromCall, repeat });
 }
 

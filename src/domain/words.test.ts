@@ -7,7 +7,7 @@ const profile = KitchenProfileSchema.parse(demoJson);
 const walkIn = profile.checkPoints.find((point) => point.id === 'walk_in');
 
 function classify(words: string) {
-  return classifyNumberWords(tokensOf(words), profile.vocabulary);
+  return classifyNumberWords(tokensOf(words), profile);
 }
 
 describe('classifyNumberWords', () => {
@@ -60,8 +60,35 @@ describe('classifyNumberWords', () => {
     expect(classify(words)).toEqual({ kind: 'hedge' });
   });
 
-  it.each(['5 below', '5 below zero', 'the freezer reads 5 below', '5-below'])('reads "%s" as the negative number -5', (words) => {
-    expect(classify(words)).toEqual({ kind: 'negative', value: -5 });
+  // "below" after a number is a sign only when nothing but the zero word follows it; before a limit
+  // it compares the reading with that limit, which is not a reading below zero.
+  it.each(['the walk-in is 38, below 41', '38 below 41', 'freezer 2 below the limit'])(
+    'classifies "%s" as a hedge, never as a number below zero',
+    (words) => {
+      expect(classify(words)).toEqual({ kind: 'hedge' });
+    },
+  );
+
+  it.each([
+    '5 below',
+    '5 below zero',
+    '5 below 0',
+    'the freezer reads 5 below',
+    '5-below',
+    'minus 5',
+    'the freezer reads negative 5',
+    'freezer minus 5 degrees',
+  ])('reads "%s" as 5 below zero', (words) => {
+    expect(classify(words)).toEqual({ kind: 'negative', magnitude: 5 });
+  });
+
+  it('reads a sign word before a number said in words as below zero, of the magnitude the value gives', () => {
+    expect(classify('the freezer reads minus five')).toEqual({ kind: 'negative', magnitude: undefined });
+  });
+
+  it('classifies a sign word standing apart from the figure said as a hedge', () => {
+    expect(classify('minus uh 5')).toEqual({ kind: 'hedge' });
+    expect(classify('negative on the door, walk-in 38')).toEqual({ kind: 'hedge' });
   });
 
   it.each([
@@ -79,6 +106,12 @@ describe('classifyNumberWords', () => {
 
   it('treats a state word beside the number itself as plain', () => {
     expect(classify('the walk-in is fine at 38')).toEqual({ kind: 'plain' });
+  });
+
+  // "cool down" is an alias of the cooling check point, so its "cool" names the check, not its state.
+  it('reads a state word inside a check point name as the name, never as a verdict', () => {
+    expect(classify('the cool down reads forty')).toEqual({ kind: 'plain' });
+    expect(classify('the cool down is cool')).toEqual({ kind: 'hedge' });
   });
 });
 
@@ -99,5 +132,13 @@ describe('rebuildWords on a refused line', () => {
     expect(rebuildWords('<b>the walk-in</b> is under 41 call 5551234567 ünïcode', profile, undefined, walkIn)).toBe(
       'the walk-in is under 41',
     );
+  });
+
+  // A limit or a range needs two figures at most, each one a thermometer could show, so digits said in
+  // groups, such as a phone or card number, never persist whole.
+  it('keeps at most two figures of up to three digits', () => {
+    expect(rebuildWords('call 555 123 4567', profile, undefined, walkIn)).toBe('555 123');
+    expect(rebuildWords('card 1234 5678 9012 3456', profile, undefined, walkIn)).toBe('walk-in');
+    expect(rebuildWords('between 38 and 40', profile, undefined, walkIn)).toBe('between 38 40');
   });
 });

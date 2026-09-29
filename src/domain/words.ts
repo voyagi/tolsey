@@ -1,22 +1,27 @@
 import type { CheckPoint, KitchenProfile } from './rule';
 
-type Vocabulary = KitchenProfile['vocabulary'];
-type Hedges = Vocabulary['hedges'];
+type Hedges = KitchenProfile['vocabulary']['hedges'];
 
 const recognisedByProfile = new WeakMap<KitchenProfile, ReadonlySet<string>>();
+const namesByProfile = new WeakMap<KitchenProfile, readonly (readonly string[])[]>();
 
 function hedgeWords(hedges: Hedges): string[] {
-  const { limits, below, zero, approximations, decades, tens, ranges, phrases } = hedges;
-  return [...limits, below, zero, ...approximations, ...decades, ...tens, ...ranges, ...phrases.flatMap(tokensOf)];
+  const { limits, below, zero, signs, approximations, decades, tens, ranges, phrases } = hedges;
+  return [
+    ...limits, below, zero, ...signs, ...approximations, ...decades, ...tens, ...ranges, ...phrases.flatMap(tokensOf),
+  ];
+}
+
+function namePhrases(profile: KitchenProfile): string[] {
+  return [...profile.checkPoints, ...profile.foods].flatMap((named) => [named.name, ...named.aliases]);
 }
 
 function recognisedTokens(profile: KitchenProfile): ReadonlySet<string> {
   let tokens = recognisedByProfile.get(profile);
   if (!tokens) {
-    const phrases = [...profile.checkPoints, ...profile.foods].flatMap((named) => [named.name, ...named.aliases]);
     const { verbs, articles, nouns, states, hedges } = profile.vocabulary;
     tokens = new Set([
-      ...phrases.flatMap((phrase) => [phrase.toLowerCase(), ...tokensOf(phrase)]),
+      ...namePhrases(profile).flatMap((phrase) => [phrase.toLowerCase(), ...tokensOf(phrase)]),
       ...verbs,
       ...articles,
       ...nouns,
@@ -26,6 +31,41 @@ function recognisedTokens(profile: KitchenProfile): ReadonlySet<string> {
     recognisedByProfile.set(profile, tokens);
   }
   return tokens;
+}
+
+// Every check point and food name and alias in the parts classifying compares, longest first so
+// "walk-in cooler" is found before "walk-in". An empty phrase could never be stepped past, so none is kept.
+function nameParts(profile: KitchenProfile): readonly (readonly string[])[] {
+  let names = namesByProfile.get(profile);
+  if (!names) {
+    names = namePhrases(profile)
+      .map((phrase) => tokensOf(phrase).flatMap(spokenParts))
+      .filter((parts) => parts.length > 0)
+      .sort((a, b) => b.length - a.length);
+    namesByProfile.set(profile, names);
+  }
+  return names;
+}
+
+function startsAt(parts: readonly string[], at: number, name: readonly string[]): boolean {
+  return name.every((part, offset) => parts[at + offset] === part);
+}
+
+// The parts left once every name said in them is taken out, so a state word inside a name ("cool" in
+// the cooling check's "cool down") is never read as the cook's verdict on the check.
+function withoutNames(parts: readonly string[], names: readonly (readonly string[])[]): string[] {
+  const left: string[] = [];
+  let at = 0;
+  while (at < parts.length) {
+    const name = names.find((candidate) => startsAt(parts, at, candidate));
+    if (name) {
+      at += name.length;
+    } else {
+      left.push(parts[at]);
+      at += 1;
+    }
+  }
+  return left;
 }
 
 // An apostrophe joins its word rather than splitting it, so "it's" stays one token.
@@ -42,7 +82,9 @@ export function formatValue(value: number): string {
   return String(value);
 }
 
-export type NumberWords = { kind: 'plain' } | { kind: 'negative'; value: number } | { kind: 'hedge' };
+// A negative carries the magnitude its words name, or none when the number after the sign was said in
+// words ("minus five"): the value then gives the magnitude and the words only its sign.
+export type NumberWords = { kind: 'plain' } | { kind: 'negative'; magnitude: number | undefined } | { kind: 'hedge' };
 
 const PLAIN: NumberWords = { kind: 'plain' };
 const HEDGE: NumberWords = { kind: 'hedge' };
@@ -69,12 +111,20 @@ function spokenParts(token: string): string[] {
   return token.split('-').filter(Boolean);
 }
 
-// "below" is a hedge before a number ("below 5") and a sign after one ("5 below"), so it is judged
-// by what precedes it; every other limit word hedges wherever it stands.
+// "below" is a hedge before a number ("below 5") and a sign after one ("5 below", "5 below zero"). It
+// is a sign only when nothing but the zero word follows it: "38 below 41" and "2 below the limit"
+// compare a reading with a limit, which is no reading below zero.
+function isSignBelow(tokens: readonly string[], index: number, hedges: Hedges): boolean {
+  if (tokens[index] !== hedges.below || !isNumber(tokens[index - 1])) return false;
+  const next = tokens[index + 1];
+  return next === undefined || next === hedges.zero || next === '0';
+}
+
+// Every limit word other than a sign "below" hedges wherever it stands.
 function hedgesAt(tokens: readonly string[], index: number, hedges: Hedges): boolean {
   const token = tokens[index];
   if (hedges.approximations.includes(token) || hedges.tens.includes(token) || DECADE_FIGURE.test(token)) return true;
-  if (hedges.limits.includes(token)) return !(token === hedges.below && isNumber(tokens[index - 1]));
+  if (hedges.limits.includes(token)) return !isSignBelow(tokens, index, hedges);
   if (hedges.ranges.includes(token)) return isNumber(tokens[index - 1]) && isNumber(tokens[index + 1]);
   return false;
 }
@@ -85,31 +135,56 @@ function saysHedge(tokens: readonly string[], hedges: Hedges): boolean {
   return tokens.some((_, index) => hedgesAt(tokens, index, hedges));
 }
 
-function negativeOf(tokens: readonly string[], hedges: Hedges): number | undefined {
-  const index = tokens.findIndex((token, at) => token === hedges.below && isNumber(tokens[at - 1]));
-  if (index < 0) return undefined;
-  const magnitude = Number(tokens[index - 1]);
-  return magnitude > 0 ? -magnitude : undefined;
+function below(figure: string | undefined): NumberWords | undefined {
+  const magnitude = Number(figure);
+  return magnitude > 0 ? { kind: 'negative', magnitude } : undefined;
+}
+
+// "5 below" names its figure before the sign and "minus 5" after it. A sign word with no figure in
+// the words at all ("minus five") still says the reading is below zero, of a magnitude the words do
+// not give. A sign word apart from the one figure said ("minus, uh, 5") could belong to anything, so
+// the words are not a reading.
+function signedOf(tokens: readonly string[], hedges: Hedges): NumberWords | undefined {
+  const signBelow = tokens.findIndex((_, at) => isSignBelow(tokens, at, hedges));
+  if (signBelow >= 0) return below(tokens[signBelow - 1]);
+  const sign = tokens.findIndex((token) => hedges.signs.includes(token));
+  if (sign < 0) return undefined;
+  const figure = tokens[sign + 1];
+  if (isNumber(figure)) return below(figure);
+  return tokens.some(isNumber) ? HEDGE : { kind: 'negative', magnitude: undefined };
 }
 
 // Number words are not parsed into values here (that grammar is the intent layer's); this only says
 // whether the words give a reading, a reading below zero, or something other than a reading. A state
-// word counts only when no number was said at all: "fine at 38" still names its number.
-export function classifyNumberWords(tokens: readonly string[], vocabulary: Vocabulary): NumberWords {
+// word counts only when no number was said at all ("fine at 38" still names its number), and only
+// outside a check point or food name.
+export function classifyNumberWords(tokens: readonly string[], profile: KitchenProfile): NumberWords {
+  const { hedges, states } = profile.vocabulary;
   const parts = tokens.flatMap(spokenParts);
-  if (saysHedge(parts, vocabulary.hedges)) return HEDGE;
-  const negative = negativeOf(parts, vocabulary.hedges);
-  if (negative !== undefined) return { kind: 'negative', value: negative };
-  if (!parts.some(isNumber) && parts.some((token) => vocabulary.states.includes(token))) return HEDGE;
-  return PLAIN;
+  if (saysHedge(parts, hedges)) return HEDGE;
+  const signed = signedOf(parts, hedges);
+  if (signed !== undefined) return signed;
+  if (parts.some(isNumber)) return PLAIN;
+  return withoutNames(parts, nameParts(profile)).some((token) => states.includes(token)) ? HEDGE : PLAIN;
 }
 
-// A figure a thermometer could show, kept in a refused line so it quotes "under 41" as said; a
-// longer run of digits is not a reading and never persists.
-const READING_FIGURE = /^-?\d{1,4}(\.\d)?$/;
+// A figure a thermometer could show, kept in a refused line so it quotes "under 41" or "38 or 39" as
+// said. Two are the most a limit or a range needs, so a third figure, and any longer run of digits,
+// never persists: digits said in groups, such as a phone or card number, are never stored whole.
+const READING_FIGURE = /^-?\d{1,3}(\.\d)?$/;
+const MOST_FIGURES_QUOTED = 2;
 
 function refusedWords(tokens: string[], known: ReadonlySet<string>, checkPoint: CheckPoint | undefined): string {
-  const kept = tokens.filter((token) => known.has(token) || READING_FIGURE.test(token));
+  const kept: string[] = [];
+  let figures = 0;
+  for (const token of tokens) {
+    if (known.has(token)) {
+      kept.push(token);
+    } else if (READING_FIGURE.test(token) && figures < MOST_FIGURES_QUOTED) {
+      kept.push(token);
+      figures += 1;
+    }
+  }
   if (kept.length > 0) return kept.join(' ');
   return checkPoint === undefined ? '' : checkPoint.name.toLowerCase();
 }

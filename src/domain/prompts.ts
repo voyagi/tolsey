@@ -21,7 +21,6 @@ export type PromptResolution =
       // The value came from this call, so its words decide whether it is a reading at all; a held
       // value was already judged a number when it was held.
       valueFromCall: boolean;
-      confirms: boolean;
     };
 
 // Whether each kind of question is answered by the number itself. A kind missing here would make
@@ -83,9 +82,6 @@ function fillFor(prompt: PendingPrompt, input: LogReadingInput): PromptFill {
 export function resolvePrompt(prompt: PendingPrompt | null, input: LogReadingInput, now: number): PromptResolution {
   if (prompt === null || isFresh(prompt, input, now)) return { kind: 'fresh' };
   if (prompt.answered) return { kind: 'already_answered', prompt };
-  // A digit repeat holds exactly one number, the last one said, and only that number confirms it; a
-  // yes or a call with no value never does.
-  const confirms =
-    prompt.promptKind === 'digit_repeat' && input.value !== undefined && tenthsOf(input.value) === prompt.valueTenths;
-  return { kind: 'answer', prompt, fill: fillFor(prompt, input), valueFromCall: asksForNumber(prompt.promptKind), confirms };
+  // Whether a digit repeat is confirmed depends on the number its words give, which the decision reads.
+  return { kind: 'answer', prompt, fill: fillFor(prompt, input), valueFromCall: asksForNumber(prompt.promptKind) };
 }

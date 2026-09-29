@@ -19,7 +19,9 @@ with any other initials is refused with a named error, so no real person's initi
 record.
 
 **Words.** The stored words are rebuilt from the tokens Tolsey recognises: a check point's name, a
-verb, the number, and a closed list of state and hedge words. Anything else a visitor says or types
+verb, the number, and a closed list of state and hedge words. A refused line, which has no number of
+its own, quotes at most two figures of up to three digits, enough for "38 or 39", so digits said in
+groups, such as a phone or card number, are never stored whole. Anything else a visitor says or types
 is dropped before storage, so free text never persists.
 
 **Ids.** Screen and request ids are held to opaque tokens of letters, digits, dot, underscore, colon

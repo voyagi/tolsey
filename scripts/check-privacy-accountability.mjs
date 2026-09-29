@@ -54,9 +54,12 @@ function run(cwd, explicitPath, required) {
     console.error('[privacy-accountability] FAIL: the file has no "## Determinations" section. It predates the standard shape; add a Determinations table in the shape shown at the top of this script and decide each row.');
     return 1;
   }
-  const rows = section[1].split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l.startsWith('|') && !/^\|\s*-|^\|\s*Determination/i.test(l))
+  // A markdown table's header is the line its separator follows, so a row is never skipped for what
+  // its name says ("Determination of ...") and a colon-aligned separator is never read as a row.
+  const tableLines = section[1].split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith('|'));
+  const isSeparator = (l) => /^\|[\s:|-]*-[\s:|-]*$/.test(l);
+  const rows = tableLines
+    .filter((l, i) => !isSeparator(l) && !isSeparator(tableLines[i + 1] ?? ''))
     .map((l) => l.split('|').map((c) => c.trim()).filter((c, i, arr) => i > 0 && i < arr.length - 1));
   if (rows.length === 0) {
     console.error('[privacy-accountability] FAIL: the Determinations section holds no table rows. Every deferred decision needs a row, even if its verdict is OPEN.');
@@ -65,8 +68,9 @@ function run(cwd, explicitPath, required) {
   const problems = [];
   for (const cells of rows) {
     const [name, verdict] = cells;
-    if (!name) continue;
-    if (!verdict || !VERDICT_RE.test(verdict)) {
+    if (!name) {
+      problems.push(`a row with no determination name (verdict "${verdict || ''}") - name what is decided`);
+    } else if (!verdict || !VERDICT_RE.test(verdict)) {
       problems.push(`"${name}": verdict "${verdict || ''}" is not OPEN, "APPLIES - <what ships>", or "N-A - <reason>"`);
     } else if (/^OPEN\b/i.test(verdict)) {
       problems.push(`"${name}" is still OPEN - decide it, date it, and point at the evidence`);
@@ -142,6 +146,13 @@ function selftest() {
       '| DPIA required | N-A - ? | 2026-08-29 | register |\n')), 1, /"DPIA required": the reason "\?" is a placeholder/);
     check('"N-A - " with nothing after it fails naming the row', runCli(fixture(HEAD +
       '| DPIA required | N-A - | 2026-08-29 | register |\n')), 1, /"DPIA required": verdict "N-A -" is not OPEN/);
+    check('an OPEN row whose name starts with "Determination" is a row, never the header, and fails naming it', runCli(fixture(HEAD +
+      '| Determination of the DPIA need | OPEN | | |\n')), 1, /"Determination of the DPIA need" is still OPEN/);
+    check('an OPEN row with no name fails', runCli(fixture(HEAD +
+      '|  | OPEN | | |\n')), 1, /a row with no determination name/);
+    check('a colon-aligned separator row is not read as a row', runCli(fixture(
+      '# x\n\n## Determinations\n\n| Determination | Verdict | Date | Evidence |\n| :--- | :---: | ---: | --- |\n' +
+      '| DPIA required | N-A - static site, no personal data stored | 2026-08-29 | register |\n')), 0, /settled: 1 determination/);
   } finally {
     for (const r of roots) { try { rmSync(r, { recursive: true, force: true }); } catch {} }
   }

@@ -205,6 +205,8 @@ export const KitchenProfileSchema = z
             limits: z.array(z.string().min(1)).min(1),
             below: z.string().min(1),
             zero: z.string().min(1),
+            // Words that put the number after them below zero ("minus 5").
+            signs: z.array(z.string().min(1)).min(1),
             approximations: z.array(z.string().min(1)).min(1),
             decades: z.array(z.string().min(1)).min(1),
             tens: z.array(z.string().min(1)).min(1),

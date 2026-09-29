@@ -96,15 +96,7 @@ describe('resolvePrompt', () => {
     expect(resolved).toMatchObject({
       kind: 'answer',
       fill: { checkPoint: 'walk_in', value: 38, measured: 'air', initials: 'MR' },
-      confirms: false,
     });
-  });
-
-  it('confirms a digit repeat only with a number equal to the one the prompt holds', () => {
-    const repeat = prompt({ promptKind: 'digit_repeat', valueTenths: 150, initials: 'AB' });
-    expect(resolvePrompt(repeat, answer({ value: 15 }), ASKED_AT)).toMatchObject({ kind: 'answer', confirms: true });
-    expect(resolvePrompt(repeat, answer({ value: 50 }), ASKED_AT)).toMatchObject({ kind: 'answer', confirms: false });
-    expect(resolvePrompt(repeat, answer({ words: 'yes' }), ASKED_AT)).toMatchObject({ kind: 'answer', confirms: false });
   });
 });
 
@@ -120,6 +112,20 @@ describe('decideLogReading with a pending prompt', () => {
     const { event, result } = decide(answer({ words: 'yes' }), repeat);
     expect(result.structuredContent.outcome).not.toMatch(/in_range|out_of_range/);
     expect(event.kind).not.toBe('reading');
+  });
+
+  it('confirms a digit repeat only with a number equal to the one the prompt holds', () => {
+    const repeat = prompt({ promptKind: 'digit_repeat', valueTenths: 150, initials: 'AB' });
+    expect(decide(answer({ value: 15 }), repeat).event).toMatchObject({ kind: 'reading', valueTenths: 150 });
+    expect(decide(answer({ value: 50 }), repeat).event).toMatchObject({ kind: 'held', valueTenths: 500 });
+  });
+
+  // The repeat is compared once its words are read, so "5 below" beside the value 5 is the held -5.
+  it('confirms a held -5 when the repeat says "5 below" beside the value 5', () => {
+    const repeat = prompt({ promptKind: 'digit_repeat', valueTenths: -50, initials: 'AB' });
+    const { event, result } = decide(answer({ value: 5, words: '5 below' }), repeat);
+    expect(result.structuredContent).toMatchObject({ outcome: 'in_range', value: -5 });
+    expect(event).toMatchObject({ kind: 'reading', valueTenths: -50, answersId: 'prompt-1' });
   });
 
   it('holds a third different number in a row as "Log it by hand", a receipt that closes the prompt', () => {

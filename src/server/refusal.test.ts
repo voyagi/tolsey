@@ -121,6 +121,8 @@ describe('a check given without a number, through MCP', () => {
       ['below 5', 5],
       ['at most 41', 41],
       ['38-40', 39],
+      ['the walk-in is 38, below 41', 38],
+      ['2 below the limit', 2],
     ])('refuses "%s" even with a value attached (E22)', async (words, value) => {
       const kitchenId = await kitchen();
       const result = await call(kitchenId, { check_point: 'walk_in', value, words, initials: 'AB' });
@@ -134,6 +136,9 @@ describe('a check given without a number, through MCP', () => {
     it.each([
       [-5, '5 below'],
       [5, '5 below zero'],
+      [5, 'the freezer reads minus 5'],
+      [5, 'negative 5'],
+      [5, 'the freezer reads minus five'],
     ])('logs value %d said as "%s" at the freezer as -5, judged in range by the freezer limit', async (value, words) => {
       const kitchenId = await kitchen();
       const result = await call(kitchenId, { check_point: 'freezer', value, words, initials: 'AB' });
@@ -142,6 +147,36 @@ describe('a check given without a number, through MCP', () => {
       expect(result.structuredContent).toMatchObject({ outcome: 'in_range', value: -5, rule: { id: 'freezer_limit' } });
       expect(ofKind(await lines(kitchenId), 'reading')[0]?.valueTenths).toBe(-50);
     });
+
+    // A walk-in at -5 is below its coarse band, so it is held for a digit repeat. The repeat is
+    // confirmed by the number its words give, so "5 below" beside the value 5 repeats -5.
+    it('logs a held walk-in -5 when the repeat says "5 below" beside the value 5', async () => {
+      const kitchenId = await kitchen();
+      const held = await call(kitchenId, { check_point: 'walk_in', value: 5, words: '5 below', initials: 'AB' });
+      const prompt = held.structuredContent?.prompt as { kind: string; id: string };
+      expect(prompt.kind).toBe('digit_repeat');
+
+      const repeated = await call(kitchenId, { value: 5, words: '5 below', pending_prompt_id: prompt.id });
+
+      expect(repeated.structuredContent).toMatchObject({ outcome: 'in_range', value: -5 });
+      expect(ofKind(await lines(kitchenId), 'reading')).toEqual([
+        expect.objectContaining({ valueTenths: -50, answersId: prompt.id }),
+      ]);
+    });
+  });
+
+  it('keeps a cooling reading whose words name "the cool down" in words, never refusing it as a state', async () => {
+    const kitchenId = await kitchen();
+    const result = await call(kitchenId, { check_point: 'cooling', value: 40, words: 'the cool down reads forty', initials: 'AB' });
+
+    expect(result.structuredContent).toMatchObject({ outcome: 'not_covered', value: 40 });
+  });
+
+  it('stores at most two short figures from the words of a refused line', async () => {
+    const kitchenId = await kitchen();
+    await call(kitchenId, { check_point: 'walk_in', words: 'call 555 123 4567', initials: 'AB' });
+
+    expect(ofKind(await lines(kitchenId), 'refusal')[0]?.words).toBe('555 123');
   });
 
   describe('a number that may be a misheard teen or ten', () => {
