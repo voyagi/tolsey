@@ -239,6 +239,12 @@ export function answerNumberWords(tokens: readonly string[], profile: KitchenPro
   return hedgeOrSign(partsOf(tokens, profile), profile.vocabulary.hedges) ?? PLAIN;
 }
 
+// Whether the cook said a figure at all, in digits or in words, once names are taken out: plain words
+// that give one also give its sign, so only words with no figure leave the value's sign to the host.
+export function namesAFigure(tokens: readonly string[], profile: KitchenProfile): boolean {
+  return partsOf(tokens, profile).some(isFigure);
+}
+
 // A figure a thermometer could show, kept in a refused line so it quotes "under 41" or "38 or 39" as
 // said. Two are the most a limit or a range needs, so a third figure, and any longer run of digits,
 // never persists: digits said in groups, such as a phone or card number, are never stored whole.

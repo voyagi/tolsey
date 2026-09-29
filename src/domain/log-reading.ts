@@ -29,6 +29,7 @@ import {
   answerNumberWords,
   classifyNumberWords,
   formatValue,
+  namesAFigure,
   rebuildWords,
   saysCorrection,
   tokensOf,
@@ -228,20 +229,24 @@ function nextRepeat(facts: ReadingFacts, ctx: DecisionContext, prompt: PendingPr
 
 // A hedge refuses the call even with a value attached, so a limit or a guess is never stored as the
 // number the host put beside it (N1). "5 below" and "minus 5" make the value negative only when their
-// digits are the value's own; any other pairing of words and value is not a reading. A sign said
-// before a number in words ("minus five") makes the value negative whatever sign the host gave it,
-// but never below absolute zero, which the contract refuses in a value too.
-function valueAsSaid(value: number, said: NumberWords): number | undefined {
+// digits are the value's own; any other pairing of words and value is not a reading. That holds the
+// other way too: a figure said with no sign is above zero, so a negative value beside it would turn
+// a failing freezer into a pass. A sign said before a number in words ("minus five") makes the value
+// negative whatever sign the host gave it, but never below absolute zero, which the contract refuses
+// in a value too.
+function valueAsSaid(value: number, said: NumberWords, figureSaid: boolean): number | undefined {
   if (said.kind === 'hedge') return undefined;
   const magnitude = Math.abs(value);
-  if (said.kind === 'plain' || magnitude === 0) return value;
+  if (magnitude === 0) return value;
+  if (said.kind === 'plain') return value < 0 && figureSaid ? undefined : value;
   const matches = said.magnitude === undefined || said.magnitude === magnitude;
   return matches && -magnitude >= LOWEST_READING_F ? -magnitude : undefined;
 }
 
 function valueFromWords(facts: Facts, ctx: DecisionContext): number | undefined {
   if (facts.value === undefined) return undefined;
-  return valueAsSaid(facts.value, classifyNumberWords(tokensOf(facts.words ?? ''), ctx.profile));
+  const tokens = tokensOf(facts.words ?? '');
+  return valueAsSaid(facts.value, classifyNumberWords(tokens, ctx.profile), namesAFigure(tokens, ctx.profile));
 }
 
 // A fresh call and an answer run the same decision; an answer only arrives with the prompt's held
@@ -301,11 +306,13 @@ function decideAnswer(input: LogReadingInput, ctx: DecisionContext, answer: Answ
     return decideFacts(facts, ctx, { links, valueFromCall: true, repeat, supersede });
   }
   // An answer to which check or who is logging may say the held number again, with or without a value
-  // beside it ("MR, about 38", "MR, 5 below"). A hedge in its words refuses the answer. A sign gives the
-  // held number below zero, still decided for the prompt's check and initials and answering the prompt.
-  // Words that say neither ("MR", "MR, it's fine") leave the held number as it was.
-  const said = answerNumberWords(tokensOf(input.words ?? ''), ctx.profile);
-  const value = facts.value === undefined ? undefined : valueAsSaid(facts.value, said);
+  // beside it ("MR, about 38", "MR, 5 below"). A hedge in its words refuses the answer, and so does a
+  // figure said with no sign beside a held number below zero. A sign gives the held number below zero,
+  // still decided for the prompt's check and initials and answering the prompt. Words that say
+  // neither ("MR", "MR, it's fine") leave the held number as it was.
+  const tokens = tokensOf(input.words ?? '');
+  const said = answerNumberWords(tokens, ctx.profile);
+  const value = facts.value === undefined ? undefined : valueAsSaid(facts.value, said, namesAFigure(tokens, ctx.profile));
   if (value === undefined) return refusalDecision(facts, ctx, links);
   return decideFacts({ ...facts, value }, ctx, { links, valueFromCall: false, supersede });
 }
