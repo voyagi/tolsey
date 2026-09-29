@@ -1,4 +1,5 @@
 import type { LogReadingInput, LogReadingOutput, RuleResult } from '../contract/log-reading';
+import { LOWEST_READING_F } from '../contract/reading-range';
 import type { PendingPrompt } from '../store/port';
 import { judgeReading } from './judge';
 import {
@@ -238,14 +239,16 @@ function nextRepeat(facts: ReadingFacts, ctx: DecisionContext, prompt: PendingPr
 // A hedge refuses the call even with a value attached, so a limit or a guess is never stored as the
 // number the host put beside it (N1). "5 below" and "minus 5" make the value negative only when their
 // digits are the value's own; any other pairing of words and value is not a reading. A sign said
-// before a number in words ("minus five") makes the value negative whatever sign the host gave it.
+// before a number in words ("minus five") makes the value negative whatever sign the host gave it,
+// but never below absolute zero, which the contract refuses in a value too.
 function valueFromWords(facts: Facts, ctx: DecisionContext): number | undefined {
   if (facts.value === undefined) return undefined;
   const said = classifyNumberWords(tokensOf(facts.words ?? ''), ctx.profile);
   if (said.kind === 'hedge') return undefined;
   const magnitude = Math.abs(facts.value);
   if (said.kind === 'plain' || magnitude === 0) return facts.value;
-  return said.magnitude === undefined || said.magnitude === magnitude ? -magnitude : undefined;
+  const matches = said.magnitude === undefined || said.magnitude === magnitude;
+  return matches && -magnitude >= LOWEST_READING_F ? -magnitude : undefined;
 }
 
 interface Answering {

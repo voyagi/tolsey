@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import demoProfile from '../../data/kitchens/demo.json';
+import { HIGHEST_READING_F, LOWEST_READING_F } from './reading-range';
 
 export const LOG_READING = 'log_reading';
 /** @public The version every log_reading result carries, for the cards and captures of phase 2 to check. */
@@ -20,12 +21,6 @@ const MEASURE_IDS = ['air', ...demoProfile.foods.map((food) => food.id)] as IdLi
 function hasAtMostOneDecimal(value: number): boolean {
   return Math.round(value * 10) / 10 === value;
 }
-
-// Absolute zero, rounded up to the tenth, and a figure past any kitchen probe. The bound also keeps
-// the decimal check meaningful: far above it a number carries no tenths at all, so any huge value
-// would pass as "one decimal place".
-const LOWEST_READING_F = -459.6;
-const HIGHEST_READING_F = 1000;
 
 // Both ids are stored with the line, so each is held to an opaque token: a sentence, a name or markup
 // sent as an id would otherwise persist as visitor free text (PRIV-01). A UUID, a ULID or a host's

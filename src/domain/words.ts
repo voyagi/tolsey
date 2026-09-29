@@ -111,11 +111,20 @@ function spokenParts(token: string): string[] {
   return token.split('-').filter(Boolean);
 }
 
-// "below" is a hedge before a number ("below 5") and a sign after one ("5 below", "5 below zero"). It
-// is a sign only when nothing but the zero word follows it: "38 below 41" and "2 below the limit"
-// compare a reading with a limit, which is no reading below zero.
+// The unit said between a figure and "below", as in "5 degrees below zero".
+const UNIT_WORDS: ReadonlySet<string> = new Set(['degree', 'degrees']);
+
+// The figure a sign "below" at index follows, stepping over a unit word, or undefined.
+function figureBefore(tokens: readonly string[], index: number): string | undefined {
+  const before = UNIT_WORDS.has(tokens[index - 1] ?? '') ? tokens[index - 2] : tokens[index - 1];
+  return isNumber(before) ? before : undefined;
+}
+
+// "below" is a hedge before a number ("below 5") and a sign after one ("5 below", "5 degrees below
+// zero"). It is a sign only when nothing but the zero word follows it: "38 below 41" and "2 below the
+// limit" compare a reading with a limit, which is no reading below zero.
 function isSignBelow(tokens: readonly string[], index: number, hedges: Hedges): boolean {
-  if (tokens[index] !== hedges.below || !isNumber(tokens[index - 1])) return false;
+  if (tokens[index] !== hedges.below || figureBefore(tokens, index) === undefined) return false;
   const next = tokens[index + 1];
   return next === undefined || next === hedges.zero || next === '0';
 }
@@ -146,7 +155,7 @@ function below(figure: string | undefined): NumberWords | undefined {
 // the words are not a reading.
 function signedOf(tokens: readonly string[], hedges: Hedges): NumberWords | undefined {
   const signBelow = tokens.findIndex((_, at) => isSignBelow(tokens, at, hedges));
-  if (signBelow >= 0) return below(tokens[signBelow - 1]);
+  if (signBelow >= 0) return below(figureBefore(tokens, signBelow));
   const sign = tokens.findIndex((token) => hedges.signs.includes(token));
   if (sign < 0) return undefined;
   const figure = tokens[sign + 1];

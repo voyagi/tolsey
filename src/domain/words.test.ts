@@ -62,7 +62,7 @@ describe('classifyNumberWords', () => {
 
   // "below" after a number is a sign only when nothing but the zero word follows it; before a limit
   // it compares the reading with that limit, which is not a reading below zero.
-  it.each(['the walk-in is 38, below 41', '38 below 41', 'freezer 2 below the limit'])(
+  it.each(['the walk-in is 38, below 41', '38 below 41', 'freezer 2 below the limit', '38 degrees below 41'])(
     'classifies "%s" as a hedge, never as a number below zero',
     (words) => {
       expect(classify(words)).toEqual({ kind: 'hedge' });
@@ -78,6 +78,8 @@ describe('classifyNumberWords', () => {
     'minus 5',
     'the freezer reads negative 5',
     'freezer minus 5 degrees',
+    '5 degrees below zero',
+    'the freezer is 5 degrees below',
   ])('reads "%s" as 5 below zero', (words) => {
     expect(classify(words)).toEqual({ kind: 'negative', magnitude: 5 });
   });

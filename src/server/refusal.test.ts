@@ -139,6 +139,7 @@ describe('a check given without a number, through MCP', () => {
       [5, 'the freezer reads minus 5'],
       [5, 'negative 5'],
       [5, 'the freezer reads minus five'],
+      [5, "it's 5 degrees below zero"],
     ])('logs value %d said as "%s" at the freezer as -5, judged in range by the freezer limit', async (value, words) => {
       const kitchenId = await kitchen();
       const result = await call(kitchenId, { check_point: 'freezer', value, words, initials: 'AB' });
@@ -146,6 +147,19 @@ describe('a check given without a number, through MCP', () => {
       expect(result.isError).not.toBe(true);
       expect(result.structuredContent).toMatchObject({ outcome: 'in_range', value: -5, rule: { id: 'freezer_limit' } });
       expect(ofKind(await lines(kitchenId), 'reading')[0]?.valueTenths).toBe(-50);
+    });
+
+    // The contract refuses a value below absolute zero, and a sign word must not carry one past it.
+    it.each([
+      [500, 'minus 500'],
+      [500, '500 below'],
+    ])('refuses value %d said as "%s", which would put the reading below absolute zero', async (value, words) => {
+      const kitchenId = await kitchen();
+      const result = await call(kitchenId, { check_point: 'freezer', value, words, initials: 'AB' });
+
+      expect(result.structuredContent?.outcome).toBe('refused');
+      expect(ofKind(await lines(kitchenId), 'reading')).toHaveLength(0);
+      expect(ofKind(await lines(kitchenId), 'held')).toHaveLength(0);
     });
 
     // A walk-in at -5 is below its coarse band, so it is held for a digit repeat. The repeat is

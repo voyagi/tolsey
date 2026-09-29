@@ -11,9 +11,9 @@ matched against a fixed vocabulary, and judged against a rule row by plain code.
 nor the simulated wall display calls an AI model in the default configuration.
 
 A live model may only ever sit behind one switch that the owner flips, and that switch is not built
-yet. Its disclosure already is: the sentence in `src/contract/live-model.ts` is shown and spoken
-first whenever the switch is on, and `src/contract/live-model.test.ts` pins it. If the switch is
-built, this paragraph is decided again.
+yet. Its disclosure is already written: `src/contract/live-model.ts` holds the sentence the switch
+must show and speak first, and `src/contract/live-model.test.ts` pins it. Nothing reads that sentence
+yet. If the switch is built, it shows the sentence and this paragraph is decided again.
 
 ## Article 50(2), marking synthetic output: DOES NOT APPLY
 
