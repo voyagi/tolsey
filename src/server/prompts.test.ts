@@ -123,6 +123,19 @@ describe('pending prompts answered in separate requests, and initials from the r
       ]);
     });
 
+    // The same word check as a fresh call: a figure said again with no sign is not a held -5.
+    it('refuses an answer that says a held freezer -5 again as a plain 5, and keeps the check open', async () => {
+      const kitchenId = await kitchen();
+      const prompt = promptOf(await say(kitchenId, { check_point: 'freezer', value: 5, words: 'minus 5' }));
+      expect(prompt.kind).toBe('who_is_logging');
+
+      const refused = await say(kitchenId, { initials: 'MR', words: 'MR, 5', pending_prompt_id: prompt.id });
+
+      expect(refused.structuredContent).toMatchObject({ outcome: 'refused', initials: 'MR' });
+      expect(ofKind(await lines(kitchenId), 'reading')).toHaveLength(0);
+      expect(await worker.store.openChecks(kitchenId, DAY)).toEqual(['freezer']);
+    });
+
     // A state word answers the question, never the reading: the number was said and held already.
     it('logs the held reading for an answer whose words say only a state', async () => {
       const kitchenId = await kitchen();

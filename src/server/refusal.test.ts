@@ -152,6 +152,7 @@ describe('a check given without a number, through MCP', () => {
       [5, 'negative 5'],
       [5, 'the freezer reads minus five'],
       [5, "it's 5 degrees below zero"],
+      [-5, 'the freezer'],
     ])('logs value %d said as "%s" at the freezer as -5, judged in range by the freezer limit', async (value, words) => {
       const kitchenId = await kitchen();
       const result = await call(kitchenId, { check_point: 'freezer', value, words, initials: 'AB' });
@@ -159,6 +160,30 @@ describe('a check given without a number, through MCP', () => {
       expect(result.isError).not.toBe(true);
       expect(result.structuredContent).toMatchObject({ outcome: 'in_range', value: -5, rule: { id: 'freezer_limit' } });
       expect(ofKind(await lines(kitchenId), 'reading')[0]?.valueTenths).toBe(-50);
+    });
+
+    // The cook said 5, which fails the freezer: a host's minus beside a figure said with no sign must
+    // never turn it into a pass, nor rewrite the words to match (N1).
+    it.each([
+      [-5, 'the freezer reads 5'],
+      [-5, 'the freezer reads five'],
+    ])('refuses value %d beside "%s", a figure said with no sign', async (value, words) => {
+      const kitchenId = await kitchen();
+      const result = await call(kitchenId, { check_point: 'freezer', value, words, initials: 'AB' });
+
+      expect(result.isError).not.toBe(true);
+      expect(result.structuredContent).toMatchObject({ outcome: 'refused', prompt: { kind: 'number' } });
+      const stored = await lines(kitchenId);
+      expect(ofKind(stored, 'reading')).toHaveLength(0);
+      expect(ofKind(stored, 'held')).toHaveLength(0);
+      expect(ofKind(stored, 'refusal')).toHaveLength(1);
+    });
+
+    it('keeps the words of a figure said with no sign as said on the refused line', async () => {
+      const kitchenId = await kitchen();
+      await call(kitchenId, { check_point: 'freezer', value: -5, words: 'the freezer reads 5', initials: 'AB' });
+
+      expect(ofKind(await lines(kitchenId), 'refusal')[0]?.words).toBe('the freezer reads 5');
     });
 
     // The contract refuses a value below absolute zero, and a sign word must not carry one past it.
