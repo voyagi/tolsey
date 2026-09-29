@@ -83,15 +83,21 @@ const NOTHING_TO_FIX_SHAPE = {
 };
 
 describe('decideCorrection', () => {
+  // The offsets are written out, so a change to the demo window fails here rather than moving both
+  // sides of the edge with it.
   describe('the window (E15)', () => {
+    it('reads the window from the kitchen profile', () => {
+      expect(WINDOW_MS).toBe(120000);
+    });
+
     it('corrects a line exactly 120,000 ms old', () => {
-      const decision = correct(line(), LOGGED_AT + WINDOW_MS);
+      const decision = correct(line(), LOGGED_AT + 120000);
 
       expect(decision.event).toMatchObject({ kind: 'wrong_number', refId: 'line-45', promptKind: 'number_after_wrong' });
     });
 
     it('answers a line 120,001 ms old with nothing to fix and a receipt', () => {
-      expect(replyShape(correct(line(), LOGGED_AT + WINDOW_MS + 1))).toEqual(NOTHING_TO_FIX_SHAPE);
+      expect(replyShape(correct(line(), LOGGED_AT + 120001))).toEqual(NOTHING_TO_FIX_SHAPE);
     });
   });
 
