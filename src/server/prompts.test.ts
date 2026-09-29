@@ -219,6 +219,7 @@ describe('pending prompts answered in separate requests, and initials from the r
       expect(logged.structuredContent).toMatchObject({ outcome: 'in_range', value: 39, initials: 'JT' });
       const stored = await lines(kitchenId);
       expect(ofKind(stored, 'held').map((line) => line.promptKind)).toEqual(['which_check', 'who_is_logging']);
+      expect(ofKind(stored, 'held').map((line) => line.outcome)).toEqual(['held', 'held']);
       expect(ofKind(stored, 'held')[1]?.answersId).toBe(promptOf(first).id);
       expect(ofKind(stored, 'reading')[0]?.answersId).toBe(promptOf(second).id);
     });

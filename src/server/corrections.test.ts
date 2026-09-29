@@ -114,7 +114,7 @@ describe('wrong number through MCP, each step its own request', () => {
     expect(corrected.structuredContent).toMatchObject({ outcome: 'in_range', value: 40, supersedesLineId: fortyFive });
     const stored = await lines(kitchenId);
     expect(stored.map((line) => line.kind)).toEqual(['reading', 'wrong_number', 'reading']);
-    expect(stored[1]).toMatchObject({ id: prompt.id, refId: fortyFive, checkPointId: 'walk_in', dayLine: null });
+    expect(stored[1]).toMatchObject({ id: prompt.id, refId: fortyFive, checkPointId: 'walk_in', dayLine: null, outcome: 'held' });
     expect(stored[2]).toMatchObject({ valueTenths: 400, supersedesId: fortyFive, rootId: fortyFive, answersId: prompt.id });
   });
 
