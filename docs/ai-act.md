@@ -13,7 +13,9 @@ nor the simulated wall display calls an AI model in the default configuration.
 A live model may only ever sit behind one switch that the owner flips, and that switch is not built
 yet. Its disclosure is already written: `src/contract/live-model.ts` holds the sentence the switch
 must show and speak first, and `src/contract/live-model.test.ts` pins it. Nothing reads that sentence
-yet. If the switch is built, it shows the sentence and this paragraph is decided again.
+yet. If the switch is built, it shows the sentence and this paragraph is decided again. The same test
+file fails when a known model client joins the dependencies or a Workers AI binding joins the Worker
+config, so adding a model forces that decision.
 
 ## Article 50(2), marking synthetic output: DOES NOT APPLY
 
