@@ -14,6 +14,8 @@
 //     prose: APPLIES, DOES NOT APPLY, or falls on <a named third party> (not empty, tbd, todo, ?)
 //   - every APPLIES section names at least one backticked repo path that EXISTS (the mechanism)
 //     and at least one backticked path that is a TEST file and exists (what pins it)
+//   - every backticked repo path anywhere in the file exists, whatever the verdict beside it: a
+//     determination citing a file that moved or was deleted has lost its evidence
 //
 // An ABSENT file prints SKIPPED and exits 0: whether a product is AI-facing is decided
 // before release, where the Determinations table in docs/privacy-accountability.md demands the
@@ -22,7 +24,7 @@
 // has decided it needs the document passes --require, and then an absent file exits 1.
 //
 // Exit codes: 0 determined (or absent without --require, SKIPPED), 1 missing/undetermined/unbacked
-// sections or absent with --require, 2 could not run.
+// sections, a cited file that does not exist, or absent with --require, 2 could not run.
 //
 // Usage: node scripts/check-ai-act.mjs [path] [--require] [--selftest]
 import { execFileSync } from 'node:child_process';
@@ -36,6 +38,12 @@ const TEST_PATH_RE = /\.(test|spec)\.[\w.]+$|(^|\/)tests?\//i;
 // "Verdict: X", "**Verdict**: X" and "**Verdict:** X", each pinned by its own selftest case.
 const VERDICT_LINE_RE = /^\**Verdict\**:\**[ \t]*(.*)$/im;
 const PLACEHOLDER_PARTY_RE = /^(tbd|todo|\?+)$/i;
+
+// A repository path as a document cites it: relative, inside at least one folder, a file name with an
+// extension, no parent step. A media type (`text/html`) or an address (`ui://...`) is not one.
+function isRepoPath(token) {
+  return /^[\w.-]+(\/[\w.-]+)+$/.test(token) && /\.\w+$/.test(token) && !token.split('/').includes('..');
+}
 
 // A verdict is read only where one is written: the heading line and a Verdict line. A phrase in the
 // body prose ("this DOES NOT APPLY to us, we think") is never a verdict.
@@ -108,6 +116,12 @@ function run(cwd, explicitPath, required) {
       if (tests.length === 0) {
         problems.push(`Article 50(${p}) APPLIES but names no existing test file in backticks - an unpinned marking disappears in the next refactor`);
       }
+    }
+  }
+  const cited = new Set([...body.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]).filter(isRepoPath));
+  for (const path of cited) {
+    if (!existsSync(join(cwd, path))) {
+      problems.push(`cites \`${path}\`, which does not exist - a determination pointing at a moved or deleted file is no longer evidence`);
     }
   }
   if (problems.length) {
@@ -193,6 +207,15 @@ function selftest() {
       '# AI Act\n\n## Article 50(1), interaction\n\n**Verdict:** DOES NOT APPLY\n\n' + OTHERS)), 0, /determined/);
     check('a "**Verdict**: DOES NOT APPLY" line passes', runCli(fixture(
       '# AI Act\n\n## Article 50(1), interaction\n\n**Verdict**: DOES NOT APPLY\n\n' + OTHERS)), 0, /determined/);
+    check('a DOES NOT APPLY section citing a file that does not exist fails naming the path', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: DOES NOT APPLY\n\nThe sentence waits in `src/domain/gone.ts`.\n\n' + OTHERS)),
+      1, /cites `src\/domain\/gone\.ts`, which does not exist/);
+    check('a DOES NOT APPLY section citing files that exist passes', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: DOES NOT APPLY\n\nThe sentence waits in `src/domain/brief.ts`, pinned by `src/domain/brief.test.ts`.\n\n' + OTHERS,
+      MECH)), 0, /determined/);
+    check('a cited media type or ui address is not read as a path', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: DOES NOT APPLY\n\nCards are `text/html` served as `ui://tolsey/reading.html`.\n\n' + OTHERS)),
+      0, /determined/);
     check('the four sections in the order 50(4), 50(2), 50(1), 50(3) pass', runCli(fixture(
       '# AI Act\n\n## Article 50(4), deepfakes: DOES NOT APPLY\n\ntext\n\n' +
       '## Article 50(2), marking: falls on the speech vendor\n\ntext\n\n' +

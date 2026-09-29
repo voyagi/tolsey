@@ -19,7 +19,10 @@
 // only tbd, todo or ? is refused like OPEN.
 //
 // Exit codes: 0 settled (or absent without --require, SKIPPED), 1 OPEN, placeholder or malformed
-// rows, or absent with --require, 2 could not run.
+// rows, a cited file that does not exist, or absent with --require, 2 could not run.
+//
+// A backticked repository path anywhere in the file ("Storage is in `docs/adr/0002-storage.md`") must
+// exist: the register's claims rest on it, and a file that moved takes that evidence with it.
 //
 // Usage: node scripts/check-privacy-accountability.mjs [path] [--require] [--selftest]
 import { execFileSync } from 'node:child_process';
@@ -31,6 +34,12 @@ import { fileURLToPath } from 'node:url';
 const VERDICT_RE = /^(OPEN\b|APPLIES\s*-\s*\S|N-A\s*-\s*\S)/i;
 // A reason that is only a marker to come back later is not a decision.
 const PLACEHOLDER_REASON_RE = /^(tbd|todo|\?+)$/i;
+
+// A repository path as a document cites it: relative, inside at least one folder, a file name with an
+// extension, no parent step. A media type (`text/html`) or an address (`ui://...`) is not one.
+function isRepoPath(token) {
+  return /^[\w.-]+(\/[\w.-]+)+$/.test(token) && /\.\w+$/.test(token) && !token.split('/').includes('..');
+}
 
 function run(cwd, explicitPath, required) {
   const file = explicitPath || join(cwd, 'docs', 'privacy-accountability.md');
@@ -82,8 +91,14 @@ function run(cwd, explicitPath, required) {
       }
     }
   }
+  const cited = new Set([...body.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]).filter(isRepoPath));
+  for (const path of cited) {
+    if (!existsSync(join(cwd, path))) {
+      problems.push(`cites \`${path}\`, which does not exist - a claim resting on a moved or deleted file has lost its evidence`);
+    }
+  }
   if (problems.length) {
-    console.error(`[privacy-accountability] ${problems.length} undetermined row(s) in ${file}:`);
+    console.error(`[privacy-accountability] ${problems.length} problem(s) in ${file}:`);
     for (const p of problems) console.error(`  ${p}`);
     return 1;
   }
@@ -154,6 +169,16 @@ function selftest() {
     check('an OPEN row followed by a stray separator is still a row and fails naming it', runCli(fixture(HEAD +
       '| DPIA required | N-A - static site, no personal data stored | 2026-08-29 | register |\n' +
       '| AI Act Article 50 | OPEN | | |\n| --- | --- | --- | --- |\n')), 1, /"AI Act Article 50" is still OPEN/);
+    const SETTLED_ROW = '| DPIA required | N-A - static site, no personal data stored | 2026-08-29 | register |\n';
+    check('prose citing a file that does not exist fails naming the path', runCli(fixture(
+      '# Privacy Accountability\n\nStorage is in `docs/adr/gone.md`.\n\n## Determinations\n\n| Determination | Verdict | Date | Evidence |\n| --- | --- | --- | --- |\n' + SETTLED_ROW)),
+      1, /cites `docs\/adr\/gone\.md`, which does not exist/);
+    check('prose citing a file that exists passes', runCli(fixture(
+      '# Privacy Accountability\n\nThis register is `docs/privacy-accountability.md`.\n\n## Determinations\n\n| Determination | Verdict | Date | Evidence |\n| --- | --- | --- | --- |\n' + SETTLED_ROW)),
+      0, /settled: 1 determination/);
+    check('a cited media type or ui address is not read as a path', runCli(fixture(
+      '# Privacy Accountability\n\nCards are `text/html` served as `ui://tolsey/reading.html`.\n\n## Determinations\n\n| Determination | Verdict | Date | Evidence |\n| --- | --- | --- | --- |\n' + SETTLED_ROW)),
+      0, /settled: 1 determination/);
     check('a colon-aligned separator row is not read as a row', runCli(fixture(
       '# x\n\n## Determinations\n\n| Determination | Verdict | Date | Evidence |\n| :--- | :---: | ---: | --- |\n' +
       '| DPIA required | N-A - static site, no personal data stored | 2026-08-29 | register |\n')), 0, /settled: 1 determination/);
