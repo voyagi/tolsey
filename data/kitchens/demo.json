@@ -168,14 +168,20 @@
     "nouns": ["air", "degrees", "delivery", "temp", "temperature"],
     "states": ["fine", "good", "ok", "okay", "normal", "cold", "cool", "warm", "hot", "everything", "all"],
     "hedges": {
-      "limits": ["under", "over", "below", "above", "less", "more"],
+      "limits": ["under", "over", "below", "above", "less", "more", "max", "maximum", "min", "minimum", "tops", "between"],
       "below": "below",
       "zero": "zero",
-      "approximations": ["about", "around", "roughly", "approximately", "nearly", "almost", "maybe"],
+      "approximations": [
+        "about", "around", "roughly", "approximately", "approx", "approximate", "nearly", "almost", "near", "maybe",
+        "probably", "guess", "think", "like", "ish", "something", "same"
+      ],
       "decades": ["high", "mid", "low"],
       "tens": ["twenties", "thirties", "forties", "fifties", "sixties", "seventies", "eighties", "nineties"],
       "ranges": ["or", "to"],
-      "phrases": ["same as before", "same as last time", "as usual"]
+      "phrases": [
+        "same as before", "same as last time", "as usual", "at most", "at least", "up to", "or so", "or lower",
+        "or higher", "lower than", "higher than", "give or take", "close to", "or thereabouts"
+      ]
     }
   }
 }

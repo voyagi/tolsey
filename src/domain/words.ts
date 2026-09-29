@@ -49,9 +49,24 @@ const HEDGE: NumberWords = { kind: 'hedge' };
 
 const NUMBER_TOKEN = /^-?\d+(\.\d+)?$/;
 const DECADE_FIGURE = /^\d0s$/;
+const RANGE_FIGURE = /^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/;
+const ISH_FIGURE = /^(\d+(?:\.\d+)?)ish$/;
 
 function isNumber(token: string | undefined): boolean {
   return token !== undefined && NUMBER_TOKEN.test(token);
+}
+
+// tokensOf keeps a hyphen inside a token, since "walk-in" and "-5" need it, so a hedge written with
+// one ("mid-30s", "38-ish", "5-below") would hide inside a single token. For classifying only, a
+// digit range "38-40" reads as "38 to 40", "38ish" as "38 ish", and any other hyphenated token is
+// split at its hyphens; a negative number stays whole.
+function spokenParts(token: string): string[] {
+  if (NUMBER_TOKEN.test(token)) return [token];
+  const range = RANGE_FIGURE.exec(token);
+  if (range) return [range[1], 'to', range[2]];
+  const ish = ISH_FIGURE.exec(token);
+  if (ish) return [ish[1], 'ish'];
+  return token.split('-').filter(Boolean);
 }
 
 // "below" is a hedge before a number ("below 5") and a sign after one ("5 below"), so it is judged
@@ -81,10 +96,11 @@ function negativeOf(tokens: readonly string[], hedges: Hedges): number | undefin
 // whether the words give a reading, a reading below zero, or something other than a reading. A state
 // word counts only when no number was said at all: "fine at 38" still names its number.
 export function classifyNumberWords(tokens: readonly string[], vocabulary: Vocabulary): NumberWords {
-  if (saysHedge(tokens, vocabulary.hedges)) return HEDGE;
-  const negative = negativeOf(tokens, vocabulary.hedges);
+  const parts = tokens.flatMap(spokenParts);
+  if (saysHedge(parts, vocabulary.hedges)) return HEDGE;
+  const negative = negativeOf(parts, vocabulary.hedges);
   if (negative !== undefined) return { kind: 'negative', value: negative };
-  if (!tokens.some(isNumber) && tokens.some((token) => vocabulary.states.includes(token))) return HEDGE;
+  if (!parts.some(isNumber) && parts.some((token) => vocabulary.states.includes(token))) return HEDGE;
   return PLAIN;
 }
 
