@@ -14,8 +14,10 @@
 //      for a per-test check to see. So before anything is counted, a non-zero vitest exit, success
 //      false, a failed test in any folder, and a file whose entry is failed (Vitest's JSON reporter
 //      puts the collection error in that entry's message) are each refused by name.
-//   4. A report left from an earlier run reads as this run's. It is deleted before the spawn, so a
-//      vitest that dies before writing leaves nothing behind, which is UNKNOWN, never clean.
+//   4. A report left from an earlier run, or written at the same moment by another run in the same
+//      tree, reads as this run's. So each run writes its report into its own new temporary folder,
+//      removed afterwards: a vitest that dies before writing leaves nothing at that path, which is
+//      UNKNOWN, never clean, and no other run's report is ever at it.
 //
 // What is counted is tests whose status is passed, never the exit code: a filter that matches
 // nothing exits 0.
@@ -31,7 +33,7 @@ import { join, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const VITEST_BIN = join('node_modules', 'vitest', 'vitest.mjs');
-const REPORT = 'reports/vitest-count.json';
+const REPORT_NAME = 'vitest-count.json';
 const PROJECTS = ['unit', 'store', 'conformance'];
 const TIMEOUT_MS = 20 * 60 * 1000;
 const TEST_FILE_SPECS = [':(glob)src/**/*.test.ts', ':(glob)src/**/*.test.tsx', ':(glob)src/**/*.spec.ts', ':(glob)src/**/*.spec.tsx'];
@@ -56,8 +58,8 @@ function listTrackedTests(cwd) {
   return out.split('\0').filter((p) => p && !E2E_FILE.test(p));
 }
 
-function runVitest(cwd) {
-  const r = spawnSync(process.execPath, [join(cwd, VITEST_BIN), 'run', ...PROJECTS.flatMap((p) => ['--project', p]), '--reporter=json', `--outputFile=${REPORT}`], {
+function runVitest(cwd, reportPath) {
+  const r = spawnSync(process.execPath, [join(cwd, VITEST_BIN), 'run', ...PROJECTS.flatMap((p) => ['--project', p]), '--reporter=json', `--outputFile=${reportPath}`], {
     cwd, encoding: 'utf8', windowsHide: true, timeout: TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024,
   });
   if (r.error && r.error.code === 'ETIMEDOUT') return { code: `a timeout after ${TIMEOUT_MS / 60000} min`, stderr: r.stderr };
@@ -66,19 +68,18 @@ function runVitest(cwd) {
   return { code: r.status, stderr: r.stderr };
 }
 
-function readReport(cwd, vitestCode, stderr) {
-  const path = join(cwd, REPORT);
+function readReport(path, vitestCode, stderr) {
   if (!existsSync(path)) {
     const tail = String(stderr || '').trim().split(/\r?\n/).slice(-15).join('\n');
-    return { unknown: `vitest exited ${vitestCode} and wrote no report at ${REPORT}.${tail ? `\n${tail}` : ''}` };
+    return { unknown: `vitest exited ${vitestCode} and wrote no report at ${path}.${tail ? `\n${tail}` : ''}` };
   }
   let report;
   try {
     report = JSON.parse(readFileSync(path, 'utf8'));
   } catch {
-    return { unknown: `${REPORT} did not parse as JSON. Refusing to count from it.` };
+    return { unknown: `the report at ${path} did not parse as JSON. Refusing to count from it.` };
   }
-  if (!report || !Array.isArray(report.testResults)) return { unknown: `${REPORT} has no testResults array.` };
+  if (!report || !Array.isArray(report.testResults)) return { unknown: `the report at ${path} has no testResults array.` };
   if (report.testResults.length === 0) return { unknown: 'the report lists no test files, which is a run that tested nothing.' };
   return { report };
 }
@@ -136,9 +137,18 @@ function run(cwd, argv) {
     console.error(`[test-count] UNKNOWN: git ls-files could not list the tracked test files (${String((e && e.stderr) || (e && e.message) || e).trim()}).`);
     return 2;
   }
-  rmSync(join(cwd, REPORT), { force: true });
-  const { code, stderr } = runVitest(cwd);
-  const { report, unknown } = readReport(cwd, code, stderr);
+  const reportDir = mkdtempSync(join(tmpdir(), 'tolsey-test-count-'));
+  try {
+    return judgeRun(cwd, floor, tracked, join(reportDir, REPORT_NAME));
+  } finally {
+    rmSync(reportDir, { recursive: true, force: true });
+  }
+}
+
+// One vitest run, judged from the report it wrote at reportPath.
+function judgeRun(cwd, floor, tracked, reportPath) {
+  const { code, stderr } = runVitest(cwd, reportPath);
+  const { report, unknown } = readReport(reportPath, code, stderr);
   if (unknown) {
     console.error(`[test-count] UNKNOWN: ${unknown}`);
     return 2;
@@ -161,11 +171,13 @@ function run(cwd, argv) {
 
 // --- selftest ---------------------------------------------------------------
 // Hermetic: a temp git repository with tracked test files and a STUB vitest that copies a fixture
-// report to the --outputFile path it was given (or writes nothing) and exits STUB_EXIT.
+// report to the --outputFile path it was given (or writes nothing) and exits STUB_EXIT. It also
+// notes every path it was given, so a case can tell whether two runs shared one.
 const STUB = [
-  "import { copyFileSync, existsSync, mkdirSync } from 'node:fs';",
+  "import { appendFileSync, copyFileSync, existsSync, mkdirSync } from 'node:fs';",
   "import { dirname, resolve } from 'node:path';",
   "const arg = process.argv.find((a) => a.startsWith('--outputFile='));",
+  "if (arg) appendFileSync('stub-output-paths.txt', resolve(arg.slice('--outputFile='.length)) + '\\n');",
   "if (arg && existsSync('fixture-report.json')) {",
   "  const out = resolve(arg.slice('--outputFile='.length));",
   '  mkdirSync(dirname(out), { recursive: true });',
@@ -269,10 +281,19 @@ function selftest() {
     check('an unparsable report is UNKNOWN, exit 2', runCli(root, { fixture: 'not json at all' }), 2, /UNKNOWN: .* did not parse/);
 
     root = makeRoot();
+    // reports/vitest-count.json is where every run wrote its report before each run had its own folder.
     mkdirSync(join(root, 'reports'), { recursive: true });
-    writeFileSync(join(root, REPORT), JSON.stringify(report(passing(root))));
+    writeFileSync(join(root, 'reports', REPORT_NAME), JSON.stringify(report(passing(root))));
     check('a passing report left from an earlier run, with a vitest that exits 1 and writes nothing, is UNKNOWN, never clean',
       runCli(root, { stubExit: 1 }), 2, /UNKNOWN: vitest exited 1 and wrote no report/);
+
+    root = makeRoot();
+    const exits = [runCli(root, { fixture: report(passing(root)) }).code, runCli(root, { fixture: report(passing(root)) }).code];
+    const given = readFileSync(join(root, 'stub-output-paths.txt'), 'utf8').trim().split('\n');
+    const leftBehind = given.filter((path) => existsSync(path));
+    const ownPaths = exits.every((code) => code === 0) && given.length === 2 && given[0] !== given[1] && leftBehind.length === 0;
+    check('two runs in one tree are given two different report paths, and neither is left behind',
+      { code: ownPaths ? 0 : 1, out: `exits ${exits.join(', ')}; paths given ${JSON.stringify(given)}; left behind ${leftBehind.length}` }, 0, /paths given/);
 
     root = makeRoot();
     check('one failed test in a src/domain file, every other test passed above the floor, exits 1 naming that test', runCli(root, {
