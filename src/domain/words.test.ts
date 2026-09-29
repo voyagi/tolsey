@@ -115,6 +115,14 @@ describe('classifyNumberWords', () => {
     expect(classify('the cool down reads forty')).toEqual({ kind: 'plain' });
     expect(classify('the cool down is cool')).toEqual({ kind: 'hedge' });
   });
+
+  // The digit in "reach-in 2" names the check, so it is never the number the cook said.
+  it.each(['the reach-in 2 is fine', 'reach-in 1 is good'])(
+    'reads a digit inside a check point name as the name: "%s" is a hedge',
+    (words) => {
+      expect(classify(words)).toEqual({ kind: 'hedge' });
+    },
+  );
 });
 
 describe('rebuildWords on a refused line', () => {
@@ -142,5 +150,11 @@ describe('rebuildWords on a refused line', () => {
     expect(rebuildWords('call 555 123 4567', profile, undefined, walkIn)).toBe('555 123');
     expect(rebuildWords('card 1234 5678 9012 3456', profile, undefined, walkIn)).toBe('walk-in');
     expect(rebuildWords('between 38 and 40', profile, undefined, walkIn)).toBe('between 38 40');
+  });
+
+  // The digits of "reach-in 1" and "reach-in 2" are name words, so outside a name they count as figures.
+  it('counts a digit a name also holds as a figure outside that name, and keeps the name whole', () => {
+    expect(rebuildWords('1 2 1 1 2 2 1 2 1 2', profile, undefined, walkIn)).toBe('1 2');
+    expect(rebuildWords('the reach-in 2 is 38 or 39', profile, undefined, walkIn)).toBe('the reach-in 2 is 38 or 39');
   });
 });

@@ -77,6 +77,16 @@ describe('a check given without a number, through MCP', () => {
     expect(ofKind(await lines(kitchenId), 'refusal')).toHaveLength(1);
   });
 
+  // The digit in the check point's own name is not a number the cook said (E4).
+  it('refuses "the reach-in 2 is fine" with a value attached, and never stores that value', async () => {
+    const kitchenId = await kitchen();
+    const result = await call(kitchenId, { check_point: 'reach_in_2', value: 38, words: 'the reach-in 2 is fine', initials: 'AB' });
+
+    expect(result.structuredContent?.outcome).toBe('refused');
+    expect(ofKind(await lines(kitchenId), 'reading')).toHaveLength(0);
+    expect(await worker.store.openChecks(kitchenId, DAY)).toEqual(['reach_in_2']);
+  });
+
   it('refuses "everything is fine" with no check point as one refusal line that asks nothing and opens no check', async () => {
     const kitchenId = await kitchen();
     await call(kitchenId, { check_point: 'walk_in', words: 'the walk-in is fine', initials: 'AB' });

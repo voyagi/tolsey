@@ -2,8 +2,17 @@ import type { CheckPoint, KitchenProfile } from './rule';
 
 type Hedges = KitchenProfile['vocabulary']['hedges'];
 
+type Phrases = readonly (readonly string[])[];
+
+// Every check point and food name and alias, as the tokens words are rebuilt from and as the parts
+// classifying compares.
+interface Names {
+  tokens: Phrases;
+  parts: Phrases;
+}
+
 const recognisedByProfile = new WeakMap<KitchenProfile, ReadonlySet<string>>();
-const namesByProfile = new WeakMap<KitchenProfile, readonly (readonly string[])[]>();
+const namesByProfile = new WeakMap<KitchenProfile, Names>();
 
 function hedgeWords(hedges: Hedges): string[] {
   const { limits, below, zero, signs, approximations, decades, tens, ranges, phrases } = hedges;
@@ -33,31 +42,34 @@ function recognisedTokens(profile: KitchenProfile): ReadonlySet<string> {
   return tokens;
 }
 
-// Every check point and food name and alias in the parts classifying compares, longest first so
-// "walk-in cooler" is found before "walk-in". An empty phrase could never be stepped past, so none is kept.
-function nameParts(profile: KitchenProfile): readonly (readonly string[])[] {
+// Longest first, so "walk-in cooler" is found before "walk-in". An empty phrase could never be stepped
+// past, so none is kept.
+function longestFirst(phrases: string[][]): Phrases {
+  return phrases.filter((phrase) => phrase.length > 0).sort((a, b) => b.length - a.length);
+}
+
+function namesOf(profile: KitchenProfile): Names {
   let names = namesByProfile.get(profile);
   if (!names) {
-    names = namePhrases(profile)
-      .map((phrase) => tokensOf(phrase).flatMap(spokenParts))
-      .filter((parts) => parts.length > 0)
-      .sort((a, b) => b.length - a.length);
+    const tokens = namePhrases(profile).map(tokensOf);
+    names = { tokens: longestFirst(tokens), parts: longestFirst(tokens.map((name) => name.flatMap(spokenParts))) };
     namesByProfile.set(profile, names);
   }
   return names;
 }
 
-function startsAt(parts: readonly string[], at: number, name: readonly string[]): boolean {
-  return name.every((part, offset) => parts[at + offset] === part);
+function nameAt(items: readonly string[], at: number, names: Phrases): readonly string[] | undefined {
+  return names.find((name) => name.every((item, offset) => items[at + offset] === item));
 }
 
-// The parts left once every name said in them is taken out, so a state word inside a name ("cool" in
-// the cooling check's "cool down") is never read as the cook's verdict on the check.
-function withoutNames(parts: readonly string[], names: readonly (readonly string[])[]): string[] {
+// The parts left once every name said in them is taken out, so neither a state word inside a name
+// ("cool" in the cooling check's "cool down") nor a digit inside one ("reach-in 2") is read as what
+// the cook said about the check.
+function withoutNames(parts: readonly string[], names: Phrases): string[] {
   const left: string[] = [];
   let at = 0;
   while (at < parts.length) {
-    const name = names.find((candidate) => startsAt(parts, at, candidate));
+    const name = nameAt(parts, at, names);
     if (name) {
       at += name.length;
     } else {
@@ -164,17 +176,17 @@ function signedOf(tokens: readonly string[], hedges: Hedges): NumberWords | unde
 }
 
 // Number words are not parsed into values here (that grammar is the intent layer's); this only says
-// whether the words give a reading, a reading below zero, or something other than a reading. A state
-// word counts only when no number was said at all ("fine at 38" still names its number), and only
-// outside a check point or food name.
+// whether the words give a reading, a reading below zero, or something other than a reading. Names
+// are taken out first, so only what the cook said about the check is judged. A state word counts only
+// when no number was said at all: "fine at 38" still names its number.
 export function classifyNumberWords(tokens: readonly string[], profile: KitchenProfile): NumberWords {
   const { hedges, states } = profile.vocabulary;
-  const parts = tokens.flatMap(spokenParts);
+  const parts = withoutNames(tokens.flatMap(spokenParts), namesOf(profile).parts);
   if (saysHedge(parts, hedges)) return HEDGE;
   const signed = signedOf(parts, hedges);
   if (signed !== undefined) return signed;
   if (parts.some(isNumber)) return PLAIN;
-  return withoutNames(parts, nameParts(profile)).some((token) => states.includes(token)) ? HEDGE : PLAIN;
+  return parts.some((token) => states.includes(token)) ? HEDGE : PLAIN;
 }
 
 // A figure a thermometer could show, kept in a refused line so it quotes "under 41" or "38 or 39" as
@@ -183,16 +195,26 @@ export function classifyNumberWords(tokens: readonly string[], profile: KitchenP
 const READING_FIGURE = /^-?\d{1,3}(\.\d)?$/;
 const MOST_FIGURES_QUOTED = 2;
 
-function refusedWords(tokens: string[], known: ReadonlySet<string>, checkPoint: CheckPoint | undefined): string {
+// A name is kept whole, digit and all ("reach-in 2"); every other figure counts against the two, even
+// one a name also holds, so a run of ones and twos is never stored whole either.
+function refusedWords(tokens: string[], profile: KitchenProfile, checkPoint: CheckPoint | undefined): string {
+  const known = recognisedTokens(profile);
+  const names = namesOf(profile).tokens;
   const kept: string[] = [];
   let figures = 0;
-  for (const token of tokens) {
-    if (known.has(token)) {
-      kept.push(token);
-    } else if (READING_FIGURE.test(token) && figures < MOST_FIGURES_QUOTED) {
-      kept.push(token);
+  let at = 0;
+  while (at < tokens.length) {
+    const name = nameAt(tokens, at, names);
+    const token = tokens[at];
+    if (name) {
+      kept.push(...name);
+    } else if (READING_FIGURE.test(token)) {
+      if (figures < MOST_FIGURES_QUOTED) kept.push(token);
       figures += 1;
+    } else if (known.has(token)) {
+      kept.push(token);
     }
+    at += name ? name.length : 1;
   }
   if (kept.length > 0) return kept.join(' ');
   return checkPoint === undefined ? '' : checkPoint.name.toLowerCase();
@@ -209,9 +231,9 @@ export function rebuildWords(
   value: number | undefined,
   checkPoint: CheckPoint | undefined,
 ): string {
-  const known = recognisedTokens(profile);
   const tokens = raw === undefined ? [] : tokensOf(raw);
-  if (value === undefined) return refusedWords(tokens, known, checkPoint);
+  if (value === undefined) return refusedWords(tokens, profile, checkPoint);
+  const known = recognisedTokens(profile);
   const number = formatValue(value);
   const kept = tokens
     .map((token) => (Number(token) === value ? number : token))
