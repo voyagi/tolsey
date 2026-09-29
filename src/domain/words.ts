@@ -115,6 +115,20 @@ function isNumber(token: string | undefined): boolean {
   return token !== undefined && NUMBER_TOKEN.test(token);
 }
 
+// The words a figure is said in. They give no value here; they only let a range said in words
+// ("thirty eight or thirty nine") be told from a reading. They are never kept in a stored line, so a
+// number said word by word can never pass the refused line's two-figure limit.
+const NUMBER_WORDS: ReadonlySet<string> = new Set([
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
+  'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty', 'thirty',
+  'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety', 'hundred',
+]);
+
+// A figure said either way, in digits or in words.
+function isFigure(token: string | undefined): boolean {
+  return isNumber(token) || (token !== undefined && NUMBER_WORDS.has(token));
+}
+
 // tokensOf keeps a hyphen inside a token, since "walk-in" and "-5" need it, so a hedge written with
 // one ("mid-30s", "38-ish", "5-below") would hide inside a single token. For classifying only, a
 // digit range "38-40" reads as "38 to 40", "38ish" as "38 ish", and any other hyphenated token is
@@ -153,7 +167,7 @@ function hedgesAt(tokens: readonly string[], index: number, hedges: Hedges): boo
   const token = tokens[index];
   if (hedges.approximations.includes(token) || hedges.tens.includes(token) || DECADE_FIGURE.test(token)) return true;
   if (hedges.limits.includes(token)) return !isSignBelow(tokens, index, hedges);
-  if (hedges.ranges.includes(token)) return isNumber(tokens[index - 1]) && isNumber(tokens[index + 1]);
+  if (hedges.ranges.includes(token)) return isFigure(tokens[index - 1]) && isFigure(tokens[index + 1]);
   return false;
 }
 

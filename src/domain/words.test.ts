@@ -140,6 +140,26 @@ describe('classifyNumberWords against transcript shapes', () => {
     expect(classify(words)).toEqual({ kind: 'hedge' });
   });
 
+  // A range said in number words is still a range, so it is never logged as the value beside it.
+  it.each([
+    ['the walk-in reads thirty eight or thirty nine', 'both ends in words'],
+    ['thirty-eight to forty', 'hyphenated words'],
+    ['38 or thirty nine', 'a figure then words'],
+    ['thirty eight through 40', 'words then a figure'],
+    ['fifteen or fifty', 'a teen and its ten'],
+    ['one thirty five to one forty', 'hot-holding figures in words'],
+  ])('classifies "%s" (%s) as a hedge', (words) => {
+    expect(classify(words)).toEqual({ kind: 'hedge' });
+  });
+
+  it.each([
+    ['the walk-in reads thirty eight', 'one figure in words'],
+    ['delivery came in to thirty eight', 'a range word with no figure before it'],
+    ['the reach-in one reads forty', 'a number word inside a check point name'],
+  ])('classifies "%s" (%s) as plain', (words) => {
+    expect(classify(words)).toEqual({ kind: 'plain' });
+  });
+
   it.each([
     ['\u22125', 'a true minus sign'],
     ['the freezer reads \u20135', 'an en dash as a minus'],

@@ -73,6 +73,49 @@ describe('pending prompts answered in separate requests, and initials from the r
       const readings = ofKind(await lines(kitchenId), 'reading');
       expect(readings).toEqual([expect.objectContaining({ initials: 'MR', valueTenths: 380, answersId: prompt.id })]);
     });
+
+    // The answer's own words are read: the number said again with a hedge is never logged as the held one.
+    it('refuses an answer that says the held number again with a hedge, and keeps the check open', async () => {
+      const kitchenId = await kitchen();
+      const prompt = promptOf(await say(kitchenId, { check_point: 'walk_in', value: 38 }));
+
+      const refused = await say(kitchenId, { initials: 'MR', value: 38, words: 'MR, about 38', pending_prompt_id: prompt.id });
+
+      expect(refused.structuredContent).toMatchObject({ outcome: 'refused', initials: 'MR' });
+      expect(promptOf(refused).kind).toBe('number');
+      const stored = await lines(kitchenId);
+      expect(ofKind(stored, 'reading')).toHaveLength(0);
+      expect(ofKind(stored, 'refusal')).toEqual([expect.objectContaining({ checkPointId: 'walk_in', answersId: prompt.id })]);
+      expect(await worker.store.openChecks(kitchenId, DAY)).toEqual(['walk_in']);
+    });
+
+    it('logs the held reading for an answer that says the same number again plainly', async () => {
+      const kitchenId = await kitchen();
+      const prompt = promptOf(await say(kitchenId, { check_point: 'walk_in', value: 38 }));
+
+      const logged = await say(kitchenId, { initials: 'MR', value: 38, words: 'MR, 38', pending_prompt_id: prompt.id });
+
+      expect(logged.structuredContent).toMatchObject({ outcome: 'in_range', value: 38, initials: 'MR' });
+      expect(ofKind(await lines(kitchenId), 'reading')).toEqual([expect.objectContaining({ valueTenths: 380, answersId: prompt.id })]);
+    });
+
+    it('reads a sign in the answer: "5 below" beside a held freezer 5 is a new call that logs -5, never 5', async () => {
+      const kitchenId = await kitchen();
+      const prompt = promptOf(await say(kitchenId, { check_point: 'freezer', value: 5 }));
+
+      const logged = await say(kitchenId, {
+        check_point: 'freezer',
+        initials: 'MR',
+        value: 5,
+        words: 'MR, 5 below',
+        pending_prompt_id: prompt.id,
+      });
+
+      expect(logged.structuredContent).toMatchObject({ outcome: 'in_range', value: -5, initials: 'MR' });
+      expect(ofKind(await lines(kitchenId), 'reading')).toEqual([
+        expect.objectContaining({ checkPointId: 'freezer', valueTenths: -50, answersId: null }),
+      ]);
+    });
   });
 
   describe('number', () => {
@@ -117,6 +160,21 @@ describe('pending prompts answered in separate requests, and initials from the r
 
       expect(logged.structuredContent).toMatchObject({ outcome: 'in_range', value: 39, checkPoint: { id: 'walk_in' } });
       expect(ofKind(await lines(kitchenId), 'reading')[0]?.answersId).toBe(prompt.id);
+    });
+
+    it('refuses an answer naming the check whose words give the number as a range, even one said in words', async () => {
+      const kitchenId = await kitchen();
+      const prompt = promptOf(await say(kitchenId, { value: 39, initials: 'AB' }));
+
+      const refused = await say(kitchenId, {
+        check_point: 'walk_in',
+        value: 39,
+        words: 'the walk-in, thirty nine or forty',
+        pending_prompt_id: prompt.id,
+      });
+
+      expect(refused.structuredContent).toMatchObject({ outcome: 'refused', checkPoint: { id: 'walk_in' } });
+      expect(ofKind(await lines(kitchenId), 'reading')).toHaveLength(0);
     });
 
     it('asks which check first, then who is logging, and logs after both answers', async () => {

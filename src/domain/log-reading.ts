@@ -308,8 +308,17 @@ function decideAnswer(input: LogReadingInput, ctx: DecisionContext, answer: Answ
     screenId: input.screen_id,
     requestId: input.request_id,
   };
+  const links = { answersId: prompt.id, refId: null };
+  // An answer to which check or who is logging may say its number again ("AB, about 38"). Those words
+  // are read as a fresh call's are, so a hedge in them refuses the answer, and a sign that makes the
+  // number another one ("5 below" beside a held 5) makes the call a new one, as a different figure does.
+  if (!answer.valueFromCall && input.value !== undefined) {
+    const said = valueFromWords({ ...facts, value: input.value }, ctx);
+    if (said === undefined) return refusalDecision(facts, ctx, links);
+    if (tenthsOf(said) !== prompt.valueTenths) return decideFacts(callFacts(input, ctx, input.initials), ctx, FRESH);
+  }
   const repeat = prompt.promptKind === 'digit_repeat' ? prompt : undefined;
-  return decideFacts(facts, ctx, { links: { answersId: prompt.id, refId: null }, valueFromCall: answer.valueFromCall, repeat });
+  return decideFacts(facts, ctx, { links, valueFromCall: answer.valueFromCall, repeat });
 }
 
 // The one reply a second answer gets, whether the prompt was answered before this call read it or
