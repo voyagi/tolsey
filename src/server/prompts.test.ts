@@ -282,6 +282,42 @@ describe('pending prompts answered in separate requests, and initials from the r
       expect(ofKind(stored, 'receipt')).toEqual([expect.objectContaining({ answersId: null, initials: 'MR' })]);
     });
 
+    // A retry is decided again against a prompt its own first delivery changed: answered, or by now
+    // expired though still inside the retry window, which starts at the answer. Only the stored request
+    // id stands between that new decision and the cook's reply.
+    it("gives a retried answer its own stored reading once the prompt reads answered, never the already-answered reply", async () => {
+      const kitchenId = await kitchen();
+      const prompt = promptOf(await say(kitchenId, { check_point: 'walk_in', value: 38 }));
+      const answer = { initials: 'MR', pending_prompt_id: prompt.id, request_id: crypto.randomUUID() };
+      const first = await say(kitchenId, answer);
+      const before = await lines(kitchenId);
+
+      const retry = await say(kitchenId, answer);
+
+      expect(retry).toEqual(first);
+      expect(first.structuredContent).toMatchObject({ outcome: 'in_range', initials: 'MR' });
+      expect(await lines(kitchenId)).toHaveLength(before.length);
+    });
+
+    it('gives a retried answer its own stored reading after the prompt expired inside the retry window', async () => {
+      const kitchenId = await kitchen();
+      const prompt = promptOf(await say(kitchenId, { check_point: 'walk_in', value: 38 }));
+      const answeredAt = AFTERNOON + (DEMO_PROFILE.promptExpirySeconds - 10) * 1000;
+      const retriedAt = AFTERNOON + (DEMO_PROFILE.promptExpirySeconds + 10) * 1000;
+      expect(retriedAt - answeredAt).toBeLessThan(STORE_LIMITS.retryWindowSeconds * 1000);
+      const answer = { initials: 'MR', pending_prompt_id: prompt.id, request_id: crypto.randomUUID() };
+      worker.clock.set(answeredAt);
+      const first = await say(kitchenId, answer);
+      const before = await lines(kitchenId);
+
+      worker.clock.set(retriedAt);
+      const retry = await say(kitchenId, answer);
+
+      expect(retry).toEqual(first);
+      expect(first.structuredContent).toMatchObject({ outcome: 'in_range', initials: 'MR' });
+      expect(await lines(kitchenId)).toHaveLength(before.length);
+    });
+
     it('leaves one answering line when two answers race over HTTP, and the other gets the already-answered reply', async () => {
       const kitchenId = await kitchen();
       const prompt = promptOf(await say(kitchenId, { check_point: 'walk_in', value: 38 }));
