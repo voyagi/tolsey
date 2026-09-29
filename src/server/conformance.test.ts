@@ -336,6 +336,22 @@ describe(`MCP conformance on the ${inject('target')} target`, () => {
       if (lines) expect(lines).toHaveLength(1);
     });
 
+    it('answers two concurrent copies of one call under one request_id identically and stores one line', async () => {
+      const freshKitchen = await target.createKitchen();
+      const requestId = crypto.randomUUID();
+      const before = now();
+      const [first, copy] = (await Promise.all([
+        withClient(await connect(target, `/mcp/k/${freshKitchen}`), (c) => c.callTool(walkInCall(requestId))),
+        withClient(await connect(target, `/mcp/k/${freshKitchen}`), (c) => c.callTool(walkInCall(requestId))),
+      ])) as ToolResult[];
+      const after = now();
+
+      expect(first.isError).toBeFalsy();
+      expect(copy).toEqual(first);
+      const lines = await linesBetween(freshKitchen, before, after);
+      if (lines) expect(lines).toHaveLength(1);
+    });
+
     it('refuses a request_id reused with other arguments as request_id_reused and stores no second line', async () => {
       const freshKitchen = await target.createKitchen();
       const requestId = crypto.randomUUID();
