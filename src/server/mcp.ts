@@ -18,6 +18,7 @@ import {
 import type { KitchenProfile, RuleRow } from '../domain/rule';
 import { saysCorrection } from '../domain/words';
 import {
+  classifyRepeat,
   expectedRowsFor,
   type AppendOutcome,
   type KitchenRow,
@@ -119,6 +120,10 @@ function resultFor(outcome: AppendOutcome): CallToolResult {
   }
 }
 
+function retryWindowMs(deps: ServerDeps): number {
+  return deps.limits.retryWindowSeconds * SECOND_MS;
+}
+
 async function append(decision: Decided, hash: string, deps: ServerDeps, now: number): Promise<AppendOutcome> {
   const event = { ...decision.event, argsHash: hash };
   return deps.store.append({
@@ -129,7 +134,7 @@ async function append(decision: Decided, hash: string, deps: ServerDeps, now: nu
     dailyRowCap: deps.limits.dailyRowCap,
     kitchenLineCap: deps.limits.kitchenLineCap,
     writeWindowMs: writeWindowMs(deps.limits),
-    retryWindowMs: deps.limits.retryWindowSeconds * SECOND_MS,
+    retryWindowMs: retryWindowMs(deps),
     now,
   });
 }
@@ -154,9 +159,9 @@ async function decisionContext(args: LogReadingInput, deps: ServerDeps, now: num
 }
 
 // Another request superseded the line or answered the prompt between this call's read and its write
-// (a repeat of that request's own id never gets here: the store answers it as a duplicate first). A
-// correction's number carries both keys, and SQLite names whichever index it checked first, so any
-// conflict of a superseding line is the already-corrected reply.
+// (a concurrent repeat of that request's own id never gets here: the store answers it as a duplicate
+// first). A correction's number carries both keys, and SQLite names whichever index it checked first,
+// so any conflict of a superseding line is the already-corrected reply.
 function secondAnswerFor(decision: Decided, conflict: AppendOutcome, args: LogReadingInput, ctx: DecisionContext): Decided | null {
   if (conflict.status !== 'conflict') return null;
   if (decision.event.supersedesId !== null) return alreadyCorrected(args, ctx);
@@ -168,11 +173,20 @@ async function logReading(args: LogReadingInput, deps: ServerDeps): Promise<Call
   // storage untouched by any attempt, and says what to do instead.
   if (deps.kitchen.kind === 'demo') return errorResult(DEMO_READ_ONLY, 'demo_read_only');
   const now = deps.clock.now();
+  const hash = await argsHash(args);
+  // A retry is answered from what its first delivery stored, before anything is decided: decided
+  // again, it would meet state that delivery changed (the prompt it answered now reads answered, the
+  // "wrong number" it stored is now an open question). Every call answered with isError false stored
+  // one event, so this covers every accepted call; the store's own lookup on append stays as the
+  // backstop for concurrent copies that both miss this read. A call refused with isError true stored
+  // nothing, so its repeat is a new attempt (MCP-07's first outcome is a stored one).
+  const stored = await deps.store.findByRequest(deps.kitchen.id, args.request_id);
+  if (stored) return resultFor(classifyRepeat(stored, hash, now, retryWindowMs(deps)));
+
   const ctx = await decisionContext(args, deps, now);
   const decision = decideLogReading(args, ctx);
   if (decision.status === 'rejected') return errorResult(REJECTION_TEXT[decision.code], decision.code);
 
-  const hash = await argsHash(args);
   const outcome = await append(decision, hash, deps, now);
   const reply = secondAnswerFor(decision, outcome, args, ctx);
   if (reply === null) return resultFor(outcome);

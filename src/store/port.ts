@@ -163,6 +163,25 @@ export type AppendOutcome =
   | { status: 'refused'; reason: RefusalReason }
   | { status: 'conflict'; constraint: 'supersedes' | 'answers' };
 
+// What a stored event keeps of the call that wrote it, for deciding a repeat of its request id.
+export interface StoredRequest {
+  argsHash: string;
+  occurredAt: number;
+  resultJson: string;
+}
+
+export type RepeatOutcome = Extract<AppendOutcome, { status: 'duplicate' | 'expired' | 'reused' }>;
+
+// The one rule for a request id already stored, applied by the adapter's read before deciding and by
+// every store's own lookup on append, so no call is a duplicate on one path and expired on the other.
+// The age runs from the stored event and is never refreshed by a repeat: a host that restarts its id
+// counter in a new conversation must have its new reading refused loudly, not answered with an old one.
+export function classifyRepeat(stored: StoredRequest, argsHash: string, now: number, retryWindowMs: number): RepeatOutcome {
+  if (stored.argsHash !== argsHash) return { status: 'reused' };
+  if (now - stored.occurredAt > retryWindowMs) return { status: 'expired', resultJson: stored.resultJson };
+  return { status: 'duplicate', resultJson: stored.resultJson };
+}
+
 // No method edits or removes an event: the record is append-only, and expiring a whole scratch
 // kitchen is retention, which lives outside this port.
 export interface Store {
@@ -173,4 +192,5 @@ export interface Store {
   openChecks(kitchenId: string, businessDay: string): Promise<string[]>;
   pendingPrompt(kitchenId: string, promptId: string): Promise<PendingPrompt | null>;
   latestByScreen(kitchenId: string, screenId: string, sinceMs: number): Promise<ScreenEvent | null>;
+  findByRequest(kitchenId: string, requestId: string): Promise<StoredRequest | null>;
 }

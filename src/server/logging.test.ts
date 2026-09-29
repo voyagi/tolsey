@@ -42,6 +42,7 @@ function storeWith(overrides: Partial<Store>): Store {
       throw new Error('append is not part of this case');
     },
     linesForDay: async () => [],
+    findByRequest: async () => null,
     ...overrides,
   } as Store;
 }

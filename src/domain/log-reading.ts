@@ -341,7 +341,9 @@ export function decideLogReading(input: LogReadingInput, ctx: DecisionContext): 
   const call = { ...input, initials };
   if (saysCorrection(call.words, ctx.profile)) return decideCorrection(call, ctx, ctx.latest ?? null);
   const resolution = resolvePrompt(ctx.prompt ?? null, call, ctx.now);
-  if (resolution.kind === 'already_answered') return alreadyAnswered(call, ctx);
+  if (resolution.kind === 'already_answered') {
+    return resolution.prompt.supersedes === null ? alreadyAnswered(call, ctx) : alreadyCorrected(call, ctx);
+  }
   if (resolution.kind === 'answer') return decideAnswer(call, ctx, resolution);
   return decideFacts(callFacts(call, ctx, initials), ctx, FRESH);
 }

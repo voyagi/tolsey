@@ -1,15 +1,18 @@
-import type {
-  AppendInput,
-  AppendOutcome,
-  CreateKitchenInput,
-  CreateKitchenOutcome,
-  D1Like,
-  KitchenRow,
-  PendingPrompt,
-  ScreenEvent,
-  Store,
-  StoredLine,
-  SupersedeTarget,
+import {
+  classifyRepeat,
+  type AppendInput,
+  type AppendOutcome,
+  type CreateKitchenInput,
+  type CreateKitchenOutcome,
+  type D1Like,
+  type KitchenRow,
+  type PendingPrompt,
+  type RepeatOutcome,
+  type ScreenEvent,
+  type Store,
+  type StoredLine,
+  type StoredRequest,
+  type SupersedeTarget,
 } from './port';
 
 // Statement 1 of the append batch. The day line and the record code are allocated inside the INSERT,
@@ -76,6 +79,9 @@ SELECT
   (SELECT COUNT(*) FROM events WHERE kitchen_id = ?1) AS line_count
 FROM (SELECT 1) AS one
 LEFT JOIN events AS stored ON stored.kitchen_id = ?1 AND stored.request_id = ?2`;
+
+const FIND_BY_REQUEST = `
+SELECT args_hash, occurred_at, result_json FROM events WHERE kitchen_id = ?1 AND request_id = ?2`;
 
 // The budget check sits in the same statement as the insert, so two concurrent mints cannot both read
 // room under the cap and both write; COUNT_BUDGET then counts it only when the row landed.
@@ -234,13 +240,10 @@ function uniqueIndexIn(error: unknown): string | null {
   return match ? match[1] : null;
 }
 
-function decideRepeat(row: FollowUpRow, input: AppendInput): AppendOutcome | null {
-  if (row.result_json === null || row.occurred_at === null) return null;
-  if (row.args_hash !== input.event.argsHash) return { status: 'reused' };
-  // Measured from the stored event, never refreshed by a repeat: a host that restarts its id counter
-  // in a new conversation must have its new reading refused loudly, not answered with an old one.
-  if (input.now - row.occurred_at > input.retryWindowMs) return { status: 'expired', resultJson: row.result_json };
-  return { status: 'duplicate', resultJson: row.result_json };
+function decideRepeat(row: FollowUpRow, input: AppendInput): RepeatOutcome | null {
+  if (row.result_json === null || row.occurred_at === null || row.args_hash === null) return null;
+  const stored = { argsHash: row.args_hash, occurredAt: row.occurred_at, resultJson: row.result_json };
+  return classifyRepeat(stored, input.event.argsHash, input.now, input.retryWindowMs);
 }
 
 function supersedeTargetOf(row: PromptRecord): SupersedeTarget | null {
@@ -378,6 +381,14 @@ export class D1Store implements Store {
       repeats: row.repeats,
       supersedes: supersedeTargetOf(row),
     };
+  }
+
+  async findByRequest(kitchenId: string, requestId: string): Promise<StoredRequest | null> {
+    const row = await this.db
+      .prepare(FIND_BY_REQUEST)
+      .bind(kitchenId, requestId)
+      .first<{ args_hash: string; occurred_at: number; result_json: string }>();
+    return row ? { argsHash: row.args_hash, occurredAt: row.occurred_at, resultJson: row.result_json } : null;
   }
 
   async latestByScreen(kitchenId: string, screenId: string, sinceMs: number): Promise<ScreenEvent | null> {

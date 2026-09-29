@@ -273,6 +273,16 @@ describe('a correction through decideLogReading', () => {
     };
   }
 
+  // Fold recheck finding 5: the words a second number hears do not depend on whether it came later or
+  // lost the race on the supersedes index.
+  it("tells a later second number for a correction's prompt that the reading was already corrected", () => {
+    const decision = decide({ value: 42, screen_id: 'wall', request_id: 'request-3', pending_prompt_id: 'prompt-1' }, { prompt: answeredCorrectionPrompt() });
+
+    expect(decision.result.content[0].text).toMatch(/already corrected/);
+    expect(decision.result.structuredContent).toMatchObject({ outcome: 'refused', checkPoint: { id: 'walk_in' } });
+    expect(decision.event).toMatchObject({ kind: 'receipt', answersId: null, supersedesId: null });
+  });
+
   it('keeps the already-answered reply for a prompt whose chain supersedes nothing', () => {
     const prompt = { ...answeredCorrectionPrompt(), promptKind: 'who_is_logging', supersedes: null };
 
