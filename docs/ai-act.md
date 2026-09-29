@@ -10,6 +10,11 @@ The MCP server is deterministic. A reading is taken from the words and arguments
 matched against a fixed vocabulary, and judged against a rule row by plain code. Neither the server
 nor the simulated wall display calls an AI model in the default configuration.
 
+These verdicts cover what Tolsey runs itself. On a real Alexa+ device the cook talks to Alexa+,
+which Amazon provides and which calls Tolsey's tool with structured arguments. Paragraph 1 places its
+duty on the providers of AI systems intended to interact directly with people, so informing the cook
+there falls to the provider of Alexa+, not to the tool Alexa+ calls.
+
 A live model may only ever sit behind one switch that the owner flips, and that switch is not built
 yet. Its disclosure is already written: `src/contract/live-model.ts` holds the sentence the switch
 must show and speak first, and `src/contract/live-model.test.ts` pins it. Nothing reads that sentence

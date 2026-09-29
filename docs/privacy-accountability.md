@@ -29,7 +29,9 @@ underscores, colons and hyphens, so a sentence or markup sent in place of an id 
 stored. That rule cannot tell a random id from a name or a phone number written in the same
 characters, so a caller who puts one there has it stored as sent, with the line, and deleted with the
 scratch kitchen within 24 hours. The tool's description asks the host for a random id such as a UUID.
-The id of a pending question a call answers is only looked up, never stored.
+A pending question's id is Tolsey's own, made when the question is asked: an answer stores it to
+name the question it answers, and an id a caller sends that names no question of this kitchen is
+only looked up, never stored.
 
 **Location.** The D1 database is created under the EU jurisdiction (`docs/adr/0002-storage.md`,
 "Location and jurisdiction"), which keeps the stored record in EU regions.
