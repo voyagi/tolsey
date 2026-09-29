@@ -1,8 +1,19 @@
-import { baseEvent, baseOutput, decided, promptExpiry, type Decision, type DecisionContext, type Facts, type Links } from './decision';
+import {
+  baseEvent,
+  baseOutput,
+  decided,
+  promptExpiry,
+  type Decision,
+  type DecisionContext,
+  type Facts,
+  type Links,
+  type PromptKind,
+} from './decision';
 import type { CheckPoint } from './rule';
 import { rebuildWords } from './words';
 
 const NO_CHECK_REPLY = 'I need a check and the number on the thermometer.';
+const NUMBER_PROMPT: PromptKind = 'number';
 
 /** @public The question asked back for a check given without a number. */
 export function refusalReply(checkPoint: CheckPoint | undefined): string {
@@ -22,13 +33,13 @@ export function refusalDecision(facts: Facts, ctx: DecisionContext, links: Links
     words: rebuildWords(facts.words, ctx.profile, undefined, checkPoint),
     outcome: 'refused',
     rulesVersion: ctx.rulesVersion,
-    promptKind: asks ? 'number' : null,
+    promptKind: asks ? NUMBER_PROMPT : null,
     expiresAt: asks ? promptExpiry(ctx) : null,
   };
   const structured = {
     ...baseOutput(ctx, facts, 'refused'),
     lineId,
-    ...(asks ? { prompt: { kind: 'number', id: lineId } } : {}),
+    ...(asks ? { prompt: { kind: NUMBER_PROMPT, id: lineId } } : {}),
   };
   return decided(event, refusalReply(checkPoint), structured);
 }

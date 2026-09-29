@@ -23,6 +23,10 @@ export interface ToolResultTemplate {
 
 export type Rejection = 'initials_not_on_roster';
 
+// Every question a decision can store as a prompt. The answer table in prompts.ts is typed by this
+// union, so a new kind is a compile error until that table says how it is answered.
+export type PromptKind = 'number' | 'digit_repeat' | 'which_check' | 'who_is_logging';
+
 export type DecidedEvent = Omit<NewEvent, 'argsHash'>;
 
 export interface Decided {

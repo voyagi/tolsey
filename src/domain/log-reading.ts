@@ -15,6 +15,7 @@ import {
   type DecisionContext,
   type Facts,
   type Links,
+  type PromptKind,
   type ToolResultTemplate,
 } from './decision';
 import { resolvePrompt, type PromptResolution } from './prompts';
@@ -153,7 +154,7 @@ function receiptDecision(facts: Facts, ctx: DecisionContext, text: string, links
 
 // A hold stores the number it holds, so the answer can be compared with it and the reading logged
 // from it, and the question it asks is the prompt the answer names.
-function heldDecision(facts: ValueFacts, ctx: DecisionContext, links: Links, promptKind: string, text: string): Decision {
+function heldDecision(facts: ValueFacts, ctx: DecisionContext, links: Links, promptKind: PromptKind, text: string): Decision {
   const promptId = ctx.newId();
   const measured = facts.measured ?? facts.checkPoint?.defaultMeasured;
   const event = {

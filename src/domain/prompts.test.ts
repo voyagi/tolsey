@@ -58,6 +58,11 @@ describe('resolvePrompt', () => {
     expect(resolvePrompt(null, answer({ initials: 'MR' }), ASKED_AT)).toEqual({ kind: 'fresh' });
   });
 
+  it('treats a prompt of a kind this code cannot answer as a fresh call', () => {
+    expect(resolvePrompt(prompt({ promptKind: 'wrong_number' }), answer({ initials: 'MR' }), ASKED_AT).kind).toBe('fresh');
+    expect(resolvePrompt(prompt({ promptKind: 'toString' }), answer({ initials: 'MR' }), ASKED_AT).kind).toBe('fresh');
+  });
+
   it('treats an answer from another screen as a fresh call', () => {
     expect(resolvePrompt(prompt(), answer({ initials: 'MR', screen_id: 'other' }), ASKED_AT).kind).toBe('fresh');
   });
