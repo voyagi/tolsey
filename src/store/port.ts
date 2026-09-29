@@ -71,8 +71,17 @@ export interface StoredLine extends NewEvent {
   resultJson: string;
 }
 
+// The line a correction's confirmed number supersedes, with what its new line is judged against.
+export interface SupersedeTarget {
+  lineId: string;
+  rootId: string;
+  ruleSnapshot: string | null;
+  rulesVersion: string | null;
+}
+
 // An event that asked a question, as the call answering it needs it. repeats counts the digit
-// repeats already held along the chain this prompt belongs to.
+// repeats already held along the chain this prompt belongs to; supersedes is set when that chain
+// started from a "wrong number".
 export interface PendingPrompt {
   id: string;
   promptKind: string;
@@ -85,6 +94,22 @@ export interface PendingPrompt {
   refId: string | null;
   answered: boolean;
   repeats: number;
+  supersedes: SupersedeTarget | null;
+}
+
+// The newest event a screen wrote that is not a receipt, as "wrong number" needs it. corrections
+// counts the wrong_number events already said against the chain a reading heads.
+export interface ScreenEvent {
+  id: string;
+  kind: Exclude<EventKind, 'receipt'>;
+  occurredAt: number;
+  checkPointId: string | null;
+  measured: string | null;
+  valueTenths: number | null;
+  promptKind: string | null;
+  expiresAt: number | null;
+  answered: boolean;
+  corrections: number;
 }
 
 export interface RowsPerWrite {
@@ -147,4 +172,5 @@ export interface Store {
   linesForDay(kitchenId: string, businessDay: string): Promise<StoredLine[]>;
   openChecks(kitchenId: string, businessDay: string): Promise<string[]>;
   pendingPrompt(kitchenId: string, promptId: string): Promise<PendingPrompt | null>;
+  latestByScreen(kitchenId: string, screenId: string, sinceMs: number): Promise<ScreenEvent | null>;
 }

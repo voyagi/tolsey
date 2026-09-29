@@ -9,6 +9,7 @@ import {
   type Links,
   type PromptKind,
 } from './decision';
+import { askAgainReply } from './questions';
 import type { CheckPoint } from './rule';
 import { rebuildWords } from './words';
 
@@ -18,7 +19,7 @@ const NUMBER_PROMPT: PromptKind = 'number';
 /** @public The question asked back for a check given without a number. */
 export function refusalReply(checkPoint: CheckPoint | undefined): string {
   if (checkPoint === undefined) return NO_CHECK_REPLY;
-  return `I need the number on the thermometer. What does ${checkPoint.askAs} read?`;
+  return `I need the number on the thermometer. ${askAgainReply(checkPoint)}`;
 }
 
 // The refusal is also the question asking for the number, so it is stored as a prompt when there is

@@ -28,13 +28,14 @@ function namePhrases(profile: KitchenProfile): string[] {
 function recognisedTokens(profile: KitchenProfile): ReadonlySet<string> {
   let tokens = recognisedByProfile.get(profile);
   if (!tokens) {
-    const { verbs, articles, nouns, states, hedges } = profile.vocabulary;
+    const { verbs, articles, nouns, states, corrections, hedges } = profile.vocabulary;
     tokens = new Set([
       ...namePhrases(profile).flatMap((phrase) => [phrase.toLowerCase(), ...tokensOf(phrase)]),
       ...verbs,
       ...articles,
       ...nouns,
       ...states,
+      ...corrections.flatMap(tokensOf),
       ...hedgeWords(hedges),
     ]);
     recognisedByProfile.set(profile, tokens);
@@ -173,10 +174,19 @@ function hedgesAt(tokens: readonly string[], index: number, hedges: Hedges): boo
   return false;
 }
 
-function saysHedge(tokens: readonly string[], hedges: Hedges): boolean {
+function saysPhrase(tokens: readonly string[], phrases: readonly string[]): boolean {
   const said = ` ${tokens.join(' ')} `;
-  if (hedges.phrases.some((phrase) => said.includes(` ${tokensOf(phrase).join(' ')} `))) return true;
+  return phrases.some((phrase) => said.includes(` ${tokensOf(phrase).join(' ')} `));
+}
+
+function saysHedge(tokens: readonly string[], hedges: Hedges): boolean {
+  if (saysPhrase(tokens, hedges.phrases)) return true;
   return tokens.some((_, index) => hedgesAt(tokens, index, hedges));
+}
+
+// A number or a check sent beside the phrase does not make it a reading (D-05).
+export function saysCorrection(words: string | undefined, profile: KitchenProfile): boolean {
+  return words !== undefined && saysPhrase(tokensOf(words), profile.vocabulary.corrections);
 }
 
 function below(figure: string | undefined): NumberWords | undefined {

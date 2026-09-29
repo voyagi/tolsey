@@ -167,6 +167,7 @@
     "articles": ["the", "a", "its"],
     "nouns": ["air", "degrees", "delivery", "temp", "temperature"],
     "states": ["fine", "good", "ok", "okay", "normal", "cold", "cool", "warm", "hot", "everything", "all"],
+    "corrections": ["wrong number", "that's wrong", "wrong reading"],
     "hedges": {
       "limits": ["under", "over", "below", "above", "less", "more", "max", "maximum", "min", "minimum", "tops", "between"],
       "below": "below",

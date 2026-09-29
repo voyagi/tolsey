@@ -26,6 +26,7 @@ function prompt(overrides: Partial<PendingPrompt> = {}): PendingPrompt {
     refId: null,
     answered: false,
     repeats: 0,
+    supersedes: null,
     ...overrides,
   };
 }

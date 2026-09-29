@@ -9,12 +9,14 @@ import {
 import { TOOL_ANNOTATIONS, TOOL_DESCRIPTIONS } from '../contract/tools';
 import {
   alreadyAnswered,
+  alreadyCorrected,
   decideLogReading,
   type Decided,
   type DecisionContext,
   type Rejection,
 } from '../domain/log-reading';
 import type { KitchenProfile, RuleRow } from '../domain/rule';
+import { saysCorrection } from '../domain/words';
 import {
   expectedRowsFor,
   type AppendOutcome,
@@ -132,17 +134,33 @@ async function append(decision: Decided, hash: string, deps: ServerDeps, now: nu
   });
 }
 
+// A correction decides from the newest event this screen wrote inside the window, measured back from
+// the one clock read; any other call decides from the prompt it names.
 async function decisionContext(args: LogReadingInput, deps: ServerDeps, now: number): Promise<DecisionContext> {
-  const promptId = args.pending_prompt_id;
-  return {
+  const base = {
     now,
     newId: () => crypto.randomUUID(),
     kitchen: deps.kitchen,
     rules: deps.rules,
     rulesVersion: deps.rulesVersion,
     profile: deps.profile,
-    prompt: promptId ? await deps.store.pendingPrompt(deps.kitchen.id, promptId) : null,
   };
+  if (saysCorrection(args.words, deps.profile)) {
+    const since = now - deps.profile.correctionWindowSeconds * SECOND_MS;
+    return { ...base, latest: await deps.store.latestByScreen(deps.kitchen.id, args.screen_id, since) };
+  }
+  const promptId = args.pending_prompt_id;
+  return { ...base, prompt: promptId ? await deps.store.pendingPrompt(deps.kitchen.id, promptId) : null };
+}
+
+// Another request superseded the line or answered the prompt between this call's read and its write
+// (a repeat of that request's own id never gets here: the store answers it as a duplicate first). A
+// correction's number carries both keys, and SQLite names whichever index it checked first, so any
+// conflict of a superseding line is the already-corrected reply.
+function secondAnswerFor(decision: Decided, conflict: AppendOutcome, args: LogReadingInput, ctx: DecisionContext): Decided | null {
+  if (conflict.status !== 'conflict') return null;
+  if (decision.event.supersedesId !== null) return alreadyCorrected(args, ctx);
+  return conflict.constraint === 'answers' ? alreadyAnswered(args, ctx) : null;
 }
 
 async function logReading(args: LogReadingInput, deps: ServerDeps): Promise<CallToolResult> {
@@ -156,12 +174,11 @@ async function logReading(args: LogReadingInput, deps: ServerDeps): Promise<Call
 
   const hash = await argsHash(args);
   const outcome = await append(decision, hash, deps, now);
-  if (outcome.status !== 'conflict' || outcome.constraint !== 'answers') return resultFor(outcome);
-  // Another request answered the prompt between this call's read and its write (a repeat of that
-  // request's own id never gets here: the store answers it as a duplicate first). This call still
-  // stores exactly one event, a receipt under its own request id, and a refusal of that append is
-  // answered like any refused append.
-  return resultFor(await append(alreadyAnswered(args, ctx), hash, deps, now));
+  const reply = secondAnswerFor(decision, outcome, args, ctx);
+  if (reply === null) return resultFor(outcome);
+  // The losing call still stores exactly one event, a receipt under its own request id, and a refusal
+  // of that append is answered like any refused append.
+  return resultFor(await append(reply, hash, deps, now));
 }
 
 export function createServer(deps: ServerDeps): McpServer {

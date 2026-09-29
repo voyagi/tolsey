@@ -1,35 +1,45 @@
 import type { LogReadingInput, LogReadingOutput, RuleResult } from '../contract/log-reading';
 import { LOWEST_READING_F } from '../contract/reading-range';
-import type { PendingPrompt } from '../store/port';
+import type { PendingPrompt, SupersedeTarget } from '../store/port';
+import { decideCorrection } from './correction';
 import { judgeReading } from './judge';
 import {
   baseEvent,
   baseOutput,
   decided,
   NO_LINKS,
+  optionalCheckPoint,
   promptExpiry,
   TENTHS_PER_DEGREE,
   tenthsOf,
   type Decided,
-  type DecidedEvent,
   type Decision,
   type DecisionContext,
   type Facts,
   type Links,
   type PromptKind,
-  type ToolResultTemplate,
 } from './decision';
 import { resolvePrompt, type PromptResolution } from './prompts';
+import { digitRepeatReply, WHO_IS_LOGGING_REPLY, whichCheckReply } from './questions';
+import { receiptDecision } from './receipt';
 import { decideRefusal, refusalDecision } from './refusal';
 import type { CheckPoint, CheckPointKind, KitchenProfile, RuleRow, RuleSource, TemperatureRow } from './rule';
 import { needsDigitRepeat } from './twins';
-import { answerNumberWords, classifyNumberWords, formatValue, rebuildWords, tokensOf, type NumberWords } from './words';
+import {
+  answerNumberWords,
+  classifyNumberWords,
+  formatValue,
+  rebuildWords,
+  saysCorrection,
+  tokensOf,
+  type NumberWords,
+} from './words';
 
 export type { Decided, Decision, DecisionContext, Rejection } from './decision';
 
-const WHO_IS_LOGGING_REPLY = 'Who is logging?';
 const LOG_BY_HAND_REPLY = 'Log it by hand.';
 const ALREADY_ANSWERED_REPLY = 'That question was already answered. Say the check and its number again.';
+const ALREADY_CORRECTED_REPLY = 'That reading was already corrected. Say the check and its number again.';
 
 // READ-07: a different number is asked back once more, and the third miss in a row ends the chain.
 const MISSES_BEFORE_LOG_BY_HAND = 3;
@@ -54,16 +64,6 @@ function ruleResult(rule: TemperatureRow): RuleResult {
     unit: 'F',
     sourceKind: rule.source.kind,
   };
-}
-
-function checkPointFor(profile: KitchenProfile, id: string): CheckPoint {
-  const point = profile.checkPoints.find((candidate) => candidate.id === id);
-  if (!point) throw new Error('check point missing from the kitchen profile');
-  return point;
-}
-
-function optionalCheckPoint(profile: KitchenProfile, id: string | undefined): CheckPoint | undefined {
-  return id === undefined ? undefined : checkPointFor(profile, id);
 }
 
 // Phase 1 has no judging path for these kinds, so their readings are kept unjudged rather than
@@ -91,6 +91,13 @@ export function selectRule(
   const ruleId = ruleIdFor(checkPoint, measured, profile);
   const row = ruleId === undefined ? undefined : rules.get(ruleId);
   return row?.kind === 'temperature' ? row : undefined;
+}
+
+// A correction is judged by the rule the line said wrong was judged by, never the table as it is
+// now. A line stored not_covered holds no rule, so its correction is not_covered too and is never
+// judged by a neighbouring row (N5).
+function ruleOfTarget(target: SupersedeTarget): TemperatureRow | undefined {
+  return target.ruleSnapshot === null ? undefined : (JSON.parse(target.ruleSnapshot) as TemperatureRow);
 }
 
 // A host transcribing spelled letters sends "ab", "A.B." or "a b"; a stored line carries the
@@ -121,41 +128,6 @@ interface ReadingFacts extends ValueFacts {
   initials: string;
 }
 
-type ReceiptCall = Pick<LogReadingInput, 'screen_id' | 'request_id' | 'words'>;
-
-/**
- * @public The wrong-number correction, still to come in phase 1, stores its no-line replies through it.
- *
- * The one shape of a stored answer that records no line: it takes no day line and no record code,
- * holds no value or verdict, and is skipped by open checks and counts. Storing it is what lets a
- * retry inside the window get this reply back instead of being decided again against changed state.
- */
-export function receiptEvent(
-  input: ReceiptCall,
-  ctx: DecisionContext,
-  result: ToolResultTemplate,
-  links: Links,
-): DecidedEvent {
-  const { checkPoint, initials, outcome } = result.structuredContent;
-  const point = optionalCheckPoint(ctx.profile, checkPoint?.id);
-  const facts = { checkPoint: point, initials, screenId: input.screen_id, requestId: input.request_id };
-  return {
-    ...baseEvent(ctx, facts, 'receipt', ctx.newId(), links),
-    words: rebuildWords(input.words, ctx.profile, undefined, point),
-    outcome,
-    rulesVersion: ctx.rulesVersion,
-  };
-}
-
-function receiptDecision(facts: Facts, ctx: DecisionContext, text: string, links: Links): Decided {
-  const result: ToolResultTemplate = {
-    content: [{ type: 'text', text }],
-    structuredContent: baseOutput(ctx, facts, 'refused'),
-  };
-  const call = { screen_id: facts.screenId, request_id: facts.requestId, words: facts.words };
-  return { status: 'decided', event: receiptEvent(call, ctx, result, links), result };
-}
-
 // A hold stores the number it holds, so the answer can be compared with it and the reading logged
 // from it, and the question it asks is the prompt the answer names.
 function heldDecision(facts: ValueFacts, ctx: DecisionContext, links: Links, promptKind: PromptKind, text: string): Decision {
@@ -180,15 +152,14 @@ function heldDecision(facts: ValueFacts, ctx: DecisionContext, links: Links, pro
   return decided(event, text, structured);
 }
 
-function digitRepeatReply(checkPoint: CheckPoint): string {
-  return `Say it one digit at a time. What does ${checkPoint.askAs} read?`;
-}
-
+// The line a correction's confirmed number logs names the line said wrong in supersedes_id and takes
+// its chain's root, so both partial unique indexes stand between it and a second superseding line.
 function readingDecision(
   facts: ReadingFacts,
   ctx: DecisionContext,
   links: Links,
   row: TemperatureRow | undefined,
+  supersede: SupersedeTarget | null,
 ): Decision {
   const { checkPoint, value } = facts;
   const valueTenths = tenthsOf(value);
@@ -200,6 +171,7 @@ function readingDecision(
     value,
     unit: 'F',
     ...(rule === undefined ? {} : { rule: ruleResult(rule) }),
+    ...(supersede === null ? {} : { supersedesLineId: supersede.lineId }),
   };
   const event = {
     ...baseEvent(ctx, facts, 'reading', lineId, links),
@@ -210,23 +182,36 @@ function readingDecision(
     verdict: rule === undefined ? null : structured.verdict,
     ruleId: rule?.id ?? null,
     ruleSnapshot: rule === undefined ? null : JSON.stringify(rule),
-    rulesVersion: ctx.rulesVersion,
+    rulesVersion: supersede === null ? ctx.rulesVersion : supersede.rulesVersion,
+    supersedesId: supersede === null ? null : supersede.lineId,
+    rootId: supersede === null ? null : supersede.rootId,
   };
   return decided(event, spokenReadback(structured), structured);
 }
 
+interface Answering {
+  links: Links;
+  valueFromCall: boolean;
+  repeat?: PendingPrompt;
+  // Set when the prompt answered belongs to a chain that started from "wrong number".
+  supersede: SupersedeTarget | null;
+}
+
+const FRESH: Answering = { links: NO_LINKS, valueFromCall: true, supersede: null };
+
 // A reading with no row is kept unjudged, and nothing unjudged can be misjudged, so only a reading
 // with a row can be held; a confirmed digit repeat is judged without asking again.
-function judgedOrHeld(facts: ReadingFacts, ctx: DecisionContext, links: Links, confirmed: boolean): Decision {
+function judgedOrHeld(facts: ReadingFacts, ctx: DecisionContext, answering: Answering, confirmed: boolean): Decision {
   const { checkPoint } = facts;
+  const { links, supersede } = answering;
   const measured = facts.measured ?? checkPoint.defaultMeasured;
   const measuredFacts = { ...facts, measured };
-  const row = selectRule(checkPoint, measured, ctx.profile, ctx.rules);
+  const row = supersede === null ? selectRule(checkPoint, measured, ctx.profile, ctx.rules) : ruleOfTarget(supersede);
   const band = ctx.profile.coarseBands[checkPoint.kind];
   if (row !== undefined && !confirmed && needsDigitRepeat(tenthsOf(facts.value), row, band)) {
     return heldDecision(measuredFacts, ctx, links, 'digit_repeat', digitRepeatReply(checkPoint));
   }
-  return readingDecision(measuredFacts, ctx, links, row);
+  return readingDecision(measuredFacts, ctx, links, row, supersede);
 }
 
 // A digit repeat prompt holds one number, the last one said. A different number answers it with a
@@ -235,7 +220,9 @@ function judgedOrHeld(facts: ReadingFacts, ctx: DecisionContext, links: Links, c
 // through the answers_id index so it can never be answered afterwards.
 function nextRepeat(facts: ReadingFacts, ctx: DecisionContext, prompt: PendingPrompt): Decision {
   const links = { answersId: prompt.id, refId: prompt.refId ?? prompt.id };
-  if (prompt.repeats + 1 >= MISSES_BEFORE_LOG_BY_HAND) return receiptDecision(facts, ctx, LOG_BY_HAND_REPLY, links);
+  if (prompt.repeats + 1 >= MISSES_BEFORE_LOG_BY_HAND) {
+    return receiptDecision(facts, ctx, { outcome: 'refused', text: LOG_BY_HAND_REPLY }, links);
+  }
   return heldDecision(facts, ctx, links, 'digit_repeat', digitRepeatReply(facts.checkPoint));
 }
 
@@ -257,17 +244,10 @@ function valueFromWords(facts: Facts, ctx: DecisionContext): number | undefined 
   return valueAsSaid(facts.value, classifyNumberWords(tokensOf(facts.words ?? ''), ctx.profile));
 }
 
-interface Answering {
-  links: Links;
-  valueFromCall: boolean;
-  repeat?: PendingPrompt;
-}
-
-const FRESH: Answering = { links: NO_LINKS, valueFromCall: true };
-
 // A fresh call and an answer run the same decision; an answer only arrives with the prompt's held
 // facts filled in, so a number sent in answer to a refused walk-in is still held when it could be a
-// misheard teen. A call missing both a check and initials is asked which check first.
+// misheard teen. A call missing both a check and initials is asked which check first. A hold or a
+// refusal on the way to a correction's number never supersedes: only the line that logs does.
 function decideFacts(facts: Facts, ctx: DecisionContext, answering: Answering): Decision {
   const { links } = answering;
   const refusal = decideRefusal(facts, ctx, links);
@@ -276,7 +256,7 @@ function decideFacts(facts: Facts, ctx: DecisionContext, answering: Answering): 
   if (value === undefined) return refusalDecision(facts, ctx, links);
   const { checkPoint, initials } = facts;
   if (checkPoint === undefined) {
-    return heldDecision({ ...facts, value }, ctx, links, 'which_check', `Which check reads ${formatValue(value)}?`);
+    return heldDecision({ ...facts, value }, ctx, links, 'which_check', whichCheckReply(value));
   }
   if (initials === undefined) return heldDecision({ ...facts, value }, ctx, links, 'who_is_logging', WHO_IS_LOGGING_REPLY);
   const reading = { ...facts, value, checkPoint, initials };
@@ -286,7 +266,7 @@ function decideFacts(facts: Facts, ctx: DecisionContext, answering: Answering): 
   // A yes or a call with no value never gets here, since a call with no number is refused above.
   const confirms = repeat !== undefined && tenthsOf(value) === repeat.valueTenths;
   if (repeat !== undefined && !confirms) return nextRepeat(reading, ctx, repeat);
-  return judgedOrHeld(reading, ctx, links, confirms);
+  return judgedOrHeld(reading, ctx, answering, confirms);
 }
 
 function callFacts(input: LogReadingInput, ctx: DecisionContext, initials: string | undefined): Facts {
@@ -315,9 +295,10 @@ function decideAnswer(input: LogReadingInput, ctx: DecisionContext, answer: Answ
     requestId: input.request_id,
   };
   const links = { answersId: prompt.id, refId: null };
+  const supersede = prompt.supersedes;
   if (answer.valueFromCall) {
     const repeat = prompt.promptKind === 'digit_repeat' ? prompt : undefined;
-    return decideFacts(facts, ctx, { links, valueFromCall: true, repeat });
+    return decideFacts(facts, ctx, { links, valueFromCall: true, repeat, supersede });
   }
   // An answer to which check or who is logging may say the held number again, with or without a value
   // beside it ("MR, about 38", "MR, 5 below"). A hedge in its words refuses the answer. A sign gives the
@@ -326,26 +307,39 @@ function decideAnswer(input: LogReadingInput, ctx: DecisionContext, answer: Answ
   const said = answerNumberWords(tokensOf(input.words ?? ''), ctx.profile);
   const value = facts.value === undefined ? undefined : valueAsSaid(facts.value, said);
   if (value === undefined) return refusalDecision(facts, ctx, links);
-  return decideFacts({ ...facts, value }, ctx, { links, valueFromCall: false });
+  return decideFacts({ ...facts, value }, ctx, { links, valueFromCall: false, supersede });
+}
+
+// A second answer stores a receipt with no answers_id, which the index already holds for the first.
+function secondAnswer(input: LogReadingInput, ctx: DecisionContext, text: string): Decided {
+  const facts = callFacts(input, ctx, rosterInitials(input.initials));
+  const checkPoint = facts.checkPoint ?? optionalCheckPoint(ctx.profile, ctx.prompt?.checkPointId);
+  return receiptDecision({ ...facts, checkPoint }, ctx, { outcome: 'refused', text }, NO_LINKS);
 }
 
 // The one reply a second answer gets, whether the prompt was answered before this call read it or
-// while this call was deciding (the adapter's answers-index conflict). It stores a receipt with no
-// answers_id, which the index already holds for the first answer.
+// while this call was deciding (the adapter's answers-index conflict).
 export function alreadyAnswered(input: LogReadingInput, ctx: DecisionContext): Decided {
-  const facts = callFacts(input, ctx, rosterInitials(input.initials));
-  const checkPoint = facts.checkPoint ?? optionalCheckPoint(ctx.profile, ctx.prompt?.checkPointId ?? undefined);
-  return receiptDecision({ ...facts, checkPoint }, ctx, ALREADY_ANSWERED_REPLY, NO_LINKS);
+  return secondAnswer(input, ctx, ALREADY_ANSWERED_REPLY);
+}
+
+// The same for a line already superseded: a second number for a correction is told the line was
+// corrected, whether it came later or lost the race on the supersedes index.
+export function alreadyCorrected(input: LogReadingInput, ctx: DecisionContext): Decided {
+  return secondAnswer(input, ctx, ALREADY_CORRECTED_REPLY);
 }
 
 // The roster check is the first decision: a refusal, a hold or a receipt stores the call's initials,
-// so text that is not a roster entry must be turned away before anything can be written (PRIV-01).
+// so text that is not a roster entry must be turned away before anything can be written (PRIV-01). A
+// correction comes next, before any prompt, refusal or judging: it is neither a numberless check nor a
+// fresh reading, whatever number or check it carries.
 export function decideLogReading(input: LogReadingInput, ctx: DecisionContext): Decision {
   const initials = rosterInitials(input.initials);
   if (initials !== undefined && !ctx.profile.roster.includes(initials)) {
     return { status: 'rejected', code: 'initials_not_on_roster' };
   }
   const call = { ...input, initials };
+  if (saysCorrection(call.words, ctx.profile)) return decideCorrection(call, ctx, ctx.latest ?? null);
   const resolution = resolvePrompt(ctx.prompt ?? null, call, ctx.now);
   if (resolution.kind === 'already_answered') return alreadyAnswered(call, ctx);
   if (resolution.kind === 'answer') return decideAnswer(call, ctx, resolution);

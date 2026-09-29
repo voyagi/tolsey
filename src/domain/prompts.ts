@@ -31,6 +31,7 @@ const ANSWERED_BY_NUMBER: Readonly<Record<PromptKind, boolean>> = {
   digit_repeat: true,
   which_check: false,
   who_is_logging: false,
+  number_after_wrong: true,
 };
 
 // The stored kind is a string from the database, so an unknown one is a question this code cannot

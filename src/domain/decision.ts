@@ -1,5 +1,5 @@
 import type { LogReadingOutput, Outcome } from '../contract/log-reading';
-import type { EventKind, NewEvent, PendingPrompt } from '../store/port';
+import type { EventKind, NewEvent, PendingPrompt, ScreenEvent } from '../store/port';
 import { businessDay } from './business-day';
 import { utcIso } from './instant';
 import type { CheckPoint, KitchenProfile, RuleRow } from './rule';
@@ -14,6 +14,9 @@ export interface DecisionContext {
   // The prompt named by pending_prompt_id, read by the adapter before deciding; null when the id
   // names nothing this kitchen asked.
   prompt?: PendingPrompt | null;
+  // The newest event this screen wrote inside the correction window, read by the adapter only for a
+  // call whose words say "wrong number".
+  latest?: ScreenEvent | null;
 }
 
 export interface ToolResultTemplate {
@@ -25,7 +28,7 @@ export type Rejection = 'initials_not_on_roster';
 
 // Every question a decision can store as a prompt. The answer table in prompts.ts is typed by this
 // union, so a new kind is a compile error until that table says how it is answered.
-export type PromptKind = 'number' | 'digit_repeat' | 'which_check' | 'who_is_logging';
+export type PromptKind = 'number' | 'digit_repeat' | 'which_check' | 'who_is_logging' | 'number_after_wrong';
 
 export type DecidedEvent = Omit<NewEvent, 'argsHash'>;
 
@@ -64,6 +67,16 @@ const VERDICT_WORDS: Record<Outcome, string> = {
   not_covered: 'not covered yet',
   nothing_to_fix: 'nothing to fix',
 };
+
+export function checkPointFor(profile: KitchenProfile, id: string | null): CheckPoint {
+  const point = profile.checkPoints.find((candidate) => candidate.id === id);
+  if (!point) throw new Error('check point missing from the kitchen profile');
+  return point;
+}
+
+export function optionalCheckPoint(profile: KitchenProfile, id: string | null | undefined): CheckPoint | undefined {
+  return id === undefined || id === null ? undefined : checkPointFor(profile, id);
+}
 
 function dayOf(ctx: DecisionContext): string {
   return businessDay(ctx.now, ctx.kitchen.timeZone, ctx.kitchen.dayStart);

@@ -199,6 +199,8 @@ export const KitchenProfileSchema = z
         articles: z.array(z.string().min(1)),
         nouns: z.array(z.string().min(1)),
         states: z.array(z.string().min(1)).min(1),
+        // The phrases that say the number just logged was misheard (D-05).
+        corrections: z.array(z.string().min(1)).min(1),
         // How a number said as a limit, a range or a guess is told from a reading (REFU-01).
         hedges: z
           .object({

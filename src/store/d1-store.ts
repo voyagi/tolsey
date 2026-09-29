@@ -6,8 +6,10 @@ import type {
   D1Like,
   KitchenRow,
   PendingPrompt,
+  ScreenEvent,
   Store,
   StoredLine,
+  SupersedeTarget,
 } from './port';
 
 // Statement 1 of the append batch. The day line and the record code are allocated inside the INSERT,
@@ -88,9 +90,11 @@ SELECT id, kind, label, time_zone, day_start, created_at FROM kitchens WHERE id 
 const SELECT_DAY = `
 SELECT * FROM events WHERE kitchen_id = ?1 AND business_day = ?2 ORDER BY seq`;
 
-// A check is open while the newest event naming it asks for a number: a refusal or a hold. Only the
-// kind column decides, never a stored status or the outcome, so a retake closes the check without
-// touching the refusal line, which stays counted. A receipt answers a call and never moves a check.
+// A check is open while the newest event naming it asks for a number: a refusal, a hold or a "wrong
+// number". Only the kind column decides, never a stored status or the outcome, so a retake closes the
+// check without touching the refusal line, which stays counted. A correction's line is newer than the
+// line it supersedes, so the newest event is always the newest line of its chain. A receipt answers a
+// call and never moves a check.
 const OPEN_CHECKS = `
 SELECT line.check_point_id AS check_point_id
 FROM (
@@ -99,7 +103,7 @@ FROM (
   GROUP BY check_point_id
 ) AS newest
 JOIN events AS line ON line.seq = newest.seq
-WHERE line.kind IN ('refusal', 'held')
+WHERE line.kind IN ('refusal', 'held', 'wrong_number')
 ORDER BY line.check_point_id`;
 
 // Null for an id naming nothing this kitchen asked, a reading or a receipt among them, so a stale or
@@ -107,6 +111,11 @@ ORDER BY line.check_point_id`;
 // a receipt included, which is how "Log it by hand" closes the prompt it answers. The repeat count
 // walks this kitchen's events, since ref_id has no index of its own, so it runs only for a digit
 // repeat: SQLite evaluates only the CASE branch it takes (202 rows read at 198 lines otherwise).
+// The supersede target is the line a "wrong number" said wrong. A wrong_number event names it in
+// ref_id; any other prompt reaches it by walking answers_id back through the holds and refusals that
+// answered one another until a wrong_number event. The walk ends, since an event can only answer an
+// event already stored, and it runs only for a prompt that answers something: a prompt that answers
+// nothing did not start from a correction, and stays one indexed read.
 const PENDING_PROMPT = `
 SELECT
   asked.id AS id, asked.prompt_kind AS prompt_kind, asked.check_point_id AS check_point_id,
@@ -117,10 +126,51 @@ SELECT
     SELECT COUNT(*) FROM events AS chain
     WHERE chain.kitchen_id = asked.kitchen_id AND chain.ref_id = COALESCE(asked.ref_id, asked.id)
       AND chain.kind = 'held' AND chain.prompt_kind = 'digit_repeat'
-  ) ELSE 0 END AS repeats
+  ) ELSE 0 END AS repeats,
+  said_wrong.id AS target_id, COALESCE(said_wrong.root_id, said_wrong.id) AS target_root_id,
+  said_wrong.rule_snapshot AS target_rule_snapshot, said_wrong.rules_version AS target_rules_version
 FROM events AS asked
+LEFT JOIN events AS said_wrong ON said_wrong.kitchen_id = asked.kitchen_id AND said_wrong.id = (
+  CASE
+    WHEN asked.kind = 'wrong_number' THEN asked.ref_id
+    WHEN asked.answers_id IS NOT NULL THEN (
+      WITH RECURSIVE back (kind, answers_id, ref_id) AS (
+        SELECT kind, answers_id, ref_id FROM events
+        WHERE kitchen_id = asked.kitchen_id AND id = asked.answers_id
+        UNION ALL
+        SELECT prev.kind, prev.answers_id, prev.ref_id
+        FROM back JOIN events AS prev ON prev.id = back.answers_id AND prev.kitchen_id = asked.kitchen_id
+        WHERE back.kind <> 'wrong_number'
+      )
+      SELECT ref_id FROM back WHERE kind = 'wrong_number'
+    )
+  END
+)
 WHERE asked.kitchen_id = ?1 AND asked.id = ?2
   AND asked.prompt_kind IS NOT NULL AND asked.expires_at IS NOT NULL`;
+
+// A reading's corrections are the wrong_number events said against any line of its chain, the chain
+// being every line whose root is the reading's root. Counted only for a reading, the one kind a
+// correction can target.
+const LATEST_BY_SCREEN = `
+SELECT
+  newest.id AS id, newest.kind AS kind, newest.occurred_at AS occurred_at,
+  newest.check_point_id AS check_point_id, newest.measured AS measured,
+  newest.value_tenths AS value_tenths, newest.prompt_kind AS prompt_kind, newest.expires_at AS expires_at,
+  EXISTS (SELECT 1 FROM events AS answer WHERE answer.answers_id = newest.id) AS answered,
+  CASE WHEN newest.kind = 'reading' THEN (
+    SELECT COUNT(*) FROM events AS fix
+    WHERE fix.kitchen_id = newest.kitchen_id AND fix.kind = 'wrong_number' AND fix.ref_id IN (
+      SELECT link.id FROM events AS link
+      WHERE link.kitchen_id = newest.kitchen_id
+        AND COALESCE(link.root_id, link.id) = COALESCE(newest.root_id, newest.id)
+    )
+  ) ELSE 0 END AS corrections
+FROM events AS newest
+WHERE newest.kitchen_id = ?1 AND newest.screen_id = ?2 AND newest.occurred_at >= ?3
+  AND newest.kind <> 'receipt'
+ORDER BY newest.seq DESC
+LIMIT 1`;
 
 interface InsertedRow {
   seq: number;
@@ -148,6 +198,23 @@ interface PromptRecord {
   ref_id: string | null;
   answered: number;
   repeats: number;
+  target_id: string | null;
+  target_root_id: string | null;
+  target_rule_snapshot: string | null;
+  target_rules_version: string | null;
+}
+
+interface ScreenEventRecord {
+  id: string;
+  kind: ScreenEvent['kind'];
+  occurred_at: number;
+  check_point_id: string | null;
+  measured: string | null;
+  value_tenths: number | null;
+  prompt_kind: string | null;
+  expires_at: number | null;
+  answered: number;
+  corrections: number;
 }
 
 interface KitchenRecord {
@@ -174,6 +241,16 @@ function decideRepeat(row: FollowUpRow, input: AppendInput): AppendOutcome | nul
   // in a new conversation must have its new reading refused loudly, not answered with an old one.
   if (input.now - row.occurred_at > input.retryWindowMs) return { status: 'expired', resultJson: row.result_json };
   return { status: 'duplicate', resultJson: row.result_json };
+}
+
+function supersedeTargetOf(row: PromptRecord): SupersedeTarget | null {
+  if (row.target_id === null) return null;
+  return {
+    lineId: row.target_id,
+    rootId: row.target_root_id ?? row.target_id,
+    ruleSnapshot: row.target_rule_snapshot,
+    rulesVersion: row.target_rules_version,
+  };
 }
 
 function refusalFor(row: FollowUpRow, input: AppendInput): AppendOutcome {
@@ -299,6 +376,24 @@ export class D1Store implements Store {
       refId: row.ref_id,
       answered: row.answered !== 0,
       repeats: row.repeats,
+      supersedes: supersedeTargetOf(row),
+    };
+  }
+
+  async latestByScreen(kitchenId: string, screenId: string, sinceMs: number): Promise<ScreenEvent | null> {
+    const row = await this.db.prepare(LATEST_BY_SCREEN).bind(kitchenId, screenId, sinceMs).first<ScreenEventRecord>();
+    if (!row) return null;
+    return {
+      id: row.id,
+      kind: row.kind,
+      occurredAt: row.occurred_at,
+      checkPointId: row.check_point_id,
+      measured: row.measured,
+      valueTenths: row.value_tenths,
+      promptKind: row.prompt_kind,
+      expiresAt: row.expires_at,
+      answered: row.answered !== 0,
+      corrections: row.corrections,
     };
   }
 
