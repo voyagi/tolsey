@@ -46,6 +46,13 @@ const CLOCK_BAN = [
     message: CLOCK_MESSAGE,
   },
 ];
+// T-01-48: a D1 query is a constant string and every value is bound, so no words, id or number a
+// caller sends can become SQL. These catch an interpolated or concatenated string handed to prepare.
+const SQL_BIND_MESSAGE = 'bind every value: prepare(constant).bind(...)';
+const SQL_BIND = [
+  { selector: "CallExpression[callee.property.name='prepare'] > TemplateLiteral[expressions.length>0]", message: SQL_BIND_MESSAGE },
+  { selector: "CallExpression[callee.property.name='prepare'] > BinaryExpression[operator='+']", message: SQL_BIND_MESSAGE },
+];
 
 export default [
   // Exclude config + build output from every floor. Test files are NOT globally ignored any
@@ -98,13 +105,13 @@ export default [
     files: ['src/store/**/*.ts'],
     ignores: TEST_FILES,
     languageOptions: { ...tsParser },
-    rules: { 'no-restricted-syntax': ['error', ...CLOCK_BAN] },
+    rules: { 'no-restricted-syntax': ['error', ...CLOCK_BAN, ...SQL_BIND] },
   },
   {
     files: ['src/server/**/*.ts'],
     ignores: TEST_FILES,
     languageOptions: { ...tsParser },
-    rules: { 'no-restricted-syntax': ['error', ...FOOD_CODE_FIGURES] },
+    rules: { 'no-restricted-syntax': ['error', ...FOOD_CODE_FIGURES, ...SQL_BIND] },
   },
   // ANTI-VACUITY floor for test files (needs `npm i -D @vitest/eslint-plugin`; on a Jest
   // product use eslint-plugin-jest, which carries the same two rules). Deliberately only these
