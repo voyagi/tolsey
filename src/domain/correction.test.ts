@@ -144,6 +144,13 @@ describe('decideCorrection', () => {
       expect(decision.result.content[0].text).toBe('What does the delivery read?');
     });
 
+    // A line always names a check point the profile holds; one that does not is a fault the adapter
+    // answers with its fixed sentence, never a correction asked about a guessed check.
+    it('throws for a line naming a check point the profile does not hold', () => {
+      expect(() => correct(line({ checkPointId: 'retired_point' }))).toThrow(/check point missing/);
+      expect(() => correct(line({ checkPointId: null }))).toThrow(/check point missing/);
+    });
+
     it('stores no initials on the wrong_number event when the call gives none', () => {
       const decision = correct(line(), undefined, wrongNumber({ initials: undefined }));
 
