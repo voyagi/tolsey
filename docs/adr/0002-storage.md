@@ -91,12 +91,16 @@ Reads are not budgeted. The line cap counts the kitchen's lines on every call, s
 proportion to the lines its kitchen already holds. Measured on local D1 by counting `meta.rows_read`
 over one append (2026-09-27): an accepted reading reads 8 rows in an empty kitchen, 159 at 150 lines
 and 207 at 199; a call refused at the 200-line cap reads 408, the insert's count once and the
-follow-up's once. The next line number is served by the `events_day_line` index and adds no walk. The
+follow-up's once. A call that names a pending prompt reads it first (2026-09-29): one row for most
+questions, but a digit repeat counts its chain over the kitchen's events, 202 rows at 198 lines, so
+such a call refused at the cap reads about 610. The next line number is served by the
+`events_day_line` index and adds no walk. The
 insert's guards sit inside its derived table: on the outer SELECT, SQLite also pushed them down into
 it and checked them twice, so an insert that wrote walked the lines twice (309 rows at 150 lines).
 Filling one kitchen to the cap reads about 21,600 rows, so the roughly 25 full kitchens a day's write
 budget allows read about half a million, inside the 5 million a day. Refused calls are capped by
-nothing: about 12,000 of them against one full kitchen spend the account's 5 million daily reads, and
+nothing: about 12,000 of them against one full kitchen spend the account's 5 million daily reads
+(about 8,200 when each names a digit-repeat prompt), and
 from then until 00:00 UTC no query runs against any D1 database on the account. The test "reads the
 kitchen lines once for an accepted reading" in `src/server/budget.test.ts` holds the accepted figure,
 the pass that attacks the running service decides a per-client or per-kitchen limit for the read flood

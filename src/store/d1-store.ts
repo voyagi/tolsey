@@ -105,18 +105,19 @@ ORDER BY line.check_point_id`;
 // Null for an id naming nothing this kitchen asked, a reading or a receipt among them, so a stale or
 // foreign id is a fresh call rather than a fault. Any event carrying the id as answers_id answers it,
 // a receipt included, which is how "Log it by hand" closes the prompt it answers. The repeat count
-// walks only this kitchen's events, since ref_id has no index of its own.
+// walks this kitchen's events, since ref_id has no index of its own, so it runs only for a digit
+// repeat: SQLite evaluates only the CASE branch it takes (202 rows read at 198 lines otherwise).
 const PENDING_PROMPT = `
 SELECT
   asked.id AS id, asked.prompt_kind AS prompt_kind, asked.check_point_id AS check_point_id,
   asked.measured AS measured, asked.value_tenths AS value_tenths, asked.initials AS initials,
   asked.screen_id AS screen_id, asked.expires_at AS expires_at, asked.ref_id AS ref_id,
   EXISTS (SELECT 1 FROM events AS answer WHERE answer.answers_id = asked.id) AS answered,
-  (
+  CASE WHEN asked.prompt_kind = 'digit_repeat' THEN (
     SELECT COUNT(*) FROM events AS chain
     WHERE chain.kitchen_id = asked.kitchen_id AND chain.ref_id = COALESCE(asked.ref_id, asked.id)
       AND chain.kind = 'held' AND chain.prompt_kind = 'digit_repeat'
-  ) AS repeats
+  ) ELSE 0 END AS repeats
 FROM events AS asked
 WHERE asked.kitchen_id = ?1 AND asked.id = ?2
   AND asked.prompt_kind IS NOT NULL AND asked.expires_at IS NOT NULL`;

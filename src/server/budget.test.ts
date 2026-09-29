@@ -154,6 +154,30 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       expect(counted.totals().rowsRead).toBeLessThan(1.5 * lines);
     });
 
+    // Every answer reads its pending prompt first. Only a digit repeat needs its chain counted, and
+    // that count walks the kitchen's events; any other question is one indexed read (153 rows at 150
+    // lines before the count moved behind the digit-repeat branch).
+    it('reads one row for a pending question and walks the kitchen only for a digit repeat', async () => {
+      const minted = await mintThroughRoute(worker.fetch, worker.baseUrl);
+      const lines = 150;
+      await insertLines(worker.db, minted.id, lines, T0);
+      const url = new URL(minted.mcpPath, worker.baseUrl);
+      const ask = async (args: Record<string, unknown>): Promise<string> => {
+        const result = await callLogReading(worker.fetch, url, { screen_id: 'budget-wall', request_id: crypto.randomUUID(), ...args });
+        return (result.structuredContent?.prompt as { id: string }).id;
+      };
+      const whoIsLogging = await ask({ check_point: 'walk_in', value: 38 });
+      const digitRepeat = await ask({ check_point: 'walk_in', value: 15, initials: 'AB' });
+      const readsFor = async (promptId: string): Promise<number> => {
+        const counted = countingD1(worker.db);
+        expect(await new D1Store(counted.db).pendingPrompt(minted.id, promptId)).not.toBeNull();
+        return counted.totals().rowsRead;
+      };
+
+      expect(await readsFor(whoIsLogging)).toBeLessThanOrEqual(2);
+      expect(await readsFor(digitRepeat)).toBeLessThan(1.5 * lines);
+    });
+
     it('accepts a write 1 ms inside the write window and refuses one at its end, saying the kitchen has closed', async () => {
       const minted = await mintThroughRoute(worker.fetch, worker.baseUrl);
 
