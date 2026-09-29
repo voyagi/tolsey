@@ -1,13 +1,16 @@
 #!/usr/bin/env node
-// mutate-incremental.mjs - `npm run mutate`: Stryker's incremental mode, cleared whenever an input
-// it cannot see has changed.
+// mutate-incremental.mjs - `npm run mutate`: Stryker's incremental mode, cleared whenever any input
+// has changed since the last successful run.
 //
 // WHY. Stryker runs this repo's tests through its command runner, which reports the whole command
 // as one aggregate test (command-test-runner.js in @stryker-mutator/core 10). Its incremental mode
 // can then detect changed mutants only, never a changed test (Stryker's incremental docs,
 // "Limitations"), so a Killed result would outlive the test, fixture, rule row or config that
-// killed it. This wrapper hashes every such input and deletes the incremental file when the hash
-// differs from the one stored after the last successful run, which makes that run a full one.
+// killed it. The mutated source counts too: Stryker re-tests only the mutants whose own code
+// changed, so after a change to words.ts a mutant in log-reading.ts whose kill went through
+// words.ts would keep its old result. This wrapper hashes every input and deletes the incremental
+// file when the hash differs from the one stored after the last successful run, which makes that
+// run a full one. Only a rerun on identical inputs reuses results (about 72 s here).
 //
 // The new hash is stored only when Stryker exits 0. An interrupted or failed run keeps the old
 // hash, so the next run clears the file again: the safe direction. Every recorded mutation score
@@ -31,17 +34,12 @@ const INPUT_PATHSPECS = [
   'vitest.config.ts', 'tsconfig*.json', 'wrangler.jsonc',
 ];
 
-// Mirrors the mutate list in stryker.config.json: Stryker already diffs these files itself.
-function mutatedByStryker(path) {
-  return /^src\/(domain|server)\//.test(path) && path.endsWith('.ts') && !path.endsWith('.test.ts');
-}
-
 // Untracked files count too (--others): a new test file must clear results before it is committed.
 function listInputs(cwd) {
   const out = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ...INPUT_PATHSPECS], {
     cwd, encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
   });
-  return [...new Set(out.split('\0').filter(Boolean))].filter((p) => !mutatedByStryker(p)).sort();
+  return [...new Set(out.split('\0').filter(Boolean))].sort();
 }
 
 function hashInputs(cwd, paths) {
@@ -65,7 +63,7 @@ function run(cwd) {
     inputs = listInputs(cwd);
   } catch (e) {
     const why = String((e && e.stderr) || (e && e.message) || e).trim();
-    console.error(`[mutate] could not list Stryker's untracked inputs with git ls-files (${why}). Refusing to reuse incremental results nothing can vouch for.`);
+    console.error(`[mutate] could not list the mutation inputs with git ls-files (${why}). Refusing to reuse incremental results nothing can vouch for.`);
     return 2;
   }
   if (inputs.length === 0) {
@@ -76,7 +74,7 @@ function run(cwd) {
   const hashPath = join(cwd, HASH_FILE);
   const stored = existsSync(hashPath) ? readFileSync(hashPath, 'utf8').trim() : null;
   if (stored === hash) {
-    console.log(`[mutate] ${inputs.length} inputs Stryker cannot see are unchanged since the last successful run; only changed mutants are re-tested.`);
+    console.log(`[mutate] all ${inputs.length} inputs are unchanged since the last successful run; its results are reused.`);
   } else {
     rmSync(join(cwd, INCREMENTAL_FILE), { force: true });
     console.log(`[mutate] inputs changed, incremental results cleared: this is a full run (${inputs.length} inputs hashed).`);
@@ -169,7 +167,7 @@ function selftest() {
     check('a changed stryker.config.json clears the incremental file', cleared(got), seen(got));
     put('src/domain/judge.ts', 'export const limit = 2;\n');
     got = runCli(root);
-    check('a changed non-test file under src/domain keeps the incremental file (Stryker diffs mutated source itself)', kept(got), seen(got));
+    check('a changed non-test file under src/domain clears the incremental file (a mutant in another file can depend on it)', cleared(got), seen(got));
     put('src/server/new.test.ts', 'a new untracked test\n');
     got = runCli(root);
     check('a new untracked test file clears the incremental file', cleared(got), seen(got));
@@ -195,7 +193,7 @@ function selftest() {
     console.error(`\n[mutate] SELFTEST FAILED (${failures}). Do not trust this wrapper.`);
     return 1;
   }
-  console.log('\n[mutate] selftest passed: every input Stryker cannot see clears its incremental results.');
+  console.log('\n[mutate] selftest passed: every changed input, mutated source included, clears the incremental results.');
   return 0;
 }
 

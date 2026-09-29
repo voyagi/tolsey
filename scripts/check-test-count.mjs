@@ -3,9 +3,10 @@
 //
 // WHY. A passing exit code says nothing about what ran. Four shapes pass a bare `vitest run`, or a
 // count taken on its own:
-//   1. A storage or conformance test is skipped (it.skip, or a missing binding turned into a skip)
-//      and the suite stays green. Those suites throw without a binding, so anything but passed there
-//      is refused.
+//   1. A test is skipped or left as a todo (it.skip, or a missing binding turned into a skip) and
+//      the suite stays green. No test in src is skipped on purpose, so anything but passed is
+//      refused in every folder: a floor alone lets a whole skipped file pass while the count stays
+//      above it.
 //   2. A test file in a folder no Vitest project names is never collected, and nothing notices.
 //      Every tracked test-shaped file under src must be in the report. The list is deliberately
 //      wider than the projects' own globs: a list built from those globs could never see the orphan.
@@ -36,8 +37,6 @@ const TIMEOUT_MS = 20 * 60 * 1000;
 const TEST_FILE_SPECS = [':(glob)src/**/*.test.ts', ':(glob)src/**/*.test.tsx', ':(glob)src/**/*.spec.ts', ':(glob)src/**/*.spec.tsx'];
 // Mirrors E2E_FILES in vitest.config.ts: those files run in `npm run test:e2e`, not in this report.
 const E2E_FILE = /^src\/server\/.*\.e2e\.test\.ts$/;
-// These suites throw without a D1 binding, so a test there that did not pass was skipped or lost.
-const STRICT_FOLDERS = /^src\/(store|server)\//;
 
 function parseFloor(argv) {
   const at = argv.indexOf('--floor');
@@ -110,7 +109,7 @@ function countFindings(cwd, report, floor, tracked) {
     seen.add(name);
     for (const t of file.assertionResults ?? []) {
       if (t.status === 'passed') passed++;
-      else if (STRICT_FOLDERS.test(name)) findings.push(`${name}: ${t.status}: ${t.fullName}`);
+      else findings.push(`${name}: ${t.status}: ${t.fullName}`);
     }
   }
   if (passed < floor) findings.push(`only ${passed} tests passed, below the floor of ${floor}`);
@@ -156,7 +155,7 @@ function run(cwd, argv) {
     for (const f of findings) console.error(`  ${f}`);
     return 1;
   }
-  console.log(`[test-count] CLEAN: ${passed} tests passed (floor ${floor}) in ${report.testResults.length} files; every tracked test file was collected and no store or conformance test was skipped.`);
+  console.log(`[test-count] CLEAN: ${passed} tests passed (floor ${floor}) in ${report.testResults.length} files; every tracked test file was collected and no test was skipped.`);
   return 0;
 }
 
@@ -242,6 +241,18 @@ function selftest() {
     check('a skipped test in a src/store file exits 1 naming it', runCli(root, {
       fixture: report(passing(root, { store: file(root, 'src/store/b.test.ts', [test('stores a line'), test('keeps a skipped line', 'skipped')]) })),
     }), 1, /src\/store\/b\.test\.ts: skipped: keeps a skipped line/);
+
+    root = makeRoot();
+    check('a skipped test in a src/domain file exits 1 naming it, however far the count is above the floor', runCli(root, {
+      fixture: report(passing(root, { domain: file(root, 'src/domain/a.test.ts', [test('judges a reading'), test('holds a twin', 'skipped')]) })),
+      args: ['--floor', '1'],
+    }), 1, /src\/domain\/a\.test\.ts: skipped: holds a twin/);
+
+    root = makeRoot();
+    check('a todo test in a src/domain file exits 1 naming it', runCli(root, {
+      fixture: report(passing(root, { domain: file(root, 'src/domain/a.test.ts', [test('judges a reading'), test('refuses a hedge', 'todo')]) })),
+      args: ['--floor', '1'],
+    }), 1, /src\/domain\/a\.test\.ts: todo: refuses a hedge/);
 
     root = makeRoot();
     check('a passed count below the floor exits 1', runCli(root, { fixture: report(passing(root)), args: ['--floor', '10'] }),
