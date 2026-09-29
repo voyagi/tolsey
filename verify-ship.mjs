@@ -19,8 +19,9 @@
 // deliberate - step 1 fails fast on the cheapest honest signal.
 //
 // After the core four: the repo-hygiene chain (gate:repo, needs no build),
-// then a build, then the OPTIONAL surfaces (coverage floors, e2e, the live
-// a11y audit, mutation) - each optional step runs when its script exists and
+// then a build, then the OPTIONAL surfaces (coverage floors, the live a11y
+// audit, mutation; this product's e2e suite runs inside the tests step) - each
+// optional step runs when its script exists and
 // prints one loud SKIPPED line when it does not, so "not applicable" is a
 // visible statement rather than a silent absence. See the STEPS comment.
 //
@@ -73,11 +74,11 @@ const MUTATION_TIMEOUT_MS = 2 * MUTATION_FULL_RUN_MS;
 // (with what would make it applicable) and does not fail the run; the moment the product gains
 // the script, the step runs and enforces. That is the difference between a backend product
 // honestly having no a11y surface and a web product quietly never auditing one.
-//   - build precedes a11y/e2e because both audit BUILT output (`--if-present` keeps it a no-op
-//     on products with no build script).
+//   - build precedes a11y because it audits BUILT output (`--if-present` keeps it a no-op on
+//     products with no build script). The e2e suite builds for itself inside `npm test`.
 //   - a11y  = the live axe gate (a11y-live.mjs), AFTER the build, per its own section in the
 //     README. A static a11y pass is a lint, not this step.
-//   - coverage / e2e run whatever the product wired under those names, floors included.
+//   - coverage runs whatever the product wired under that name, floors included.
 //   - mutation runs LAST (slowest) with its own longer timeout. Its score is a measurement
 //     (break stays null in stryker.config.json); the step exists so the run and the recorded
 //     score cannot be skipped silently at ship time.
@@ -106,7 +107,8 @@ const STEPS = [
   { name: 'repo', cmd: 'npm run gate:repo', script: 'gate:repo', appliesWhen: 'the repo-hygiene gates (goals, gitignore, hookspath, license, identity, artifact metadata, compliance, icon decision) are installed with their gate:repo script' },
   { name: 'build', cmd: 'npm run build --if-present' },
   { name: 'coverage', cmd: 'npm run test:coverage', script: 'test:coverage', appliesWhen: 'a test:coverage script with floors exists' },
-  { name: 'e2e', cmd: 'npm run test:e2e', script: 'test:e2e', appliesWhen: 'a test:e2e script exists' },
+  // No e2e row: this product's `npm test` ends with `npm run test:e2e` (package.json), so the tests
+  // step already runs the end-to-end suite, and a row here would run it a second time.
   { name: 'a11y', cmd: 'npm run a11y:live', script: 'a11y:live', appliesWhen: 'the product renders HTML and a11y-live.mjs is installed' },
   { name: 'mutation', cmd: 'npm run mutate', script: 'mutate', appliesWhen: 'stryker is configured', timeoutMs: MUTATION_TIMEOUT_MS },
 ];
