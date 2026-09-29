@@ -162,12 +162,14 @@ function isSignBelow(tokens: readonly string[], index: number, hedges: Hedges): 
   return next === undefined || next === hedges.zero || next === '0';
 }
 
-// Every limit word other than a sign "below" hedges wherever it stands.
+// Every limit word other than a sign "below" hedges wherever it stands, and a decade word hedges the
+// figure after it: "high 40" is somewhere in the high forties, never 40.
 function hedgesAt(tokens: readonly string[], index: number, hedges: Hedges): boolean {
   const token = tokens[index];
   if (hedges.approximations.includes(token) || hedges.tens.includes(token) || DECADE_FIGURE.test(token)) return true;
   if (hedges.limits.includes(token)) return !isSignBelow(tokens, index, hedges);
   if (hedges.ranges.includes(token)) return isFigure(tokens[index - 1]) && isFigure(tokens[index + 1]);
+  if (hedges.decades.includes(token)) return isFigure(tokens[index + 1]);
   return false;
 }
 
@@ -199,18 +201,32 @@ function signedOf(tokens: readonly string[], hedges: Hedges): NumberWords | unde
   return tokens.some(isNumber) ? HEDGE : { kind: 'negative', magnitude: undefined };
 }
 
+// Names are taken out first, so only what the cook said about the check is judged.
+function partsOf(tokens: readonly string[], profile: KitchenProfile): string[] {
+  return withoutNames(tokens.flatMap(spokenParts), namesOf(profile).parts);
+}
+
+function hedgeOrSign(parts: readonly string[], hedges: Hedges): NumberWords | undefined {
+  return saysHedge(parts, hedges) ? HEDGE : signedOf(parts, hedges);
+}
+
 // Number words are not parsed into values here (that grammar is the intent layer's); this only says
-// whether the words give a reading, a reading below zero, or something other than a reading. Names
-// are taken out first, so only what the cook said about the check is judged. A state word counts only
-// when no number was said at all: "fine at 38" still names its number.
+// whether the words give a reading, a reading below zero, or something other than a reading. A state
+// word counts only when no number was said at all: "fine at 38" still names its number.
 export function classifyNumberWords(tokens: readonly string[], profile: KitchenProfile): NumberWords {
   const { hedges, states } = profile.vocabulary;
-  const parts = withoutNames(tokens.flatMap(spokenParts), namesOf(profile).parts);
-  if (saysHedge(parts, hedges)) return HEDGE;
-  const signed = signedOf(parts, hedges);
-  if (signed !== undefined) return signed;
+  const parts = partsOf(tokens, profile);
+  const said = hedgeOrSign(parts, hedges);
+  if (said !== undefined) return said;
   if (parts.some(isNumber)) return PLAIN;
   return parts.some((token) => states.includes(token)) ? HEDGE : PLAIN;
+}
+
+// The words of an answer to which check or who is logging, whose number was said and held before.
+// Only a hedge or a sign in them says something about that number. Anything else, a state word
+// included ("MR, it's fine"), answers the question and leaves the number as it was.
+export function answerNumberWords(tokens: readonly string[], profile: KitchenProfile): NumberWords {
+  return hedgeOrSign(partsOf(tokens, profile), profile.vocabulary.hedges) ?? PLAIN;
 }
 
 // A figure a thermometer could show, kept in a refused line so it quotes "under 41" or "38 or 39" as

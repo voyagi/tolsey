@@ -23,7 +23,7 @@ import { resolvePrompt, type PromptResolution } from './prompts';
 import { decideRefusal, refusalDecision } from './refusal';
 import type { CheckPoint, CheckPointKind, KitchenProfile, RuleRow, RuleSource, TemperatureRow } from './rule';
 import { needsDigitRepeat } from './twins';
-import { classifyNumberWords, formatValue, rebuildWords, tokensOf } from './words';
+import { answerNumberWords, classifyNumberWords, formatValue, rebuildWords, tokensOf, type NumberWords } from './words';
 
 export type { Decided, Decision, DecisionContext, Rejection } from './decision';
 
@@ -94,10 +94,13 @@ export function selectRule(
 }
 
 // A host transcribing spelled letters sends "ab", "A.B." or "a b"; a stored line carries the
-// roster's own form. Blank initials are no initials, so the reading is asked "Who is logging?".
+// roster's own form. Only what is not a letter is dropped: a letter outside A to Z stays, and is never
+// upper-cased into one (a dotless i would become I), so an accented E before AB is refused, never AB.
+// Blank initials are no initials, so the reading is asked "Who is logging?".
 function rosterInitials(initials: string | undefined): string | undefined {
   if (initials === undefined || initials.trim() === '') return undefined;
-  return initials.replace(/[^A-Za-z]/g, '').toUpperCase();
+  const letters = initials.replace(/[^\p{L}]/gu, '');
+  return /^[A-Za-z]*$/.test(letters) ? letters.toUpperCase() : letters;
 }
 
 interface Judged {
@@ -241,14 +244,17 @@ function nextRepeat(facts: ReadingFacts, ctx: DecisionContext, prompt: PendingPr
 // digits are the value's own; any other pairing of words and value is not a reading. A sign said
 // before a number in words ("minus five") makes the value negative whatever sign the host gave it,
 // but never below absolute zero, which the contract refuses in a value too.
-function valueFromWords(facts: Facts, ctx: DecisionContext): number | undefined {
-  if (facts.value === undefined) return undefined;
-  const said = classifyNumberWords(tokensOf(facts.words ?? ''), ctx.profile);
+function valueAsSaid(value: number, said: NumberWords): number | undefined {
   if (said.kind === 'hedge') return undefined;
-  const magnitude = Math.abs(facts.value);
-  if (said.kind === 'plain' || magnitude === 0) return facts.value;
+  const magnitude = Math.abs(value);
+  if (said.kind === 'plain' || magnitude === 0) return value;
   const matches = said.magnitude === undefined || said.magnitude === magnitude;
   return matches && -magnitude >= LOWEST_READING_F ? -magnitude : undefined;
+}
+
+function valueFromWords(facts: Facts, ctx: DecisionContext): number | undefined {
+  if (facts.value === undefined) return undefined;
+  return valueAsSaid(facts.value, classifyNumberWords(tokensOf(facts.words ?? ''), ctx.profile));
 }
 
 interface Answering {
@@ -309,16 +315,18 @@ function decideAnswer(input: LogReadingInput, ctx: DecisionContext, answer: Answ
     requestId: input.request_id,
   };
   const links = { answersId: prompt.id, refId: null };
-  // An answer to which check or who is logging may say its number again ("AB, about 38"). Those words
-  // are read as a fresh call's are, so a hedge in them refuses the answer, and a sign that makes the
-  // number another one ("5 below" beside a held 5) makes the call a new one, as a different figure does.
-  if (!answer.valueFromCall && input.value !== undefined) {
-    const said = valueFromWords({ ...facts, value: input.value }, ctx);
-    if (said === undefined) return refusalDecision(facts, ctx, links);
-    if (tenthsOf(said) !== prompt.valueTenths) return decideFacts(callFacts(input, ctx, input.initials), ctx, FRESH);
+  if (answer.valueFromCall) {
+    const repeat = prompt.promptKind === 'digit_repeat' ? prompt : undefined;
+    return decideFacts(facts, ctx, { links, valueFromCall: true, repeat });
   }
-  const repeat = prompt.promptKind === 'digit_repeat' ? prompt : undefined;
-  return decideFacts(facts, ctx, { links, valueFromCall: answer.valueFromCall, repeat });
+  // An answer to which check or who is logging may say the held number again, with or without a value
+  // beside it ("MR, about 38", "MR, 5 below"). A hedge in its words refuses the answer. A sign gives the
+  // held number below zero, still decided for the prompt's check and initials and answering the prompt.
+  // Words that say neither ("MR", "MR, it's fine") leave the held number as it was.
+  const said = answerNumberWords(tokensOf(input.words ?? ''), ctx.profile);
+  const value = facts.value === undefined ? undefined : valueAsSaid(facts.value, said);
+  if (value === undefined) return refusalDecision(facts, ctx, links);
+  return decideFacts({ ...facts, value }, ctx, { links, valueFromCall: false });
 }
 
 // The one reply a second answer gets, whether the prompt was answered before this call read it or

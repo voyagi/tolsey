@@ -60,8 +60,11 @@ const DEMO_READ_ONLY =
 const REQUEST_ID_REUSED =
   'Tolsey could not log that: this request_id was already used for a different call. Call again with a new request_id.';
 
+// A rejection stores nothing and asks no stored question, so it carries no prompt id to answer: the
+// host is told to send the whole reading again, never the initials alone.
 const REJECTION_TEXT: Record<Rejection, string> = {
-  initials_not_on_roster: "Those initials are not on this kitchen's roster. Who is logging?",
+  initials_not_on_roster:
+    "Those initials are not on this kitchen's roster. Who is logging? Call again with the whole reading and their initials.",
 };
 
 const REFUSAL_TEXT: Record<RefusalReason, string> = {

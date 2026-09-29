@@ -99,22 +99,38 @@ describe('pending prompts answered in separate requests, and initials from the r
       expect(ofKind(await lines(kitchenId), 'reading')).toEqual([expect.objectContaining({ valueTenths: 380, answersId: prompt.id })]);
     });
 
-    it('reads a sign in the answer: "5 below" beside a held freezer 5 is a new call that logs -5, never 5', async () => {
+    // A host may send the answer's words with no value beside them; they are read all the same.
+    it('refuses an answer with no value whose words hedge the held number', async () => {
+      const kitchenId = await kitchen();
+      const prompt = promptOf(await say(kitchenId, { check_point: 'walk_in', value: 38 }));
+
+      const refused = await say(kitchenId, { initials: 'MR', words: 'MR, about 38', pending_prompt_id: prompt.id });
+
+      expect(refused.structuredContent).toMatchObject({ outcome: 'refused', initials: 'MR' });
+      expect(ofKind(await lines(kitchenId), 'reading')).toHaveLength(0);
+      expect(await worker.store.openChecks(kitchenId, DAY)).toEqual(['walk_in']);
+    });
+
+    it('reads a sign in the answer: "5 below" beside a held freezer 5 logs -5 for the freezer, answering the prompt', async () => {
       const kitchenId = await kitchen();
       const prompt = promptOf(await say(kitchenId, { check_point: 'freezer', value: 5 }));
 
-      const logged = await say(kitchenId, {
-        check_point: 'freezer',
-        initials: 'MR',
-        value: 5,
-        words: 'MR, 5 below',
-        pending_prompt_id: prompt.id,
-      });
+      const logged = await say(kitchenId, { initials: 'MR', words: 'MR, 5 below', pending_prompt_id: prompt.id });
 
-      expect(logged.structuredContent).toMatchObject({ outcome: 'in_range', value: -5, initials: 'MR' });
+      expect(logged.structuredContent).toMatchObject({ outcome: 'in_range', value: -5, initials: 'MR', checkPoint: { id: 'freezer' } });
       expect(ofKind(await lines(kitchenId), 'reading')).toEqual([
-        expect.objectContaining({ checkPointId: 'freezer', valueTenths: -50, answersId: null }),
+        expect.objectContaining({ checkPointId: 'freezer', valueTenths: -50, answersId: prompt.id }),
       ]);
+    });
+
+    // A state word answers the question, never the reading: the number was said and held already.
+    it('logs the held reading for an answer whose words say only a state', async () => {
+      const kitchenId = await kitchen();
+      const prompt = promptOf(await say(kitchenId, { check_point: 'walk_in', value: 38 }));
+
+      const logged = await say(kitchenId, { initials: 'MR', words: "MR, it's fine", pending_prompt_id: prompt.id });
+
+      expect(logged.structuredContent).toMatchObject({ outcome: 'in_range', value: 38, initials: 'MR' });
     });
   });
 
@@ -399,7 +415,12 @@ describe('pending prompts answered in separate requests, and initials from the r
 
       expect(result).toMatchObject({
         isError: true,
-        content: [{ type: 'text', text: "Those initials are not on this kitchen's roster. Who is logging?" }],
+        content: [
+          {
+            type: 'text',
+            text: "Those initials are not on this kitchen's roster. Who is logging? Call again with the whole reading and their initials.",
+          },
+        ],
         _meta: { error: 'initials_not_on_roster' },
       });
       expect(await lines(kitchenId)).toHaveLength(0);
@@ -419,6 +440,16 @@ describe('pending prompts answered in separate requests, and initials from the r
 
       expect(result.structuredContent?.initials).toBe('AB');
       expect(ofKind(await lines(kitchenId), 'reading')[0]?.initials).toBe('AB');
+    });
+
+    // Dropping a letter outside A to Z would turn another person's initials into a roster entry. The
+    // accented E is built from its code point so this file stays plain ASCII.
+    it.each([`${String.fromCodePoint(0xc9)}AB`, `${String.fromCodePoint(0xe9)}.a.b.`])('refuses initials sent as "%s" rather than reading them as AB', async (initials) => {
+      const kitchenId = await kitchen();
+      const result = await say(kitchenId, { check_point: 'walk_in', value: 38, initials });
+
+      expect(result).toMatchObject({ isError: true, _meta: { error: 'initials_not_on_roster' } });
+      expect(await lines(kitchenId)).toHaveLength(0);
     });
   });
 });

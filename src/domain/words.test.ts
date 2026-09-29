@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import demoJson from '../../data/kitchens/demo.json';
 import { KitchenProfileSchema } from './rule';
-import { classifyNumberWords, rebuildWords, tokensOf } from './words';
+import { answerNumberWords, classifyNumberWords, rebuildWords, tokensOf } from './words';
 
 const profile = KitchenProfileSchema.parse(demoJson);
 const walkIn = profile.checkPoints.find((point) => point.id === 'walk_in');
@@ -156,8 +156,20 @@ describe('classifyNumberWords against transcript shapes', () => {
     ['the walk-in reads thirty eight', 'one figure in words'],
     ['delivery came in to thirty eight', 'a range word with no figure before it'],
     ['the reach-in one reads forty', 'a number word inside a check point name'],
+    ['the low boy reads 38', 'a decade word before a word, not a figure'],
   ])('classifies "%s" (%s) as plain', (words) => {
     expect(classify(words)).toEqual({ kind: 'plain' });
+  });
+
+  // A decade word before a figure places the reading somewhere in that decade, never at the figure.
+  it.each(['mid 35', 'high 40', 'low 38', 'the walk-in is in the mid thirty five'])('classifies "%s" as a hedge', (words) => {
+    expect(classify(words)).toEqual({ kind: 'hedge' });
+  });
+
+  it('classifies every decade word in the vocabulary before a figure as a hedge', () => {
+    for (const word of profile.vocabulary.hedges.decades) {
+      expect(classify(`${word} 41`), `${word} 41`).toEqual({ kind: 'hedge' });
+    }
   });
 
   it.each([
@@ -194,6 +206,27 @@ describe('classifyNumberWords against transcript shapes', () => {
   });
 });
 
+// An answer to which check or who is logging repeats a number already held, so only a hedge or a sign
+// in its words says anything about it.
+describe('answerNumberWords', () => {
+  function answer(words: string) {
+    return answerNumberWords(tokensOf(words), profile);
+  }
+
+  it.each(['MR, about 38', 'MR, high 30s', 'the walk-in, thirty nine or forty'])('reads "%s" as a hedge', (words) => {
+    expect(answer(words)).toEqual({ kind: 'hedge' });
+  });
+
+  it('reads "MR, 5 below" as 5 below zero', () => {
+    expect(answer('MR, 5 below')).toEqual({ kind: 'negative', magnitude: 5 });
+  });
+
+  // Unlike a fresh call, a state word here answers the question and never refuses the held number.
+  it.each(['MR', "MR, it's fine", 'the walk-in', 'MR, 38'])('reads "%s" as saying nothing new', (words) => {
+    expect(answer(words)).toEqual({ kind: 'plain' });
+  });
+});
+
 describe('rebuildWords on a refused line', () => {
   it.each([
     ['the reach-in is fine', 'the reach-in is fine'],
@@ -203,6 +236,7 @@ describe('rebuildWords on a refused line', () => {
     ['38 or 39', '38 or 39'],
     ['same as before', 'same as before'],
     ["it's cold", "its cold"],
+    ['walk in cooler is fine', 'walk in cooler is fine'],
   ])('quotes "%s" from its recognised words', (said, stored) => {
     expect(rebuildWords(said, profile, undefined, walkIn)).toBe(stored);
   });
