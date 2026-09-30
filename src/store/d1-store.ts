@@ -158,9 +158,10 @@ LEFT JOIN events AS said_wrong ON said_wrong.kitchen_id = asked.kitchen_id AND s
 WHERE asked.kitchen_id = ?1 AND asked.id = ?2
   AND asked.prompt_kind IS NOT NULL AND asked.expires_at IS NOT NULL`;
 
-// A reading's corrections are the wrong_number events said against any line of its chain, the chain
-// being every line whose root is the reading's root. Counted only for a reading, the one kind a
-// correction can target.
+// A reading's corrections are the lines of its chain a wrong_number event said wrong, the chain being
+// every line whose root is the reading's root. Lines, not events: two "wrong number" calls racing on
+// one line store two questions about it, and it was still said wrong once. Counted only for a reading,
+// the one kind a correction can target.
 const LATEST_BY_SCREEN = `
 SELECT
   newest.id AS id, newest.kind AS kind, newest.occurred_at AS occurred_at,
@@ -168,7 +169,7 @@ SELECT
   newest.value_tenths AS value_tenths, newest.prompt_kind AS prompt_kind, newest.expires_at AS expires_at,
   EXISTS (SELECT 1 FROM events AS answer WHERE answer.answers_id = newest.id) AS answered,
   CASE WHEN newest.kind = 'reading' THEN (
-    SELECT COUNT(*) FROM events AS fix
+    SELECT COUNT(DISTINCT fix.ref_id) FROM events AS fix
     WHERE fix.kitchen_id = newest.kitchen_id AND fix.kind = 'wrong_number' AND fix.ref_id IN (
       SELECT link.id FROM events AS link
       WHERE link.kitchen_id = newest.kitchen_id

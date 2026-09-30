@@ -402,6 +402,22 @@ describe.each(LEGS)('the store contract on $name', (leg) => {
       await appended(third);
       expect(await latest()).toMatchObject({ id: third.id, corrections: 2 });
     });
+
+    // Two "wrong number" calls that both read the line before either wrote leave two questions about
+    // it, yet the line was said wrong once: corrections counts lines said wrong, never questions asked.
+    it('counts a line two questions said wrong as one correction', async () => {
+      const kitchenId = await kitchen();
+      const first = testEvent(kitchenId, { screenId: 'wall-c' });
+      await appended(first);
+      const said = (occurredAt: number) =>
+        prompt(kitchenId, { screenId: 'wall-c', kind: 'wrong_number', promptKind: 'number_after_wrong', refId: first.id, valueTenths: null, occurredAt });
+      const one = said(AT + 1000);
+      await appended(one);
+      await appended(said(AT + 1001));
+      await appended(testEvent(kitchenId, { screenId: 'wall-c', supersedesId: first.id, rootId: first.id, answersId: one.id, occurredAt: AT + 2000 }));
+
+      expect(await store.latestByScreen(kitchenId, 'wall-c', AT)).toMatchObject({ kind: 'reading', corrections: 1 });
+    });
   });
 
   describe('concurrent appends', () => {

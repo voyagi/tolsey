@@ -102,7 +102,7 @@ export interface PendingPrompt {
 }
 
 // The newest event a screen wrote that is not a receipt, as "wrong number" needs it. corrections
-// counts the wrong_number events already said against the chain a reading heads.
+// counts the lines of the chain a reading heads that a wrong_number event already said wrong.
 export interface ScreenEvent {
   id: string;
   kind: Exclude<EventKind, 'receipt'>;

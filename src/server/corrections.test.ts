@@ -6,6 +6,7 @@ import { D1Store } from '../store/d1-store';
 import type { AppendInput, AppendOutcome, Store, StoredLine } from '../store/port';
 import { barrierStore } from '../test-support/barrier-store';
 import { openTestD1, type TestD1 } from '../test-support/d1';
+import { gatedStore } from '../test-support/gated-store';
 import { callLogReading, type ToolResult } from '../test-support/mcp-client';
 import { mintThroughRoute, openInProcessWorker, type InProcessWorker } from '../test-support/target';
 import { utcDate } from './budget';
@@ -470,6 +471,80 @@ describe('two numbers for one correction that both read the prompt before either
     expect(retry).toEqual(first);
     expect(first.structuredContent).toMatchObject({ outcome: 'in_range', supersedesLineId: line });
     expect(await superseding(line)).toHaveLength(1);
+  });
+
+  // A "wrong number" said to a who-is-logging hold answers that hold, and names no pending_prompt_id.
+  // When the hold's own answer wins, the loser hears what the same call sent a moment later would:
+  // the line that answer logged is said wrong, never a fault.
+  it('asks again about the line a racing answer logged when "wrong number" to its hold loses the race', async () => {
+    const screen = crypto.randomUUID();
+    const deps = depsFor(store);
+    const held = await callThrough(deps, { check_point: 'walk_in', value: 45, words: 'walk-in 45', screen_id: screen, request_id: crypto.randomUUID() });
+    expect(promptOf(held).kind).toBe('who_is_logging');
+    const gate = gatedStore(store, 'latestByScreen');
+
+    const saying = callThrough(depsFor(gate.store), { words: 'wrong number', initials: 'AB', screen_id: screen, request_id: crypto.randomUUID() });
+    await gate.reached;
+    const logged = await callThrough(deps, { initials: 'AB', pending_prompt_id: promptOf(held).id, screen_id: screen, request_id: crypto.randomUUID() });
+    gate.release();
+    const loser = await saying;
+
+    expect(logged.structuredContent).toMatchObject({ outcome: 'out_of_range', value: 45 });
+    expect(loser.isError).not.toBe(true);
+    expect(loser.content[0]?.text).toBe('What does the walk-in read?');
+    const asked = promptOf(loser);
+    expect(asked.kind).toBe('number_after_wrong');
+    const corrected = await callThrough(deps, answer(screen, asked.id, 40));
+    expect(corrected.structuredContent).toMatchObject({ outcome: 'in_range', supersedesLineId: lineIdOf(logged) });
+    const kinds = (await store.linesForDay(KITCHEN_ID, DAY)).filter((stored) => stored.screenId === screen).map((stored) => stored.kind);
+    expect(kinds).toEqual(['held', 'reading', 'wrong_number', 'reading']);
+  });
+
+  // Two "wrong number" calls that both read the line before either writes leave two questions about
+  // it, but the line was said wrong once, so the next "wrong number" is the second correction.
+  it('counts a line two racing "wrong number" calls said wrong as one correction', async () => {
+    const screen = crypto.randomUUID();
+    const deps = depsFor(store);
+    await callThrough(deps, { ...WALK_IN_45, screen_id: screen, request_id: crypto.randomUUID() });
+    const wrong = () => ({ words: 'wrong number', initials: 'AB', screen_id: screen, request_id: crypto.randomUUID() });
+    const gate = gatedStore(store, 'latestByScreen');
+
+    const first = callThrough(depsFor(gate.store), wrong());
+    await gate.reached;
+    const second = await callThrough(deps, wrong());
+    gate.release();
+    expect([promptOf(await first).kind, promptOf(second).kind]).toEqual(['number_after_wrong', 'number_after_wrong']);
+    await callThrough(deps, answer(screen, promptOf(second).id, 40));
+
+    const again = await callThrough(deps, wrong());
+
+    expect(again.content[0]?.text).toBe('What does the walk-in read?');
+    expect(promptOf(again).kind).toBe('number_after_wrong');
+  });
+
+  // The fallback: a decision taken again that would still answer a prompt could meet the same race, so
+  // the loser is answered from its own prompt instead. Two questions about one line, each answered by
+  // a number: the loser's question is still open, and only the line said wrong is taken.
+  it('tells the loser of two numbers for two questions about one line that the reading was already corrected', async () => {
+    const screen = crypto.randomUUID();
+    const deps = depsFor(store);
+    const line = lineIdOf(await callThrough(deps, { ...WALK_IN_45, screen_id: screen, request_id: crypto.randomUUID() }));
+    const wrong = () => ({ words: 'wrong number', initials: 'AB', screen_id: screen, request_id: crypto.randomUUID() });
+    const gate = gatedStore(store, 'latestByScreen');
+    const first = callThrough(depsFor(gate.store), wrong());
+    await gate.reached;
+    const second = await callThrough(deps, wrong());
+    gate.release();
+    const questions = [promptOf(await first).id, promptOf(second).id];
+    const racing = depsFor(barrierStore(store, 2));
+
+    const results = await Promise.all(questions.map((question, at) => callThrough(racing, answer(screen, question, 40 - at))));
+
+    expect(await superseding(line)).toHaveLength(1);
+    const losers = results.filter((result) => /already corrected/.test(result.content[0]?.text ?? ''));
+    expect(losers).toHaveLength(1);
+    expect(losers[0]?.isError).not.toBe(true);
+    expect(losers[0]?.structuredContent).toMatchObject({ outcome: 'refused' });
   });
 
   // Fold recheck finding 1: a third writer can fill the budget between the loser's two appends.

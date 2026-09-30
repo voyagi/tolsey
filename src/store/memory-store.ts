@@ -217,13 +217,17 @@ export class MemoryStore implements Store {
     return line?.kitchenId === kitchenId ? line : undefined;
   }
 
+  // The lines of the chain said wrong, each counted once however many questions were asked about it.
   private correctionsOf(reading: StoredLine): number {
     const root = reading.rootId ?? reading.id;
     const chain = new Set(
       this.events.filter((line) => line.kitchenId === reading.kitchenId && (line.rootId ?? line.id) === root).map((line) => line.id),
     );
-    return this.events.filter(
-      (line) => line.kitchenId === reading.kitchenId && line.kind === 'wrong_number' && line.refId !== null && chain.has(line.refId),
-    ).length;
+    const saidWrong = new Set(
+      this.events
+        .filter((line) => line.kitchenId === reading.kitchenId && line.kind === 'wrong_number' && line.refId !== null && chain.has(line.refId))
+        .map((line) => line.refId),
+    );
+    return saidWrong.size;
   }
 }

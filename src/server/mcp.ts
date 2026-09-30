@@ -162,12 +162,18 @@ async function decisionContext(args: LogReadingInput, deps: ServerDeps, now: num
 
 // Another request superseded the line or answered the prompt between this call's read and its write
 // (a concurrent repeat of that request's own id never gets here: the store answers it as a duplicate
-// first). Only an answer carries either key, so the prompt it names is read again: the loser hears
-// what the same call sent a moment later would, whichever index SQLite named and whatever the
-// winner stored (review WR-02).
-async function secondAnswerFor(conflict: AppendOutcome, args: LogReadingInput, deps: ServerDeps, ctx: DecisionContext): Promise<Decided | null> {
-  if (conflict.status !== 'conflict' || args.pending_prompt_id === undefined) return null;
-  return alreadyAnswered(args, ctx, await deps.store.pendingPrompt(deps.kitchen.id, args.pending_prompt_id));
+// first). Only an event that answers a prompt carries either key, and a "wrong number" refusing a
+// held number is one of them while naming no pending_prompt_id. The loser hears what the same call
+// sent a moment later would: it is decided again from what the store now holds, so a "wrong number"
+// whose hold a racing answer logged says that line wrong. A decision that still answers a prompt
+// could meet the same race again, so that loser is answered from the prompt its event answered, read
+// again, whichever index SQLite named and whatever the winner stored (review WR-02).
+async function secondAnswerFor(conflict: AppendOutcome, decision: Decided, args: LogReadingInput, deps: ServerDeps, ctx: DecisionContext): Promise<Decided | null> {
+  const answered = decision.event.answersId;
+  if (conflict.status !== 'conflict' || answered === null) return null;
+  const again = decideLogReading(args, await decisionContext(args, deps, ctx.now));
+  if (again.status === 'decided' && again.event.answersId === null) return again;
+  return alreadyAnswered(args, ctx, await deps.store.pendingPrompt(deps.kitchen.id, answered));
 }
 
 async function logReading(args: LogReadingInput, deps: ServerDeps): Promise<CallToolResult> {
@@ -190,10 +196,10 @@ async function logReading(args: LogReadingInput, deps: ServerDeps): Promise<Call
   if (decision.status === 'rejected') return errorResult(REJECTION_TEXT[decision.code], decision.code);
 
   const outcome = await append(decision, hash, deps, now);
-  const reply = await secondAnswerFor(outcome, args, deps, ctx);
+  const reply = await secondAnswerFor(outcome, decision, args, deps, ctx);
   if (reply === null) return resultFor(outcome);
-  // The losing call still stores exactly one event, a receipt under its own request id, and a refusal
-  // of that append is answered like any refused append.
+  // The losing call still stores exactly one event under its own request id, and a refusal of that
+  // append is answered like any refused append.
   return resultFor(await append(reply, hash, deps, now));
 }
 
