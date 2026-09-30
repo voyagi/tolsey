@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 
 const ADAPTER = 'src/store/d1-store.ts';
 const RETENTION = 'src/server/retention.ts';
-const PRODUCT_DIRS = ['src/store', 'src/server'];
+const PRODUCT_ROOT = 'src';
+// Test support prepares whatever SQL a fixture needs, and the Worker never imports it.
+const TEST_SUPPORT = 'src/test-support/';
 
 // READ-03: the record is append-only, so no statement the product prepares may edit or remove an
 // events row, in any of the shapes SQL offers for it, or take away what enforces that: a trigger, an
@@ -106,15 +108,15 @@ function preparedSql(source: string): string[] {
   return preparedStatements(source).map((statement) => statement.sql);
 }
 
-// Every product file that hands SQL to prepare, found by reading the folders rather than listed, so a
-// new file that prepares a statement is read the day it lands.
+// Every product file that hands SQL to prepare, found by reading all of src rather than a list, so a
+// new file that prepares a statement is read the day it lands, in a new folder too.
 function productSqlFiles(): string[] {
-  return PRODUCT_DIRS.flatMap((dir) =>
-    readdirSync(dir, { recursive: true, encoding: 'utf8' })
-      .map((entry) => `${dir}/${entry.replaceAll('\\', '/')}`)
-      .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts') && !file.endsWith('.d.ts'))
-      .filter((file) => readFileSync(file, 'utf8').includes('.prepare(')),
-  ).sort();
+  return readdirSync(PRODUCT_ROOT, { recursive: true, encoding: 'utf8' })
+    .map((entry) => `${PRODUCT_ROOT}/${entry.replaceAll('\\', '/')}`)
+    .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file) && !file.endsWith('.d.ts'))
+    .filter((file) => !file.startsWith(TEST_SUPPORT))
+    .filter((file) => readFileSync(file, 'utf8').includes('.prepare('))
+    .sort();
 }
 
 function productStatements(): (Prepared & { file: string })[] {
