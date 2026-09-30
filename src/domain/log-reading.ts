@@ -20,7 +20,7 @@ import {
   type PromptKind,
 } from './decision';
 import { resolvePrompt, type PromptResolution } from './prompts';
-import { digitRepeatReply, WHO_IS_LOGGING_REPLY, whichCheckReply } from './questions';
+import { digitRepeatReply, LOG_BY_HAND_REPLY, WHO_IS_LOGGING_REPLY, whichCheckReply } from './questions';
 import { receiptDecision } from './receipt';
 import { decideRefusal, refusalDecision } from './refusal';
 import type { CheckPoint, CheckPointKind, KitchenProfile, RuleRow, RuleSource, TemperatureRow } from './rule';
@@ -38,7 +38,6 @@ import {
 
 export type { Decided, Decision, DecisionContext, Rejection } from './decision';
 
-const LOG_BY_HAND_REPLY = 'Log it by hand.';
 const ALREADY_ANSWERED_REPLY = 'That question was already answered. Say the check and its number again.';
 const ALREADY_CORRECTED_REPLY = 'That reading was already corrected. Say the check and its number again.';
 

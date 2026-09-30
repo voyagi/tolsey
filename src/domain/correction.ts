@@ -14,14 +14,13 @@ import {
   type PromptKind,
 } from './decision';
 import { asksForNumber, isKnownKind } from './prompts';
-import { askAgainReply, digitRepeatReply } from './questions';
+import { askAgainReply, digitRepeatReply, LOG_BY_HAND_REPLY } from './questions';
 import { receiptDecision } from './receipt';
 import { refusalDecision } from './refusal';
 import type { CheckPoint } from './rule';
 import { rebuildWords } from './words';
 
 const NOTHING_TO_FIX_REPLY = 'Nothing to fix. Say a check and its number.';
-const LOG_BY_HAND_REPLY = 'Log it by hand.';
 const NUMBER_AFTER_WRONG: PromptKind = 'number_after_wrong';
 
 // READ-05: a line already corrected twice is not asked about a third time.
