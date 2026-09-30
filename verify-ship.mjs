@@ -58,11 +58,12 @@ const timeoutOverride = Number(process.env.VERIFY_SHIP_TIMEOUT_MS);
 const STEP_TIMEOUT_MS =
   Number.isFinite(timeoutOverride) && timeoutOverride > 0 ? timeoutOverride : 30 * 60 * 1000;
 
-// The first full mutation run over src/domain and src/server (1608 mutants, concurrency 4) took
-// 220 min 47 s here on 2026-09-28. The step gets twice that: the machine is shared with other work
-// and the mutant count grows with the code, and a fixed 4 hours left only 8 percent. Replace the
-// figure when a later full run is measured; src/server/verify-ship-timeout.test.ts pins the step
-// between two and three times it.
+// The slowest full mutation run measured here: 1608 mutants at concurrency 4 took 220 min 47 s on
+// 2026-09-28. The next one, 1993 mutants on 2026-09-29, took 157 min 50 s, so the time follows how
+// busy the shared machine is more than the mutant count, and the step is sized from the slowest run.
+// It gets twice that, since a fixed 4 hours left only 8 percent. Replace the figure only when a
+// full run is slower; src/server/verify-ship-timeout.test.ts pins the step between two and three
+// times it.
 const MUTATION_FULL_RUN_MS = 13_247_000;
 const MUTATION_TIMEOUT_MS = 2 * MUTATION_FULL_RUN_MS;
 

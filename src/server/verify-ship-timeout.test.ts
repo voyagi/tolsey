@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-// The first full mutation run over src/domain and src/server, 2026-09-28: 1608 mutants at
-// concurrency 4, "Done in 220 minutes and 47 seconds". Replace it when a later full run is measured.
+// The slowest full mutation run measured, 2026-09-28: 1608 mutants at concurrency 4, "Done in 220
+// minutes and 47 seconds". The 2026-09-29 run of 1993 mutants took 157 min 50 s, so the machine's load
+// sets the time more than the mutant count. Replace it only when a full run is slower.
 const MEASURED_FULL_RUN_MS = (220 * 60 + 47) * 1000;
 
 const source = readFileSync('verify-ship.mjs', 'utf8');
