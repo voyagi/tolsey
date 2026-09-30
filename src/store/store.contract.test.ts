@@ -471,7 +471,18 @@ describe('one event log through both stores', () => {
     const fixed = testEvent(kitchenId, { id: id(), requestId: 'r-4', screenId: 'wall-t', supersedesId: line.id, rootId: line.id, answersId: who.id });
     const kept = receipt(kitchenId, { id: id(), requestId: 'r-5', screenId: 'wall-t' });
     const refused = testEvent(kitchenId, { id: id(), requestId: 'r-6', kind: 'refusal', checkPointId: 'reach_in_1', valueTenths: null, promptKind: 'number', expiresAt: PROMPT_EXPIRES_AT });
-    for (const event of [line, said, who, fixed, kept, refused]) outcomes.push(await store.append(appendInput(event, limits)));
+    // A correction whose number is held for a digit repeat and then missed twice: the third hold finds
+    // its target by walking answers_id back through both earlier holds to the wrong_number event, two
+    // steps of the walk, so a walk that stops after one fails here.
+    const frozen = testEvent(kitchenId, { id: id(), requestId: 'r-10', checkPointId: 'freezer', valueTenths: -50 });
+    const saidFrozen = prompt(kitchenId, { id: id(), requestId: 'r-11', kind: 'wrong_number', checkPointId: 'freezer', promptKind: 'number_after_wrong', refId: frozen.id, valueTenths: null });
+    const firstHold = prompt(kitchenId, { id: id(), requestId: 'r-12', checkPointId: 'freezer', promptKind: 'digit_repeat', valueTenths: -150, answersId: saidFrozen.id });
+    const secondHold = prompt(kitchenId, { id: id(), requestId: 'r-13', checkPointId: 'freezer', promptKind: 'digit_repeat', valueTenths: -160, answersId: firstHold.id, refId: firstHold.id });
+    const thirdHold = prompt(kitchenId, { id: id(), requestId: 'r-15', checkPointId: 'freezer', promptKind: 'digit_repeat', valueTenths: -170, answersId: secondHold.id, refId: firstHold.id });
+    const nextDay = testEvent(kitchenId, { id: id(), requestId: 'r-14', businessDay: '2026-10-21' });
+    for (const event of [line, said, who, fixed, kept, refused, frozen, saidFrozen, firstHold, secondHold, thirdHold, nextDay]) {
+      outcomes.push(await store.append(appendInput(event, limits)));
+    }
     outcomes.push(await store.append(appendInput({ ...line, id: id() }, limits)));
     outcomes.push(await store.append(appendInput({ ...line, id: id(), argsHash: 'args-z' }, limits)));
     outcomes.push(await store.append(appendInput({ ...line, id: id(), occurredAt: AT + RETRY_WINDOW_MS + 1 }, limits)));
@@ -481,8 +492,9 @@ describe('one event log through both stores', () => {
     return {
       outcomes,
       lines: await store.linesForDay(kitchenId, DAY),
+      nextDay: await store.linesForDay(kitchenId, '2026-10-21'),
       open: await store.openChecks(kitchenId, DAY),
-      prompts: await Promise.all([said.id, who.id, refused.id].map((promptId) => store.pendingPrompt(kitchenId, promptId))),
+      prompts: await Promise.all([said.id, who.id, refused.id, thirdHold.id].map((promptId) => store.pendingPrompt(kitchenId, promptId))),
       latest: await store.latestByScreen(kitchenId, 'wall-t', AT),
       found: await Promise.all(['r-1', 'r-5', 'r-9'].map((requestId) => store.findByRequest(kitchenId, requestId))),
     };
@@ -495,7 +507,19 @@ describe('one event log through both stores', () => {
       const fromD1 = await transcript(new D1Store(d1.db));
 
       expect(fromMemory).toEqual(fromD1);
+      // Equal is not enough, since both stores could be wrong the same way: the paths the log was
+      // built to reach are asserted here once.
       expect(JSON.stringify(fromD1)).toContain('261020-002');
+      expect(fromD1).toMatchObject({
+        open: ['freezer', 'reach_in_1'],
+        nextDay: [{ requestId: 'r-14', dayLine: 1 }],
+        prompts: [
+          { supersedes: { lineId: 'event-1', superseded: true } },
+          { supersedes: { lineId: 'event-1', superseded: true } },
+          { supersedes: null },
+          { repeats: 2, supersedes: { lineId: 'event-7', rootId: 'event-7', superseded: false } },
+        ],
+      });
     } finally {
       await d1.dispose();
     }
