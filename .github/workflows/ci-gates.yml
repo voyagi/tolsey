@@ -19,7 +19,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   gate:
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest, which becomes Ubuntu 26 from 2026-10-19: the image changes
+    # only by an edit here, never under a release in flight.
+    runs-on: ubuntu-24.04
     steps:
       # SHA-pinned: a tag is
       # mutable, a commit SHA is not. Trailing comment names the tag the SHA was verified against
