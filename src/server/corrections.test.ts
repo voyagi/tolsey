@@ -3,7 +3,8 @@ import { createMcpHandler } from '@modelcontextprotocol/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { RuleRow } from '../domain/rule';
 import { D1Store } from '../store/d1-store';
-import type { AppendInput, AppendOutcome, PendingPrompt, Store, StoredLine } from '../store/port';
+import type { AppendInput, AppendOutcome, Store, StoredLine } from '../store/port';
+import { barrierStore } from '../test-support/barrier-store';
 import { openTestD1, type TestD1 } from '../test-support/d1';
 import { callLogReading, type ToolResult } from '../test-support/mcp-client';
 import { mintThroughRoute, openInProcessWorker, type InProcessWorker } from '../test-support/target';
@@ -251,6 +252,27 @@ describe('wrong number through MCP, each step its own request', () => {
     expect(outcomeCounts(stored).out_of_range).toBeUndefined();
   });
 
+  // RECD-05 puts every line on the business day of its own write, so a correction said just after the
+  // day starts lands on the new day while the line it supersedes stays on the old one. The day sheet
+  // must follow supersedes_id across days to show that line said wrong (ROADMAP phase 3, criterion 2).
+  it('lands a correction said just after the day start on the new day, superseding the line left on the old one', async () => {
+    const kitchenId = await kitchen();
+    worker.clock.set(Date.parse('2026-10-21T08:59:30Z'));
+    const late = lineIdOf(await say(kitchenId, { check_point: 'walk_in', value: 45, words: 'walk-in 45', initials: 'AB' }));
+    worker.clock.set(Date.parse('2026-10-21T09:00:30Z'));
+    const asked = promptOf(await say(kitchenId, { words: 'wrong number', initials: 'AB' }));
+
+    const corrected = await say(kitchenId, { value: 40, pending_prompt_id: asked.id });
+
+    expect(corrected.structuredContent).toMatchObject({ outcome: 'in_range', supersedesLineId: late, businessDay: '2026-10-21' });
+    const oldDay = await worker.store.linesForDay(kitchenId, '2026-10-20');
+    const newDay = await worker.store.linesForDay(kitchenId, '2026-10-21');
+    expect(oldDay.map((line) => [line.kind, line.valueTenths, line.businessDay])).toEqual([['reading', 450, '2026-10-20']]);
+    expect(newDay.map((line) => [line.kind, line.supersedesId])).toEqual([['wrong_number', null], ['reading', late]]);
+    expect(await worker.store.openChecks(kitchenId, '2026-10-20')).toEqual([]);
+    expect(await worker.store.openChecks(kitchenId, '2026-10-21')).toEqual([]);
+  });
+
   // Who is logging and which check ask for something other than the number, and their answer logs the
   // number they hold, so "wrong number" said to either must refuse that number rather than ask again.
   it('never logs a held number the cook said was wrong while Tolsey asked who is logging', async () => {
@@ -295,6 +317,20 @@ describe('wrong number through MCP, each step its own request', () => {
     expect(answered.structuredContent?.outcome).toBe('nothing_to_fix');
     expect((await lines(kitchenId)).map((line) => line.kind)).toEqual(['reading', 'receipt']);
     expect(await worker.store.openChecks(kitchenId, DAY)).toEqual([]);
+  });
+
+  // A correction's question answered by a hold has corrected nothing yet, so a second answer must not
+  // be told the reading was corrected.
+  it('tells a second answer to a correction whose number is still held that the question was answered, not corrected', async () => {
+    const kitchenId = await kitchen();
+    await say(kitchenId, { check_point: 'walk_in', value: 50, words: 'walk-in 50', initials: 'AB' });
+    const asked = promptOf(await saidWrong(kitchenId));
+    expect(promptOf(await say(kitchenId, { value: 15, pending_prompt_id: asked.id })).kind).toBe('digit_repeat');
+
+    const second = await say(kitchenId, { value: 16, pending_prompt_id: asked.id });
+
+    expect(second.content[0]?.text).toBe('That question was already answered. Say the check and its number again.');
+    expect((await lines(kitchenId)).filter((line) => line.supersedesId !== null)).toHaveLength(0);
   });
 
   // Fold recheck finding 5: a later second number hears what a racing one hears.
@@ -371,24 +407,6 @@ describe('two numbers for one correction that both read the prompt before either
     }
   }
 
-  // Every pendingPrompt read waits until `readers` calls have read, then all of them go on.
-  function barrierStore(readers: number): Store {
-    let waiting: (() => void)[] = [];
-    return Object.assign(Object.create(store) as Store, {
-      pendingPrompt: async (kitchenId: string, promptId: string): Promise<PendingPrompt | null> => {
-        const read = await store.pendingPrompt(kitchenId, promptId);
-        await new Promise<void>((release) => {
-          waiting.push(release);
-          if (waiting.length === readers) {
-            waiting.forEach((go) => go());
-            waiting = [];
-          }
-        });
-        return read;
-      },
-    });
-  }
-
   // Each case speaks from its own screen, so "wrong number" finds only that case's line.
   async function correctionPrompt(screen: string, rules?: ReadonlyMap<string, RuleRow>): Promise<{ line: string; prompt: string }> {
     const deps = depsFor(store, rules);
@@ -408,7 +426,7 @@ describe('two numbers for one correction that both read the prompt before either
   it('leaves one superseding line, and the loser gets the already-corrected reply with one receipt of its own (E18)', async () => {
     const screen = crypto.randomUUID();
     const { line, prompt } = await correctionPrompt(screen);
-    const racing = depsFor(barrierStore(2));
+    const racing = depsFor(barrierStore(store, 2));
 
     const results = await Promise.all([callThrough(racing, answer(screen, prompt, 40)), callThrough(racing, answer(screen, prompt, 39))]);
 
@@ -421,10 +439,29 @@ describe('two numbers for one correction that both read the prompt before either
     expect(receipts).toEqual([expect.objectContaining({ answersId: null, supersedesId: null })]);
   });
 
+  // Review WR-02: whichever call wins, the loser's reply names what the store holds after the race,
+  // the reply the same call would get sent a moment later.
+  it('tells the loser of a hold and a superseding number racing on one correction what the store then holds', async () => {
+    const screen = crypto.randomUUID();
+    const { line, prompt } = await correctionPrompt(screen);
+    const racing = depsFor(barrierStore(store, 2));
+
+    const [teen, forty] = await Promise.all([callThrough(racing, answer(screen, prompt, 15)), callThrough(racing, answer(screen, prompt, 40))]);
+
+    const corrected = (await superseding(line)).length === 1;
+    const loser = corrected ? teen : forty;
+    const expected = corrected ? /already corrected/ : /already answered/;
+    expect(loser.content[0]?.text).toMatch(expected);
+    expect(loser.structuredContent).toMatchObject({ outcome: 'refused' });
+    expect(corrected ? forty.structuredContent : teen.structuredContent).toMatchObject(
+      corrected ? { outcome: 'in_range', supersedesLineId: line } : { outcome: 'held', prompt: { kind: 'digit_repeat' } },
+    );
+  });
+
   it("gives a concurrent retry of the winner's own request id the winner's stored result, never a second line", async () => {
     const screen = crypto.randomUUID();
     const { line, prompt } = await correctionPrompt(screen);
-    const racing = depsFor(barrierStore(2));
+    const racing = depsFor(barrierStore(store, 2));
     const args = answer(screen, prompt, 40);
 
     const [first, retry] = await Promise.all([callThrough(racing, args), callThrough(racing, args)]);

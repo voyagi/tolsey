@@ -72,16 +72,20 @@ export interface StoredLine extends NewEvent {
 }
 
 // The line a correction's confirmed number supersedes, with what its new line is judged against.
+// superseded says a line already supersedes it: a chain whose question a hold, a refusal or "Log it
+// by hand" answered has corrected nothing yet.
 export interface SupersedeTarget {
   lineId: string;
   rootId: string;
   ruleSnapshot: string | null;
   rulesVersion: string | null;
+  superseded: boolean;
 }
 
-// An event that asked a question, as the call answering it needs it. repeats counts the digit
-// repeats already held along the chain this prompt belongs to; supersedes is set when that chain
-// started from a "wrong number".
+// An event that asked a question, as the call answering it needs it. repeats counts the misses so
+// far on a digit-repeat chain: every digit_repeat hold after the chain's first, this one included,
+// since only a different number opens one (0 for the first hold and for every other kind).
+// supersedes is set when the chain this prompt belongs to started from a "wrong number".
 export interface PendingPrompt {
   id: string;
   promptKind: string;

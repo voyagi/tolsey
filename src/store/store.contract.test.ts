@@ -339,7 +339,7 @@ describe.each(LEGS)('the store contract on $name', (leg) => {
       await appended(who);
       const hedged = testEvent(kitchenId, { kind: 'refusal', valueTenths: null, answersId: who.id, promptKind: 'number', expiresAt: PROMPT_EXPIRES_AT });
       await appended(hedged);
-      const target = { lineId: line.id, rootId: line.id, ruleSnapshot: '{"id":"unit_air_cold"}', rulesVersion: 'rules-1' };
+      const target = { lineId: line.id, rootId: line.id, ruleSnapshot: '{"id":"unit_air_cold"}', rulesVersion: 'rules-1', superseded: false };
 
       for (const id of [said.id, who.id, hedged.id]) {
         expect((await store.pendingPrompt(kitchenId, id))?.supersedes).toEqual(target);
@@ -347,6 +347,10 @@ describe.each(LEGS)('the store contract on $name', (leg) => {
       const unrelated = prompt(kitchenId);
       await appended(unrelated);
       expect((await store.pendingPrompt(kitchenId, unrelated.id))?.supersedes).toBeNull();
+      await appended(testEvent(kitchenId, { supersedesId: line.id, rootId: line.id, answersId: hedged.id }));
+      for (const id of [said.id, who.id, hedged.id]) {
+        expect((await store.pendingPrompt(kitchenId, id))?.supersedes).toEqual({ ...target, superseded: true });
+      }
     });
 
     it('names the chain root as the target root of a correction corrected again', async () => {

@@ -9,7 +9,6 @@ import {
 import { TOOL_ANNOTATIONS, TOOL_DESCRIPTIONS } from '../contract/tools';
 import {
   alreadyAnswered,
-  alreadyCorrected,
   decideLogReading,
   type Decided,
   type DecisionContext,
@@ -160,12 +159,12 @@ async function decisionContext(args: LogReadingInput, deps: ServerDeps, now: num
 
 // Another request superseded the line or answered the prompt between this call's read and its write
 // (a concurrent repeat of that request's own id never gets here: the store answers it as a duplicate
-// first). A correction's number carries both keys, and SQLite names whichever index it checked first,
-// so any conflict of a superseding line is the already-corrected reply.
-function secondAnswerFor(decision: Decided, conflict: AppendOutcome, args: LogReadingInput, ctx: DecisionContext): Decided | null {
-  if (conflict.status !== 'conflict') return null;
-  if (decision.event.supersedesId !== null) return alreadyCorrected(args, ctx);
-  return conflict.constraint === 'answers' ? alreadyAnswered(args, ctx) : null;
+// first). Only an answer carries either key, so the prompt it names is read again: the loser hears
+// what the same call sent a moment later would, whichever index SQLite named and whatever the
+// winner stored (review WR-02).
+async function secondAnswerFor(conflict: AppendOutcome, args: LogReadingInput, deps: ServerDeps, ctx: DecisionContext): Promise<Decided | null> {
+  if (conflict.status !== 'conflict' || args.pending_prompt_id === undefined) return null;
+  return alreadyAnswered(args, ctx, await deps.store.pendingPrompt(deps.kitchen.id, args.pending_prompt_id));
 }
 
 async function logReading(args: LogReadingInput, deps: ServerDeps): Promise<CallToolResult> {
@@ -188,7 +187,7 @@ async function logReading(args: LogReadingInput, deps: ServerDeps): Promise<Call
   if (decision.status === 'rejected') return errorResult(REJECTION_TEXT[decision.code], decision.code);
 
   const outcome = await append(decision, hash, deps, now);
-  const reply = secondAnswerFor(decision, outcome, args, ctx);
+  const reply = await secondAnswerFor(outcome, args, deps, ctx);
   if (reply === null) return resultFor(outcome);
   // The losing call still stores exactly one event, a receipt under its own request id, and a refusal
   // of that append is answered like any refused append.

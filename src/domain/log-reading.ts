@@ -317,23 +317,17 @@ function decideAnswer(input: LogReadingInput, ctx: DecisionContext, answer: Answ
   return decideFacts({ ...facts, value }, ctx, { links, valueFromCall: false, supersede });
 }
 
-// A second answer stores a receipt with no answers_id, which the index already holds for the first.
-function secondAnswer(input: LogReadingInput, ctx: DecisionContext, text: string): Decided {
-  const facts = callFacts(input, ctx, rosterInitials(input.initials));
-  const checkPoint = facts.checkPoint ?? optionalCheckPoint(ctx.profile, ctx.prompt?.checkPointId);
-  return receiptDecision({ ...facts, checkPoint }, ctx, { outcome: 'refused', text }, NO_LINKS);
-}
-
 // The one reply a second answer gets, whether the prompt was answered before this call read it or
-// while this call was deciding (the adapter's answers-index conflict).
-export function alreadyAnswered(input: LogReadingInput, ctx: DecisionContext): Decided {
-  return secondAnswer(input, ctx, ALREADY_ANSWERED_REPLY);
-}
-
-// The same for a line already superseded: a second number for a correction is told the line was
-// corrected, whether it came later or lost the race on the supersedes index.
-export function alreadyCorrected(input: LogReadingInput, ctx: DecisionContext): Decided {
-  return secondAnswer(input, ctx, ALREADY_CORRECTED_REPLY);
+// while this call was deciding (the adapter reads the prompt again after its conflict), so both are
+// chosen from the same stored fact. It says the reading was corrected only when a line already
+// supersedes the one said wrong: a correction's question that a hold, a refusal or "Log it by hand"
+// answered has corrected nothing yet. It stores a receipt with no answers_id, which the index
+// already holds for the first answer.
+export function alreadyAnswered(input: LogReadingInput, ctx: DecisionContext, prompt: PendingPrompt | null): Decided {
+  const facts = callFacts(input, ctx, rosterInitials(input.initials));
+  const checkPoint = facts.checkPoint ?? optionalCheckPoint(ctx.profile, prompt?.checkPointId);
+  const text = prompt?.supersedes?.superseded === true ? ALREADY_CORRECTED_REPLY : ALREADY_ANSWERED_REPLY;
+  return receiptDecision({ ...facts, checkPoint }, ctx, { outcome: 'refused', text }, NO_LINKS);
 }
 
 // The roster check is the first decision: a refusal, a hold or a receipt stores the call's initials,
@@ -348,9 +342,7 @@ export function decideLogReading(input: LogReadingInput, ctx: DecisionContext): 
   const call = { ...input, initials };
   if (saysCorrection(call.words, ctx.profile)) return decideCorrection(call, ctx, ctx.latest ?? null);
   const resolution = resolvePrompt(ctx.prompt ?? null, call, ctx.now);
-  if (resolution.kind === 'already_answered') {
-    return resolution.prompt.supersedes === null ? alreadyAnswered(call, ctx) : alreadyCorrected(call, ctx);
-  }
+  if (resolution.kind === 'already_answered') return alreadyAnswered(call, ctx, resolution.prompt);
   if (resolution.kind === 'answer') return decideAnswer(call, ctx, resolution);
   return decideFacts(callFacts(call, ctx, initials), ctx, FRESH);
 }

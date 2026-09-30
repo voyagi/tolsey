@@ -203,7 +203,13 @@ export class MemoryStore implements Store {
     }
     const target = link?.refId ? this.inKitchen(link.refId, asked.kitchenId) : undefined;
     if (!target) return null;
-    return { lineId: target.id, rootId: target.rootId ?? target.id, ruleSnapshot: target.ruleSnapshot, rulesVersion: target.rulesVersion };
+    return {
+      lineId: target.id,
+      rootId: target.rootId ?? target.id,
+      ruleSnapshot: target.ruleSnapshot,
+      rulesVersion: target.rulesVersion,
+      superseded: this.bySupersedes.has(target.id),
+    };
   }
 
   private inKitchen(id: string, kitchenId: string): StoredLine | undefined {

@@ -134,7 +134,10 @@ SELECT
       AND chain.kind = 'held' AND chain.prompt_kind = 'digit_repeat'
   ) ELSE 0 END AS repeats,
   said_wrong.id AS target_id, COALESCE(said_wrong.root_id, said_wrong.id) AS target_root_id,
-  said_wrong.rule_snapshot AS target_rule_snapshot, said_wrong.rules_version AS target_rules_version
+  said_wrong.rule_snapshot AS target_rule_snapshot, said_wrong.rules_version AS target_rules_version,
+  CASE WHEN said_wrong.id IS NULL THEN 0 ELSE EXISTS (
+    SELECT 1 FROM events AS fix WHERE fix.supersedes_id = said_wrong.id
+  ) END AS target_superseded
 FROM events AS asked
 LEFT JOIN events AS said_wrong ON said_wrong.kitchen_id = asked.kitchen_id AND said_wrong.id = (
   CASE
@@ -208,6 +211,7 @@ interface PromptRecord {
   target_root_id: string | null;
   target_rule_snapshot: string | null;
   target_rules_version: string | null;
+  target_superseded: number;
 }
 
 interface ScreenEventRecord {
@@ -253,6 +257,7 @@ function supersedeTargetOf(row: PromptRecord): SupersedeTarget | null {
     rootId: row.target_root_id ?? row.target_id,
     ruleSnapshot: row.target_rule_snapshot,
     rulesVersion: row.target_rules_version,
+    superseded: row.target_superseded !== 0,
   };
 }
 

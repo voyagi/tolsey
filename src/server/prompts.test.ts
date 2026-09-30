@@ -2,7 +2,8 @@ import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/cli
 import { createMcpHandler } from '@modelcontextprotocol/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { D1Store } from '../store/d1-store';
-import type { AppendInput, AppendOutcome, PendingPrompt, Store, StoredLine } from '../store/port';
+import type { AppendInput, AppendOutcome, Store, StoredLine } from '../store/port';
+import { barrierStore } from '../test-support/barrier-store';
 import { openTestD1, type TestD1 } from '../test-support/d1';
 import { callLogReading, type ToolResult } from '../test-support/mcp-client';
 import { mintThroughRoute, openInProcessWorker, type InProcessWorker } from '../test-support/target';
@@ -523,31 +524,13 @@ describe('two answers that both read the prompt before either writes', () => {
     }
   }
 
-  // Every pendingPrompt read waits until `readers` calls have read, then all of them go on.
-  function barrierStore(readers: number): Store {
-    let waiting: (() => void)[] = [];
-    return Object.assign(Object.create(store) as Store, {
-      pendingPrompt: async (kitchenId: string, promptId: string): Promise<PendingPrompt | null> => {
-        const read = await store.pendingPrompt(kitchenId, promptId);
-        await new Promise<void>((release) => {
-          waiting.push(release);
-          if (waiting.length === readers) {
-            waiting.forEach((go) => go());
-            waiting = [];
-          }
-        });
-        return read;
-      },
-    });
-  }
-
   async function heldPrompt(): Promise<Prompt> {
     return promptOf(await callThrough(store, { check_point: 'walk_in', value: 38, screen_id: SCREEN, request_id: crypto.randomUUID() }));
   }
 
   it('stores one answering line, and the loser gets the already-answered reply with one receipt of its own', async () => {
     const prompt = await heldPrompt();
-    const racing = barrierStore(2);
+    const racing = barrierStore(store, 2);
     const answer = (initials: string) => ({ initials, pending_prompt_id: prompt.id, screen_id: SCREEN, request_id: crypto.randomUUID() });
 
     const results = await Promise.all([callThrough(racing, answer('MR')), callThrough(racing, answer('JT'))]);
@@ -564,7 +547,7 @@ describe('two answers that both read the prompt before either writes', () => {
 
   it("gives a concurrent retry of the winner's own request id the winner's stored result, never a second line", async () => {
     const prompt = await heldPrompt();
-    const racing = barrierStore(2);
+    const racing = barrierStore(store, 2);
     const args = { initials: 'KL', pending_prompt_id: prompt.id, screen_id: SCREEN, request_id: crypto.randomUUID() };
     const before = (await store.linesForDay(KITCHEN_ID, DAY)).length;
 

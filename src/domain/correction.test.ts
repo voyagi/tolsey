@@ -303,9 +303,19 @@ describe('a correction through decideLogReading', () => {
       refId: 'line-45',
       answered: true,
       repeats: 0,
-      supersedes: { lineId: 'line-45', rootId: 'line-45', ruleSnapshot: null, rulesVersion: table.rulesVersion },
+      supersedes: { lineId: 'line-45', rootId: 'line-45', ruleSnapshot: null, rulesVersion: table.rulesVersion, superseded: true },
     };
   }
+
+  it("tells a second answer that the question was answered while the line said wrong stands uncorrected", () => {
+    const prompt = answeredCorrectionPrompt();
+    const held = { ...prompt, supersedes: prompt.supersedes && { ...prompt.supersedes, superseded: false } };
+
+    const decision = decide({ value: 42, screen_id: 'wall', request_id: 'request-3', pending_prompt_id: 'prompt-1' }, { prompt: held });
+
+    expect(decision.result.content[0].text).toMatch(/already answered/);
+    expect(decision.event).toMatchObject({ kind: 'receipt', answersId: null, supersedesId: null });
+  });
 
   // Fold recheck finding 5: the words a second number hears do not depend on whether it came later or
   // lost the race on the supersedes index.
