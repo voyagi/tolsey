@@ -525,6 +525,30 @@ describe('two numbers for one correction that both read the prompt before either
     expect(kinds).toEqual(['held', 'reading', 'wrong_number', 'reading']);
   });
 
+  // The loser decided again would refuse a new hold opened after the race; that decision answers a
+  // prompt too, so it could race again, and the loser is answered from its own hold instead, leaving
+  // the new hold open for its own answer.
+  it('leaves a hold opened after the race alone when the losing "wrong number" is decided again', async () => {
+    const screen = crypto.randomUUID();
+    const deps = depsFor(store);
+    const hold = async (value: number) => promptOf(await callThrough(deps, { check_point: 'walk_in', value, words: `walk-in ${value}`, screen_id: screen, request_id: crypto.randomUUID() }));
+    const first = await hold(38);
+    const gate = gatedStore(store, 'latestByScreen');
+
+    const saying = callThrough(depsFor(gate.store), { words: 'wrong number', screen_id: screen, request_id: crypto.randomUUID() });
+    await gate.reached;
+    await callThrough(deps, { initials: 'AB', pending_prompt_id: first.id, screen_id: screen, request_id: crypto.randomUUID() });
+    const second = await hold(39);
+    gate.release();
+    const loser = await saying;
+
+    expect(loser.isError).not.toBe(true);
+    expect(loser.content[0]?.text).toMatch(/already answered/);
+    expect((await store.pendingPrompt(KITCHEN_ID, second.id))?.answered).toBe(false);
+    const logged = await callThrough(deps, { initials: 'AB', pending_prompt_id: second.id, screen_id: screen, request_id: crypto.randomUUID() });
+    expect(logged.structuredContent).toMatchObject({ outcome: 'in_range', value: 39 });
+  });
+
   // Two "wrong number" calls that both read the line before either writes leave two questions about
   // it, but the line was said wrong once, so the next "wrong number" is the second correction.
   it('counts a line two racing "wrong number" calls said wrong as one correction', async () => {

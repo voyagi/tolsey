@@ -1,8 +1,10 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import demoJson from '../../data/kitchens/demo.json';
 import rulesJson from '../../data/rules/food-code-2022.json';
 import { selectRule } from './log-reading';
 import { KitchenProfileSchema, RuleTableSchema, type CheckPoint, type RuleRow } from './rule';
+import { tokensOf } from './words';
 
 const profile = KitchenProfileSchema.parse(demoJson);
 const table = RuleTableSchema.parse(rulesJson);
@@ -127,6 +129,18 @@ describe('the demo kitchen profile', () => {
 
     expect(parsed.success).toBe(false);
     expect(parsed.error?.issues.map((issue) => issue.message)).toEqual([PHRASE_MESSAGE]);
+  });
+
+  // The schema's check and the matcher must agree: a phrase the schema takes gives at least one word,
+  // whatever characters it is written in.
+  it('takes a phrase only when the matcher reads at least one word in it', () => {
+    fc.assert(
+      fc.property(fc.string({ unit: 'binary', minLength: 1, maxLength: 12 }), (phrase) => {
+        const parsed = KitchenProfileSchema.safeParse({ ...demoJson, vocabulary: { ...demoJson.vocabulary, corrections: [phrase] } });
+        expect(parsed.success && tokensOf(phrase).length === 0, phrase).toBe(false);
+      }),
+      { numRuns: 500 },
+    );
   });
 
   it('holds every check point the demo kitchen walks through', () => {
