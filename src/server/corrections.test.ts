@@ -571,6 +571,38 @@ describe('two numbers for one correction that both read the prompt before either
     expect(promptOf(again).kind).toBe('number_after_wrong');
   });
 
+  // Its own kitchen, so the open checks it reads are this case's alone. The first question is answered
+  // with the corrected number; an answer to the second, hedged or not, closes that question with the
+  // already-corrected reply and stores no hold or refusal, so the walk-in stays closed.
+  it.each([
+    ['a number', { value: 39 }],
+    ['a hedged number', { value: 40, words: 'about 40' }],
+  ])('closes the second question about a line already corrected when %s answers it, and keeps the check closed', async (_, said) => {
+    const kitchen = { id: `sibling-${crypto.randomUUID()}`, kind: 'scratch' as const, label: null, timeZone: 'America/Chicago', dayStart: '04:00', createdAt: CREATED_AT };
+    await store.createKitchen({ kitchen, expectedRows: ROWS_PER_WRITE.kitchen_create, utcDate: utcDate(CREATED_AT), dailyRowCap: STORE_LIMITS.dailyRowCap });
+    const screen = crypto.randomUUID();
+    const deps = depsFor(store, RULES, { kitchen });
+    await callThrough(deps, { ...WALK_IN_45, screen_id: screen, request_id: crypto.randomUUID() });
+    const wrong = () => ({ words: 'wrong number', initials: 'AB', screen_id: screen, request_id: crypto.randomUUID() });
+    const gate = gatedStore(store, 'latestByScreen');
+    const first = callThrough(depsFor(gate.store, RULES, { kitchen }), wrong());
+    await gate.reached;
+    const second = await callThrough(deps, wrong());
+    gate.release();
+    const [answered, stale] = [promptOf(await first).id, promptOf(second).id];
+    const logged = await callThrough(deps, answer(screen, answered, 40));
+    expect(logged.structuredContent).toMatchObject({ outcome: 'in_range', value: 40 });
+
+    const late = await callThrough(deps, { ...said, pending_prompt_id: stale, screen_id: screen, request_id: crypto.randomUUID() });
+
+    expect(late.isError).not.toBe(true);
+    expect(late.content[0]?.text).toBe('That reading was already corrected. Say the check and its number again.');
+    expect((await store.pendingPrompt(kitchen.id, stale))?.answered).toBe(true);
+    expect(await store.openChecks(kitchen.id, DAY)).toEqual([]);
+    const stored = await store.linesForDay(kitchen.id, DAY);
+    expect(stored.filter((line) => line.answersId === stale).map((line) => line.kind)).toEqual(['receipt']);
+  });
+
   // The fallback: a decision taken again that would still answer a prompt could meet the same race, so
   // the loser is answered from its own prompt instead. Two questions about one line, each answered by
   // a number: the loser's question is still open, and only the line said wrong is taken.

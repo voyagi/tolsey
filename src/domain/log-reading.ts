@@ -23,7 +23,7 @@ import { resolvePrompt, type PromptResolution } from './prompts';
 import { digitRepeatReply, LOG_BY_HAND_REPLY, WHO_IS_LOGGING_REPLY, whichCheckReply } from './questions';
 import { receiptDecision } from './receipt';
 import { decideRefusal, refusalDecision } from './refusal';
-import type { CheckPoint, CheckPointKind, KitchenProfile, RuleRow, RuleSource, TemperatureRow } from './rule';
+import { temperatureRowFrom, type CheckPoint, type CheckPointKind, type KitchenProfile, type RuleRow, type RuleSource, type TemperatureRow } from './rule';
 import { needsDigitRepeat } from './twins';
 import {
   answerNumberWords,
@@ -95,9 +95,9 @@ export function selectRule(
 
 // A correction is judged by the rule the line said wrong was judged by, never the table as it is
 // now. A line stored not_covered holds no rule, so its correction is not_covered too and is never
-// judged by a neighbouring row (N5).
+// judged by a neighbouring row (N5). A stored copy that no longer reads as a temperature row throws.
 function ruleOfTarget(target: SupersedeTarget): TemperatureRow | undefined {
-  return target.ruleSnapshot === null ? undefined : (JSON.parse(target.ruleSnapshot) as TemperatureRow);
+  return target.ruleSnapshot === null ? undefined : temperatureRowFrom(target.ruleSnapshot);
 }
 
 // A host transcribing spelled letters sends "ab", "A.B." or "a b"; a stored line carries the
@@ -300,6 +300,11 @@ function decideAnswer(input: LogReadingInput, ctx: DecisionContext, answer: Answ
   };
   const links = { answersId: prompt.id, refId: null };
   const supersede = prompt.supersedes;
+  // Two "wrong number" calls racing on one line leave two questions about it. Once one is answered with
+  // the corrected number, the other asks about a line already superseded, so whatever answers it hears
+  // that, and the receipt answers the question: a hold or a refusal stored here would reopen the check
+  // the corrected line closed.
+  if (supersede?.superseded === true) return alreadyAnswered(input, ctx, prompt, links);
   if (answer.valueFromCall) {
     const repeat = prompt.promptKind === 'digit_repeat' ? prompt : undefined;
     return decideFacts(facts, ctx, { links, valueFromCall: true, repeat, supersede });
@@ -320,13 +325,19 @@ function decideAnswer(input: LogReadingInput, ctx: DecisionContext, answer: Answ
 // while this call was deciding (the adapter reads the prompt again after its conflict), so both are
 // chosen from the same stored fact. It says the reading was corrected only when a line already
 // supersedes the one said wrong: a correction's question that a hold, a refusal or "Log it by hand"
-// answered has corrected nothing yet. It stores a receipt with no answers_id, which the index
-// already holds for the first answer.
-export function alreadyAnswered(input: LogReadingInput, ctx: DecisionContext, prompt: PendingPrompt | null): Decided {
+// answered has corrected nothing yet. For a second answer it stores a receipt with no answers_id,
+// which the index already holds for the first answer; for an open question about a line another
+// question already corrected, the receipt answers that question and closes it.
+export function alreadyAnswered(
+  input: LogReadingInput,
+  ctx: DecisionContext,
+  prompt: PendingPrompt | null,
+  links: Links = NO_LINKS,
+): Decided {
   const facts = callFacts(input, ctx, rosterInitials(input.initials));
   const checkPoint = facts.checkPoint ?? optionalCheckPoint(ctx.profile, prompt?.checkPointId);
   const text = prompt?.supersedes?.superseded === true ? ALREADY_CORRECTED_REPLY : ALREADY_ANSWERED_REPLY;
-  return receiptDecision({ ...facts, checkPoint }, ctx, { outcome: 'refused', text }, NO_LINKS);
+  return receiptDecision({ ...facts, checkPoint }, ctx, { outcome: 'refused', text }, links);
 }
 
 // The roster check is the first decision: a refusal, a hold or a receipt stores the call's initials,

@@ -54,6 +54,13 @@ const temperatureLimit = {
 const TemperatureRowSchema = z.object({ kind: z.literal('temperature'), ...temperatureLimit }).strict();
 export type TemperatureRow = z.infer<typeof TemperatureRowSchema>;
 
+// A correction is judged by the row its line said wrong was judged by, read back from the copy stored
+// with that line. The copy is checked like any row, so one that no longer reads as a temperature row
+// throws rather than judging a number against a limit that is not there.
+export function temperatureRowFrom(snapshot: string): TemperatureRow {
+  return TemperatureRowSchema.parse(JSON.parse(snapshot));
+}
+
 const TimedTemperatureRowSchema = z
   .object({
     kind: z.literal('timed_temperature'),

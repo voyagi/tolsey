@@ -355,4 +355,42 @@ describe('a correction through decideLogReading', () => {
 
     expect(decision.result.content[0].text).toMatch(/already answered/);
   });
+
+  // Two "wrong number" calls racing on one line leave two questions about it. Once one is answered with
+  // the corrected number, the other asks about a line already superseded: whatever answers it is told
+  // so, and the receipt answers that question, so no hold or refusal can reopen the check.
+  it.each([
+    ['a number', { value: 39 }],
+    ['a hedged number', { value: 40, words: 'about 40' }],
+    ['no number', { words: 'the walk-in' }],
+  ])('closes an open question about a line another question already corrected when %s answers it', (_, said) => {
+    const open = { ...answeredCorrectionPrompt(), answered: false };
+
+    const decision = decide({ ...said, screen_id: 'wall', request_id: 'request-3', pending_prompt_id: 'prompt-1' }, { prompt: open });
+
+    expect(decision.result.content[0].text).toBe('That reading was already corrected. Say the check and its number again.');
+    expect(decision.result.structuredContent).toMatchObject({ outcome: 'refused', checkPoint: { id: 'walk_in' } });
+    expect(decision.event).toMatchObject({ kind: 'receipt', answersId: 'prompt-1', supersedesId: null });
+  });
+
+  // The snapshot is the stored copy of the row the line said wrong was judged by. One that no longer
+  // reads as a temperature row, say a field renamed by a later table shape, faults instead of judging
+  // the new number against a limit that is not there.
+  it('judges a correction by a snapshot that reads as a temperature row, and faults on one that does not', () => {
+    const row = table.rows.find((candidate) => candidate.id === 'unit_air_cold');
+    if (row?.kind !== 'temperature') throw new Error('unit_air_cold is not a temperature row');
+    const { limitFTenths, ...rest } = row;
+    const openWith = (ruleSnapshot: string): PendingPrompt => ({
+      ...answeredCorrectionPrompt(),
+      answered: false,
+      supersedes: { lineId: 'line-45', rootId: 'line-45', ruleSnapshot, rulesVersion: table.rulesVersion, superseded: false },
+    });
+    const call = { value: 40, screen_id: 'wall', request_id: 'request-3', pending_prompt_id: 'prompt-1' };
+
+    const judged = decide(call, { prompt: openWith(JSON.stringify(row)) });
+    const renamed = () => decideLogReading(call, ctxAt(LOGGED_AT + 30_000, { prompt: openWith(JSON.stringify({ ...rest, limitF: limitFTenths / 10 })) }));
+
+    expect(judged.result.structuredContent).toMatchObject({ outcome: 'in_range', supersedesLineId: 'line-45' });
+    expect(renamed).toThrow();
+  });
 });
