@@ -178,6 +178,27 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       expect(await readsFor(digitRepeat)).toBeLessThan(1.5 * lines);
     });
 
+    // "Wrong number" reads the screen's newest event and, for a reading, counts the corrections along
+    // its chain. Both are held to the kitchen's own lines: a busier kitchen written later must not be
+    // walked on the way. Measured 303 rows at 151 lines on local D1 (2026-09-30), one walk for each;
+    // a third walk, or a scan down the whole table, goes past the bound.
+    it('reads no more than the kitchen lines for "wrong number", however many lines another kitchen holds', async () => {
+      const kitchen = scratchKitchen();
+      await worker.store.createKitchen(kitchenInput(kitchen, limits));
+      const lines = 150;
+      await insertLines(worker.db, kitchen.id, lines, kitchen.createdAt + MINUTE_MS);
+      const reading = testEvent(kitchen.id, { screenId: 'budget-wall' });
+      await worker.store.append(appendInput(reading, limits));
+      const [busier] = await insertScratchKitchens(worker.db, [kitchen.createdAt]);
+      await insertLines(worker.db, busier, 1000, kitchen.createdAt + MINUTE_MS);
+      const counted = countingD1(worker.db);
+
+      const latest = await new D1Store(counted.db).latestByScreen(kitchen.id, 'budget-wall', kitchen.createdAt);
+
+      expect(latest).toMatchObject({ id: reading.id, kind: 'reading', corrections: 0 });
+      expect(counted.totals().rowsRead).toBeLessThan(2.5 * lines);
+    });
+
     it('accepts a write 1 ms inside the write window and refuses one at its end, saying the kitchen has closed', async () => {
       const minted = await mintThroughRoute(worker.fetch, worker.baseUrl);
 
