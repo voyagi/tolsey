@@ -159,7 +159,8 @@ is appended, so a later change of the schedule never moves an old reading to ano
   restart an id counter in a fresh conversation: without it, a new reading with the same arguments
   as an old one would be answered with the old result and never stored. Idempotency still rests on
   the host sending a new random id per utterance, which the `request_id` description asks for.
-- Every call answered with `isError` false stores exactly one event. A reply that records no line and
+- The first delivery of every call answered with `isError` false stores exactly one event, and a retry
+  answered from it stores none. A reply that records no line and
   asks no new question stores a `receipt`, so the request id index covers every accepted call and a
   retry never re-decides against state its first run changed. A receipt never moves a check, so a
   "wrong number" is never one: even the third about one chain, answered "Log it by hand" with no

@@ -184,10 +184,11 @@ async function logReading(args: LogReadingInput, deps: ServerDeps): Promise<Call
   const hash = await argsHash(args);
   // A retry is answered from what its first delivery stored, before anything is decided: decided
   // again, it would meet state that delivery changed (the prompt it answered now reads answered, the
-  // "wrong number" it stored is now an open question). Every call answered with isError false stored
-  // one event, so this covers every accepted call; the store's own lookup on append stays as the
-  // backstop for concurrent copies that both miss this read. A call refused with isError true stored
-  // nothing, so its repeat is a new attempt (MCP-07's first outcome is a stored one).
+  // "wrong number" it stored is now an open question). The first delivery of every call answered with
+  // isError false stored exactly one event, and a retry answered here stores none, so this covers every
+  // accepted call; the store's own lookup on append stays as the backstop for concurrent copies that
+  // both miss this read. A call refused with isError true stored nothing, so its repeat is a new attempt
+  // (MCP-07's first outcome is a stored one).
   const stored = await deps.store.findByRequest(deps.kitchen.id, args.request_id);
   if (stored) return resultFor(classifyRepeat(stored, hash, now, retryWindowMs(deps)));
 
