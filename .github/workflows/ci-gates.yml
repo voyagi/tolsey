@@ -19,8 +19,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   gate:
-    # Pinned rather than ubuntu-latest, which becomes Ubuntu 26 from 2026-10-19: the image changes
-    # only by an edit here, never under a release in flight.
+    # Pinned rather than ubuntu-latest, which moves to Ubuntu 26.04 from 2026-10-19 (rollout ends
+    # 2026-11-19): the OS version changes only by an edit here, never under a release in flight.
+    # The pin does not freeze the image's installed tools, which GitHub still updates weekly.
     runs-on: ubuntu-24.04
     steps:
       # SHA-pinned: a tag is
