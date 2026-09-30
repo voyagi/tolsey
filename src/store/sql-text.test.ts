@@ -60,11 +60,12 @@ function interpolates(sql: string): boolean {
 }
 
 // Every argument the adapter hands to prepare: a named constant, resolved to its template text, or a
-// string written in place. An argument that resolves to nothing fails the test rather than going
-// unread.
+// string written in place. A constant counts only when its template ends the statement, so one with a
+// value joined on after it resolves to nothing, and an argument that resolves to nothing fails the
+// test rather than going unread.
 function preparedSql(source: string): string[] {
   const constants = new Map(
-    [...source.matchAll(/const\s+([A-Z][A-Z0-9_]*)\s*=\s*`([^`]*)`/g)].map((match) => [match[1], match[2]]),
+    [...source.matchAll(/const\s+([A-Z][A-Z0-9_]*)\s*=\s*`([^`]*)`\s*;/g)].map((match) => [match[1], match[2]]),
   );
   return [...source.matchAll(/\.prepare\(\s*([^)]*?)\s*\)/g)].map((match) => {
     const argument = match[1];
@@ -87,6 +88,15 @@ describe('the D1 adapter SQL, read as text', () => {
 
     expect(preparedSql(planted).map(interpolates)).toEqual([true]);
     expect(preparedSql(fixed).map(interpolates)).toEqual([false]);
+  });
+
+  // A constant whose template is only the start of its statement, with a value joined on after it, is
+  // no fixed text either: it must fail to resolve rather than read as its first part.
+  it.each([
+    'const JOINED_SQL = `SELECT * FROM events WHERE words = ` + words;\nthis.db.prepare(JOINED_SQL);',
+    'const JOINED_SQL = `SELECT * FROM events WHERE words = `.concat(words);\nthis.db.prepare(JOINED_SQL);',
+  ])('refuses to read a constant with a value joined onto its template: %s', (planted) => {
+    expect(() => preparedSql(planted)).toThrow(/names no SQL constant/);
   });
 
   it('prepares every statement from fixed text, with no value interpolated into it', () => {
