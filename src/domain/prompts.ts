@@ -36,11 +36,13 @@ const ANSWERED_BY_NUMBER: Readonly<Record<PromptKind, boolean>> = {
 
 // The stored kind is a string from the database, so an unknown one is a question this code cannot
 // answer, and a call naming it is a fresh call.
-function isKnownKind(kind: string): kind is PromptKind {
+export function isKnownKind(kind: string): kind is PromptKind {
   return Object.hasOwn(ANSWERED_BY_NUMBER, kind);
 }
 
-function asksForNumber(kind: string): boolean {
+// "Wrong number" reads this too: a question the number answers is asked again, while an answer to any
+// other known question would log the number it holds.
+export function asksForNumber(kind: string): boolean {
   return isKnownKind(kind) && ANSWERED_BY_NUMBER[kind];
 }
 

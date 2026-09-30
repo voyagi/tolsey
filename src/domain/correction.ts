@@ -8,14 +8,15 @@ import {
   NO_LINKS,
   optionalCheckPoint,
   promptExpiry,
-  TENTHS_PER_DEGREE,
   type Decision,
   type DecisionContext,
   type Facts,
   type PromptKind,
 } from './decision';
-import { askAgainReply, digitRepeatReply, WHO_IS_LOGGING_REPLY, whichCheckReply } from './questions';
+import { asksForNumber, isKnownKind } from './prompts';
+import { askAgainReply, digitRepeatReply } from './questions';
 import { receiptDecision } from './receipt';
+import { refusalDecision } from './refusal';
 import type { CheckPoint } from './rule';
 import { rebuildWords } from './words';
 
@@ -51,18 +52,16 @@ function asksStill(latest: ScreenEvent, ctx: DecisionContext): boolean {
   return !latest.answered && latest.expiresAt !== null && ctx.now < latest.expiresAt;
 }
 
-// The question the open prompt asked, asked again in the same words. A stored kind this code cannot
-// ask is no question, and the call is answered as if nothing were open.
+// The question the open prompt asked, asked again in the same words. Only a question the number
+// answers is asked again, and one that names no check is no question this code can ask, so the call
+// is answered as if nothing were open.
 function questionOf(latest: ScreenEvent, checkPoint: CheckPoint | undefined): string | undefined {
+  if (checkPoint === undefined) return undefined;
   switch (latest.promptKind) {
-    case 'who_is_logging':
-      return WHO_IS_LOGGING_REPLY;
-    case 'which_check':
-      return latest.valueTenths === null ? undefined : whichCheckReply(latest.valueTenths / TENTHS_PER_DEGREE);
     case 'digit_repeat':
-      return checkPoint && digitRepeatReply(checkPoint);
+      return digitRepeatReply(checkPoint);
     case NUMBER_AFTER_WRONG:
-      return checkPoint && askAgainReply(checkPoint);
+      return askAgainReply(checkPoint);
     default:
       return undefined;
   }
@@ -81,6 +80,16 @@ function repeatQuestion(input: CorrectionCall, ctx: DecisionContext, latest: Scr
   if (text === undefined || latest.promptKind === null) return nothingToFix(input, ctx);
   const receipt = { outcome: 'held' as const, text, prompt: { kind: latest.promptKind, id: latest.id } };
   return receiptDecision(callFacts(input, checkPoint), ctx, receipt, { answersId: null, refId: latest.id });
+}
+
+// Which check and who is logging ask for something other than the number, and their answer logs the
+// number the hold keeps. So "wrong number" said to one refuses that number the way a hedged answer
+// does: a refusal answering the hold, which closes it for good and asks for the number again when the
+// hold names a check.
+function refuseHeld(input: CorrectionCall, ctx: DecisionContext, latest: ScreenEvent): Decision {
+  const checkPoint = optionalCheckPoint(ctx.profile, latest.checkPointId);
+  const facts = { ...callFacts(input, checkPoint), measured: latest.measured ?? undefined };
+  return refusalDecision(facts, ctx, { answersId: latest.id, refId: null });
 }
 
 function logByHand(input: CorrectionCall, ctx: DecisionContext, line: ScreenEvent, checkPoint: CheckPoint): Decision {
@@ -112,6 +121,7 @@ function sayWrong(input: CorrectionCall, ctx: DecisionContext, line: ScreenEvent
 export function decideCorrection(input: CorrectionCall, ctx: DecisionContext, latest: ScreenEvent | null): Decision {
   if (latest === null || !withinWindow(latest, ctx)) return nothingToFix(input, ctx);
   if (latest.kind === 'reading') return sayWrong(input, ctx, latest);
-  if (asksStill(latest, ctx)) return repeatQuestion(input, ctx, latest);
-  return nothingToFix(input, ctx);
+  if (!asksStill(latest, ctx) || latest.promptKind === null) return nothingToFix(input, ctx);
+  if (asksForNumber(latest.promptKind)) return repeatQuestion(input, ctx, latest);
+  return isKnownKind(latest.promptKind) ? refuseHeld(input, ctx, latest) : nothingToFix(input, ctx);
 }

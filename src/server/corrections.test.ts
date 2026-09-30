@@ -251,6 +251,40 @@ describe('wrong number through MCP, each step its own request', () => {
     expect(outcomeCounts(stored).out_of_range).toBeUndefined();
   });
 
+  // Who is logging and which check ask for something other than the number, and their answer logs the
+  // number they hold, so "wrong number" said to either must refuse that number rather than ask again.
+  it('never logs a held number the cook said was wrong while Tolsey asked who is logging', async () => {
+    const kitchenId = await kitchen();
+    const held = await say(kitchenId, { check_point: 'walk_in', value: 38, words: 'walk-in 38' });
+    expect(promptOf(held).kind).toBe('who_is_logging');
+
+    const refused = await saidWrong(kitchenId, { initials: undefined });
+    const late = await say(kitchenId, { initials: 'AB', pending_prompt_id: promptOf(held).id });
+
+    expect(refused.content[0]?.text).toBe('I need the number on the thermometer. What does the walk-in read?');
+    expect(refused.structuredContent).toMatchObject({ outcome: 'refused', checkPoint: { id: 'walk_in' }, prompt: { kind: 'number' } });
+    expect(late.content[0]?.text).toMatch(/already answered/);
+    expect((await lines(kitchenId)).filter((line) => line.kind === 'reading')).toHaveLength(0);
+    expect(await worker.store.openChecks(kitchenId, DAY)).toEqual(['walk_in']);
+    const logged = await say(kitchenId, { value: 40, initials: 'AB', pending_prompt_id: promptOf(refused).id });
+    expect(logged.structuredContent).toMatchObject({ outcome: 'in_range', value: 40, initials: 'AB' });
+  });
+
+  it('never logs a held number the cook said was wrong while Tolsey asked which check', async () => {
+    const kitchenId = await kitchen();
+    const held = await say(kitchenId, { value: 39, words: '39', initials: 'AB' });
+    expect(held.content[0]?.text).toBe('Which check reads 39?');
+
+    const refused = await saidWrong(kitchenId);
+    const late = await say(kitchenId, { check_point: 'walk_in', pending_prompt_id: promptOf(held).id });
+
+    expect(refused.content[0]?.text).toBe('I need a check and the number on the thermometer.');
+    expect(refused.structuredContent?.outcome).toBe('refused');
+    expect(refused.structuredContent).not.toHaveProperty('prompt');
+    expect(late.content[0]?.text).toMatch(/already answered/);
+    expect((await lines(kitchenId)).filter((line) => line.kind === 'reading')).toHaveLength(0);
+  });
+
   it('answers "wrong number" after another screen\'s line with nothing to fix, storing only its receipt (E16)', async () => {
     const kitchenId = await kitchen();
     await say(kitchenId, { check_point: 'walk_in', value: 45, words: 'walk-in 45', initials: 'AB', screen_id: 'other-wall' });

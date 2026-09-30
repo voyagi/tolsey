@@ -205,20 +205,42 @@ describe('decideCorrection', () => {
       expect(decision.result.structuredContent.prompt).toEqual({ kind: 'digit_repeat', id: 'hold-15' });
       expect(decision.event).toMatchObject({ kind: 'receipt', refId: 'hold-15' });
     });
+  });
 
-    it('repeats "Who is logging?"', () => {
-      const held = openPrompt({ kind: 'held', valueTenths: 380, promptKind: 'who_is_logging' });
+  // Their answer logs the number the hold keeps, so asking them again would log the number said wrong.
+  describe('a held question the number does not answer', () => {
+    it('refuses the number held for "Who is logging?" with a refusal that answers the hold and asks for the number', () => {
+      const held = openPrompt({ id: 'hold-38', kind: 'held', valueTenths: 380, promptKind: 'who_is_logging' });
 
-      expect(correct(held).result.content[0].text).toBe('Who is logging?');
+      const decision = correct(held, undefined, wrongNumber({ initials: undefined }));
+
+      expect(decision.result.content[0].text).toBe('I need the number on the thermometer. What does the walk-in read?');
+      expect(decision.result.structuredContent).toMatchObject({
+        outcome: 'refused',
+        checkPoint: { id: 'walk_in' },
+        prompt: { kind: 'number', id: decision.event.id },
+      });
+      expect(decision.event).toMatchObject({
+        kind: 'refusal',
+        answersId: 'hold-38',
+        refId: null,
+        supersedesId: null,
+        checkPointId: 'walk_in',
+        measured: 'air',
+        valueTenths: null,
+        promptKind: 'number',
+      });
     });
 
-    it('repeats "Which check reads 39?"', () => {
-      const held = openPrompt({ kind: 'held', checkPointId: null, valueTenths: 390, promptKind: 'which_check' });
+    it('refuses the number held for "Which check reads 39?" and asks for a check and a number, opening no prompt', () => {
+      const held = openPrompt({ id: 'hold-39', kind: 'held', checkPointId: null, measured: null, valueTenths: 390, promptKind: 'which_check' });
 
       const decision = correct(held);
 
-      expect(decision.result.content[0].text).toBe('Which check reads 39?');
+      expect(decision.result.content[0].text).toBe('I need a check and the number on the thermometer.');
       expect(decision.result.structuredContent).not.toHaveProperty('checkPoint');
+      expect(decision.result.structuredContent).not.toHaveProperty('prompt');
+      expect(decision.event).toMatchObject({ kind: 'refusal', answersId: 'hold-39', checkPointId: null, promptKind: null, valueTenths: null });
     });
   });
 
@@ -238,7 +260,6 @@ describe('decideCorrection', () => {
 
     it('answers a hold whose stored question this code cannot ask', () => {
       expect(replyShape(correct(openPrompt({ kind: 'held', promptKind: 'toString' })))).toEqual(NOTHING_TO_FIX_SHAPE);
-      expect(replyShape(correct(openPrompt({ kind: 'held', promptKind: 'which_check', valueTenths: null })))).toEqual(NOTHING_TO_FIX_SHAPE);
       expect(replyShape(correct(openPrompt({ kind: 'held', checkPointId: null, promptKind: 'digit_repeat' })))).toEqual(NOTHING_TO_FIX_SHAPE);
       expect(replyShape(correct(openPrompt({ kind: 'held', promptKind: null, expiresAt: null })))).toEqual(NOTHING_TO_FIX_SHAPE);
     });
