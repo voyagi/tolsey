@@ -135,7 +135,7 @@ function checkOutcomeFields(result: z.infer<typeof OutputObjectSchema>, ctx: z.R
       ctx.addIssue({ code: 'custom', path: [field], message: `${result.outcome} carries no ${field}` });
     }
   }
-  // A refusal line carries both; a receipt reply such as "Log it by hand" carries neither.
+  // A refusal line carries both; a reply that records no line, such as "Log it by hand", carries neither.
   if (result.outcome === 'refused' && result.recordCode !== undefined && result.lineId === undefined) {
     ctx.addIssue({ code: 'custom', path: ['recordCode'], message: 'refused carries a recordCode only beside a lineId' });
   }

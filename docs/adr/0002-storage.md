@@ -161,7 +161,10 @@ is appended, so a later change of the schedule never moves an old reading to ano
   the host sending a new random id per utterance, which the `request_id` description asks for.
 - Every call answered with `isError` false stores exactly one event. A reply that records no line and
   asks no new question stores a `receipt`, so the request id index covers every accepted call and a
-  retry never re-decides against state its first run changed.
+  retry never re-decides against state its first run changed. A receipt never moves a check, so a
+  "wrong number" is never one: even the third about one chain, answered "Log it by hand" with no
+  question, stores a `wrong_number` marker on the line, which keeps the check open until a new number
+  is logged.
 - The partial `UNIQUE (kitchen_id, business_day, day_line) WHERE day_line IS NOT NULL` holds the
   record code. The day line is allocated inside the INSERT for readings and refusals only, so a day's
   record codes never skip a number for a held question, a wrong_number marker or a receipt.

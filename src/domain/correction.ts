@@ -92,27 +92,24 @@ function refuseHeld(input: CorrectionCall, ctx: DecisionContext, latest: ScreenE
   return refusalDecision(facts, ctx, { answersId: latest.id, refId: null });
 }
 
-function logByHand(input: CorrectionCall, ctx: DecisionContext, line: ScreenEvent, checkPoint: CheckPoint): Decision {
-  const receipt = { outcome: 'refused' as const, text: LOG_BY_HAND_REPLY };
-  return receiptDecision(callFacts(input, checkPoint), ctx, receipt, { answersId: null, refId: line.id });
-}
-
-// The value a call sends beside the phrase is never used (D-05): one call stores one event, and it
-// cannot be both the wrong_number event and the line that supersedes.
+// A line said wrong gets a wrong_number marker pointing at it (READ-05), never an edit, and the marker
+// keeps its check open until a new number is logged. The value a call sends beside the phrase is
+// never used (D-05): one call stores one event, and it cannot be both the marker and the line that
+// supersedes. A line already corrected twice is not asked about a third time: its marker asks
+// nothing, so it holds no prompt, and the check stays open as it does after a third digit-repeat miss.
 function sayWrong(input: CorrectionCall, ctx: DecisionContext, line: ScreenEvent): Decision {
   const checkPoint = checkPointFor(ctx.profile, line.checkPointId);
-  if (line.corrections + 1 >= CORRECTIONS_BEFORE_LOG_BY_HAND) return logByHand(input, ctx, line, checkPoint);
   const facts = { ...callFacts(input, checkPoint), measured: line.measured ?? undefined };
-  const promptId = ctx.newId();
-  const event = {
-    ...baseEvent(ctx, facts, 'wrong_number', promptId, { answersId: null, refId: line.id }),
+  const marker = {
+    ...baseEvent(ctx, facts, 'wrong_number', ctx.newId(), { answersId: null, refId: line.id }),
     words: rebuildWords(input.words, ctx.profile, undefined, checkPoint),
-    outcome: 'held',
     rulesVersion: ctx.rulesVersion,
-    promptKind: NUMBER_AFTER_WRONG,
-    expiresAt: promptExpiry(ctx),
   };
-  const structured = { ...baseOutput(ctx, facts, 'held'), prompt: { kind: NUMBER_AFTER_WRONG, id: promptId } };
+  if (line.corrections + 1 >= CORRECTIONS_BEFORE_LOG_BY_HAND) {
+    return decided({ ...marker, outcome: 'refused' }, LOG_BY_HAND_REPLY, baseOutput(ctx, facts, 'refused'));
+  }
+  const event = { ...marker, outcome: 'held', promptKind: NUMBER_AFTER_WRONG, expiresAt: promptExpiry(ctx) };
+  const structured = { ...baseOutput(ctx, facts, 'held'), prompt: { kind: NUMBER_AFTER_WRONG, id: marker.id } };
   return decided(event, askAgainReply(checkPoint), structured);
 }
 

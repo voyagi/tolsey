@@ -160,15 +160,26 @@ describe('decideCorrection', () => {
   });
 
   // READ-05 counts a correction as the line that supersedes: 45 corrected to 40, 40 to 42, then a
-  // third "wrong number" for that chain.
-  it('answers the third correction of one chain "Log it by hand" with a receipt naming the line, and no prompt (E17)', () => {
+  // third "wrong number" for that chain. It still marks the line said wrong, so the check stays open,
+  // but asks nothing: no prompt, and no line.
+  it('answers the third correction of one chain "Log it by hand" with a wrong_number marker on the line that asks nothing (E17)', () => {
     const decision = correct(line({ id: 'line-42', corrections: 2 }));
 
     expect(decision.result.content[0].text).toBe('Log it by hand.');
-    expect(decision.result.structuredContent.outcome).toBe('refused');
+    expect(decision.result.structuredContent).toMatchObject({ outcome: 'refused', checkPoint: { id: 'walk_in' }, initials: 'AB' });
     expect(decision.result.structuredContent).not.toHaveProperty('prompt');
     expect(decision.result.structuredContent).not.toHaveProperty('lineId');
-    expect(decision.event).toMatchObject({ kind: 'receipt', refId: 'line-42', answersId: null, promptKind: null });
+    expect(decision.event).toMatchObject({
+      kind: 'wrong_number',
+      refId: 'line-42',
+      answersId: null,
+      supersedesId: null,
+      outcome: 'refused',
+      measured: 'air',
+      valueTenths: null,
+      promptKind: null,
+      expiresAt: null,
+    });
   });
 
   it('still asks after one confirmed correction', () => {

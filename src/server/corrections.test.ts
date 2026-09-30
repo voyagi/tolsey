@@ -206,6 +206,31 @@ describe('wrong number through MCP, each step its own request', () => {
     expect(outcomeCounts(await lines(kitchenId))).toEqual({ out_of_range: 1 });
   });
 
+  // READ-05: the check is open until a new number is logged. After the third "wrong number" no number
+  // is asked for, so the line said wrong must not close the walk-in, as a third digit-repeat miss
+  // leaves its check open.
+  it('keeps the walk-in open after the third correction is answered "Log it by hand", until a new number is logged', async () => {
+    const kitchenId = await kitchen();
+    await walkInFortyFive(kitchenId);
+    await say(kitchenId, { value: 40, pending_prompt_id: promptOf(await saidWrong(kitchenId)).id });
+    const fortyTwo = lineIdOf(await say(kitchenId, { value: 42, pending_prompt_id: promptOf(await saidWrong(kitchenId)).id }));
+
+    const byHand = await saidWrong(kitchenId);
+
+    expect(byHand.content[0]?.text).toBe('Log it by hand.');
+    expect(byHand.structuredContent).toMatchObject({ outcome: 'refused', checkPoint: { id: 'walk_in' } });
+    expect(byHand.structuredContent).not.toHaveProperty('prompt');
+    expect(byHand.structuredContent).not.toHaveProperty('lineId');
+    const stored = await lines(kitchenId);
+    expect(stored.at(-1)).toMatchObject({ kind: 'wrong_number', refId: fortyTwo, promptKind: null, expiresAt: null, dayLine: null });
+    expect(stored.filter((line) => line.dayLine !== null).map((line) => line.dayLine)).toEqual([1, 2, 3]);
+    expect(await worker.store.openChecks(kitchenId, DAY)).toEqual(['walk_in']);
+    expect((await saidWrong(kitchenId)).structuredContent?.outcome).toBe('nothing_to_fix');
+    await say(kitchenId, { check_point: 'walk_in', value: 40, words: 'walk-in 40', initials: 'AB' });
+    expect(await worker.store.openChecks(kitchenId, DAY)).toEqual([]);
+    expect(stored.some((line) => line.supersedesId === fortyTwo)).toBe(false);
+  });
+
   // N5: a line with no judging path holds no rule, so neither does its correction.
   it('stores the correction of a not-covered cooling line not covered, with no rule', async () => {
     const kitchenId = await kitchen();
