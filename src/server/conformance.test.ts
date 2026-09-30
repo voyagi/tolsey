@@ -388,5 +388,32 @@ describe(`MCP conformance on the ${inject('target')} target`, () => {
       expect(lines[0].seq).toBeLessThan(lines[1].seq);
       if (target.clock) expect(lines[1].occurredAt).toBe(lines[0].occurredAt);
     });
+
+    // On the deployed target this is the only run on remote D1 of the screen's newest-event read and
+    // of the pending-prompt read's recursive walk, which runs only for a prompt that answers another:
+    // so the correction's number is held for initials first, and the answer giving them logs it.
+    it('corrects a line through a held answer, superseding it once', async () => {
+      const freshKitchen = await target.createKitchen();
+      const screen = `conformance-${crypto.randomUUID()}`;
+      const promptId = (result: ToolResult) => (result.structuredContent?.prompt as { id: string }).id;
+      const client = await connect(target, `/mcp/k/${freshKitchen}`);
+      const before = now();
+      const [logged, asked, held, corrected] = await withClient(client, async (c) => {
+        const say = async (args: Record<string, unknown>) =>
+          (await c.callTool({ name: 'log_reading', arguments: { screen_id: screen, request_id: crypto.randomUUID(), ...args } })) as ToolResult;
+        const first = await say({ check_point: 'walk_in', value: 45, words: 'the walk-in reads 45', initials: 'AB' });
+        const second = await say({ words: 'wrong number' });
+        const third = await say({ value: 40, pending_prompt_id: promptId(second) });
+        return [first, second, third, await say({ initials: 'AB', pending_prompt_id: promptId(third) })];
+      });
+      const after = now();
+
+      expect(logged.structuredContent).toMatchObject({ outcome: 'out_of_range', value: 45 });
+      expect(asked.structuredContent).toMatchObject({ outcome: 'held', prompt: { kind: 'number_after_wrong' } });
+      expect(held.structuredContent).toMatchObject({ outcome: 'held', prompt: { kind: 'who_is_logging' } });
+      expect(corrected.structuredContent).toMatchObject({ outcome: 'in_range', value: 40, supersedesLineId: logged.structuredContent?.lineId });
+      const lines = await linesBetween(freshKitchen, before, after);
+      if (lines) expect(lines.filter((line) => line.supersedesId !== null)).toHaveLength(1);
+    });
   });
 });
