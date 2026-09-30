@@ -5,7 +5,7 @@ import rulesJson from '../../data/rules/food-code-2022.json';
 import { describeSource } from './citation';
 import { judgeReading } from './judge';
 import { selectRule } from './log-reading';
-import { KitchenProfileSchema, RuleTableSchema, type RuleRow, type RuleTable, type TemperatureRow } from './rule';
+import { KitchenProfileSchema, RuleTableSchema, temperatureRowFrom, type RuleRow, type RuleTable, type TemperatureRow } from './rule';
 
 // Typed by hand from the FDA Food Code 2022 text (fda.gov media 164194) and, for milk, the Grade "A"
 // Pasteurized Milk Ordinance 2025 Revision (fda.gov media 193438). Never built from the JSON: the
@@ -457,6 +457,25 @@ describe('RuleTableSchema', () => {
   it('refuses a house rule that tightens a row the table lacks', () => {
     const tightening = { ...durationRow, source: { ...durationRow.source, tightens: 'reheat_time' } };
     expect(refusal([tightening])).toContain('check_interval tightens reheat_time, which the table lacks');
+  });
+});
+
+// A fault log keeps only an error's name and code, so the code must say it was a stored rule copy
+// whether that copy is not JSON at all or JSON of another shape.
+describe('temperatureRowFrom', () => {
+  function codeOf(copy: string): unknown {
+    try {
+      temperatureRowFrom(copy);
+    } catch (error) {
+      return (error as { code?: unknown }).code;
+    }
+    return 'read';
+  }
+
+  it('reads a stored copy of a temperature row, and names the copy in the code of every refusal', () => {
+    expect(codeOf(JSON.stringify(temperatureRow('cold_holding')))).toBe('read');
+    expect(codeOf('not json')).toBe('rule_snapshot_unreadable');
+    expect(codeOf(JSON.stringify({ ...temperatureRow('cold_holding'), limitFTenths: undefined, limitF: 41 }))).toBe('rule_snapshot_unreadable');
   });
 });
 

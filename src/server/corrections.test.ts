@@ -1,9 +1,9 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { createMcpHandler } from '@modelcontextprotocol/server';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { RuleRow } from '../domain/rule';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { temperatureRowFrom, type RuleRow } from '../domain/rule';
 import { D1Store } from '../store/d1-store';
-import type { AppendInput, AppendOutcome, Store, StoredLine } from '../store/port';
+import type { AppendInput, AppendOutcome, KitchenRow, Store, StoredLine } from '../store/port';
 import { barrierStore } from '../test-support/barrier-store';
 import { openTestD1, type TestD1 } from '../test-support/d1';
 import { gatedStore } from '../test-support/gated-store';
@@ -446,8 +446,29 @@ describe('two numbers for one correction that both read the prompt before either
     return { value, pending_prompt_id: prompt, screen_id: screen, request_id: crypto.randomUUID() };
   }
 
-  async function superseding(line: string): Promise<StoredLine[]> {
-    return (await store.linesForDay(KITCHEN_ID, DAY)).filter((stored) => stored.supersedesId === line);
+  async function superseding(line: string, kitchenId = KITCHEN_ID): Promise<StoredLine[]> {
+    return (await store.linesForDay(kitchenId, DAY)).filter((stored) => stored.supersedesId === line);
+  }
+
+  // A kitchen of the case's own, so the open checks it reads are that case's alone.
+  async function ownKitchen(): Promise<KitchenRow> {
+    const kitchen = { id: `sibling-${crypto.randomUUID()}`, kind: 'scratch' as const, label: null, timeZone: 'America/Chicago', dayStart: '04:00', createdAt: CREATED_AT };
+    await store.createKitchen({ kitchen, expectedRows: ROWS_PER_WRITE.kitchen_create, utcDate: utcDate(CREATED_AT), dailyRowCap: STORE_LIMITS.dailyRowCap });
+    return kitchen;
+  }
+
+  // A walk-in line and two "wrong number" calls that both read it before either writes, which leaves
+  // two questions about the one line: the gated call's first, then its twin's.
+  async function twoQuestions(kitchen: KitchenRow, screen: string): Promise<{ line: string; questions: [string, string] }> {
+    const deps = depsFor(store, RULES, { kitchen });
+    const line = lineIdOf(await callThrough(deps, { ...WALK_IN_45, screen_id: screen, request_id: crypto.randomUUID() }));
+    const wrong = () => ({ words: 'wrong number', initials: 'AB', screen_id: screen, request_id: crypto.randomUUID() });
+    const gate = gatedStore(store, 'latestByScreen');
+    const first = callThrough(depsFor(gate.store, RULES, { kitchen }), wrong());
+    await gate.reached;
+    const second = await callThrough(deps, wrong());
+    gate.release();
+    return { line, questions: [promptOf(await first).id, promptOf(second).id] };
   }
 
   it('leaves one superseding line, and the loser gets the already-corrected reply with one receipt of its own (E18)', async () => {
@@ -578,18 +599,12 @@ describe('two numbers for one correction that both read the prompt before either
     ['a number', { value: 39 }],
     ['a hedged number', { value: 40, words: 'about 40' }],
   ])('closes the second question about a line already corrected when %s answers it, and keeps the check closed', async (_, said) => {
-    const kitchen = { id: `sibling-${crypto.randomUUID()}`, kind: 'scratch' as const, label: null, timeZone: 'America/Chicago', dayStart: '04:00', createdAt: CREATED_AT };
-    await store.createKitchen({ kitchen, expectedRows: ROWS_PER_WRITE.kitchen_create, utcDate: utcDate(CREATED_AT), dailyRowCap: STORE_LIMITS.dailyRowCap });
+    const kitchen = await ownKitchen();
     const screen = crypto.randomUUID();
     const deps = depsFor(store, RULES, { kitchen });
-    await callThrough(deps, { ...WALK_IN_45, screen_id: screen, request_id: crypto.randomUUID() });
-    const wrong = () => ({ words: 'wrong number', initials: 'AB', screen_id: screen, request_id: crypto.randomUUID() });
-    const gate = gatedStore(store, 'latestByScreen');
-    const first = callThrough(depsFor(gate.store, RULES, { kitchen }), wrong());
-    await gate.reached;
-    const second = await callThrough(deps, wrong());
-    gate.release();
-    const [answered, stale] = [promptOf(await first).id, promptOf(second).id];
+    const {
+      questions: [answered, stale],
+    } = await twoQuestions(kitchen, screen);
     const logged = await callThrough(deps, answer(screen, answered, 40));
     expect(logged.structuredContent).toMatchObject({ outcome: 'in_range', value: 40 });
 
@@ -605,27 +620,37 @@ describe('two numbers for one correction that both read the prompt before either
 
   // The fallback: a decision taken again that would still answer a prompt could meet the same race, so
   // the loser is answered from its own prompt instead. Two questions about one line, each answered by
-  // a number: the loser's question is still open, and only the line said wrong is taken.
-  it('tells the loser of two numbers for two questions about one line that the reading was already corrected', async () => {
+  // a number: only the line said wrong is taken, and the loser's question stays open. That leaves
+  // nothing to reopen: the superseding line is newer than both questions, so the walk-in stays closed,
+  // and a later answer to the open question closes it with the already-corrected reply.
+  it('tells the loser of two numbers for two questions about one line that the reading was already corrected, and keeps the check closed', async () => {
+    const kitchen = await ownKitchen();
     const screen = crypto.randomUUID();
-    const deps = depsFor(store);
-    const line = lineIdOf(await callThrough(deps, { ...WALK_IN_45, screen_id: screen, request_id: crypto.randomUUID() }));
-    const wrong = () => ({ words: 'wrong number', initials: 'AB', screen_id: screen, request_id: crypto.randomUUID() });
-    const gate = gatedStore(store, 'latestByScreen');
-    const first = callThrough(depsFor(gate.store), wrong());
-    await gate.reached;
-    const second = await callThrough(deps, wrong());
-    gate.release();
-    const questions = [promptOf(await first).id, promptOf(second).id];
-    const racing = depsFor(barrierStore(store, 2));
+    const { line, questions } = await twoQuestions(kitchen, screen);
+    const racing = depsFor(barrierStore(store, 2), RULES, { kitchen });
 
     const results = await Promise.all(questions.map((question, at) => callThrough(racing, answer(screen, question, 40 - at))));
 
-    expect(await superseding(line)).toHaveLength(1);
-    const losers = results.filter((result) => /already corrected/.test(result.content[0]?.text ?? ''));
-    expect(losers).toHaveLength(1);
-    expect(losers[0]?.isError).not.toBe(true);
-    expect(losers[0]?.structuredContent).toMatchObject({ outcome: 'refused' });
+    expect(await superseding(line, kitchen.id)).toHaveLength(1);
+    const lost = results.findIndex((result) => /already corrected/.test(result.content[0]?.text ?? ''));
+    expect(results.filter((result) => /already corrected/.test(result.content[0]?.text ?? ''))).toHaveLength(1);
+    expect(results[lost]?.isError).not.toBe(true);
+    expect(results[lost]?.structuredContent).toMatchObject({ outcome: 'refused' });
+    const open = questions[lost];
+    expect((await store.pendingPrompt(kitchen.id, open))?.answered).toBe(false);
+    expect(await store.openChecks(kitchen.id, DAY)).toEqual([]);
+
+    const late = await callThrough(depsFor(store, RULES, { kitchen }), {
+      value: 40,
+      words: 'about 40',
+      pending_prompt_id: open,
+      screen_id: screen,
+      request_id: crypto.randomUUID(),
+    });
+
+    expect(late.content[0]?.text).toBe('That reading was already corrected. Say the check and its number again.');
+    expect((await store.pendingPrompt(kitchen.id, open))?.answered).toBe(true);
+    expect(await store.openChecks(kitchen.id, DAY)).toEqual([]);
   });
 
   // Fold recheck finding 1: a third writer can fill the budget between the loser's two appends.
@@ -686,5 +711,43 @@ describe('two numbers for one correction that both read the prompt before either
     });
     const [stored] = await superseding(line);
     expect(JSON.parse(stored?.ruleSnapshot ?? 'null')).toEqual(original);
+  });
+
+  // A line judged by a row one key wider than today's schema names, as a redeploy between a line and
+  // its correction would leave it. The correction faults with the fixed sentence and stores nothing, so
+  // its question and the check stay open, and the fault log, which keeps only a name and a code, says
+  // it was the stored rule copy that could not be read.
+  it('answers a correction whose stored rule copy no longer reads as a row with the fixed sentence, storing nothing', async () => {
+    const screen = crypto.randomUUID();
+    const original = RULES.get('unit_air_cold');
+    if (original?.kind !== 'temperature') throw new Error('unit_air_cold is not a temperature row');
+    const earlier = new Map<string, RuleRow>(RULES).set(original.id, { ...original, retired: false } as RuleRow);
+    const { prompt } = await correctionPrompt(screen, earlier);
+    const before = await store.linesForDay(KITCHEN_ID, DAY);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      const result = await callThrough(depsFor(store), answer(screen, prompt, 40));
+
+      expect(result).toMatchObject({
+        isError: true,
+        content: [{ type: 'text', text: 'Tolsey could not log that. Try again.' }],
+        _meta: { error: 'server_fault' },
+      });
+      expect(await store.linesForDay(KITCHEN_ID, DAY)).toHaveLength(before.length);
+      expect((await store.pendingPrompt(KITCHEN_ID, prompt))?.answered).toBe(false);
+      expect(errors.mock.calls).toContainEqual(['[log_reading]', { name: 'Error', code: 'rule_snapshot_unreadable' }]);
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  // A line stores the row that judged it as JSON, and its correction reads that copy back through the
+  // temperature row schema, which refuses any key it does not name. So every temperature row the
+  // server judges by must read back from its own copy unchanged, or every correction of its lines faults.
+  it('reads every temperature row the server judges by back from the copy a line stores of it', () => {
+    const rows = [...RULES.values()].filter((row) => row.kind === 'temperature');
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(temperatureRowFrom(JSON.stringify(row)), row.id).toEqual(row);
   });
 });

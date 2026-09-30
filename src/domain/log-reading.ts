@@ -325,9 +325,10 @@ function decideAnswer(input: LogReadingInput, ctx: DecisionContext, answer: Answ
 // while this call was deciding (the adapter reads the prompt again after its conflict), so both are
 // chosen from the same stored fact. It says the reading was corrected only when a line already
 // supersedes the one said wrong: a correction's question that a hold, a refusal or "Log it by hand"
-// answered has corrected nothing yet. For a second answer it stores a receipt with no answers_id,
-// which the index already holds for the first answer; for an open question about a line another
-// question already corrected, the receipt answers that question and closes it.
+// answered has corrected nothing yet. The receipt answers only what links names: none for a second
+// answer, whose answers_id the index already holds for the first, and none for the adapter's race
+// fallback, which leaves its question open; the question's own links when an answer reaches an open
+// question about a line another question already corrected, so that question closes.
 export function alreadyAnswered(
   input: LogReadingInput,
   ctx: DecisionContext,

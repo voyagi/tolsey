@@ -56,9 +56,17 @@ export type TemperatureRow = z.infer<typeof TemperatureRowSchema>;
 
 // A correction is judged by the row its line said wrong was judged by, read back from the copy stored
 // with that line. The copy is checked like any row, so one that no longer reads as a temperature row
-// throws rather than judging a number against a limit that is not there.
+// throws rather than judging a number against a limit that is not there. The error's code names the
+// copy, since a fault log keeps only a name and a code, and a copy that is not JSON at all would
+// otherwise log the same SyntaxError as any other stored text.
 export function temperatureRowFrom(snapshot: string): TemperatureRow {
-  return TemperatureRowSchema.parse(JSON.parse(snapshot));
+  try {
+    return TemperatureRowSchema.parse(JSON.parse(snapshot));
+  } catch (cause) {
+    throw Object.assign(new Error('a stored rule copy no longer reads as a temperature row', { cause }), {
+      code: 'rule_snapshot_unreadable',
+    });
+  }
 }
 
 const TimedTemperatureRowSchema = z
