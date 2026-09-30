@@ -14,8 +14,8 @@ export interface DecisionContext {
   // The prompt named by pending_prompt_id, read by the adapter before deciding; null when the id
   // names nothing this kitchen asked.
   prompt?: PendingPrompt | null;
-  // The newest event this screen wrote inside the correction window, read by the adapter only for a
-  // call whose words say "wrong number".
+  // The newest event this screen wrote within the longer of the correction window and the prompt
+  // expiry, read by the adapter only for a call whose words say "wrong number".
   latest?: ScreenEvent | null;
 }
 

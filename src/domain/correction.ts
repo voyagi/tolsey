@@ -116,11 +116,13 @@ function sayWrong(input: CorrectionCall, ctx: DecisionContext, line: ScreenEvent
   return decided(event, askAgainReply(checkPoint), structured);
 }
 
-// latest is the newest event this screen wrote inside the window, receipts left out. A refusal is
+// latest is the newest event this screen wrote, receipts left out, read back as far as the longer of
+// the correction window and the prompt expiry. The window bounds a line said wrong, while a question
+// is correctable for as long as it is open, so each kind is held to its own limit here. A refusal is
 // never superseded, and a hold whose question has closed holds nothing left to correct.
 export function decideCorrection(input: CorrectionCall, ctx: DecisionContext, latest: ScreenEvent | null): Decision {
-  if (latest === null || !withinWindow(latest, ctx)) return nothingToFix(input, ctx);
-  if (latest.kind === 'reading') return sayWrong(input, ctx, latest);
+  if (latest === null) return nothingToFix(input, ctx);
+  if (latest.kind === 'reading') return withinWindow(latest, ctx) ? sayWrong(input, ctx, latest) : nothingToFix(input, ctx);
   if (!asksStill(latest, ctx) || latest.promptKind === null) return nothingToFix(input, ctx);
   if (asksForNumber(latest.promptKind)) return repeatQuestion(input, ctx, latest);
   return isKnownKind(latest.promptKind) ? refuseHeld(input, ctx, latest) : nothingToFix(input, ctx);

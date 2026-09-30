@@ -374,7 +374,7 @@ describe('two numbers for one correction that both read the prompt before either
     await d1?.dispose();
   });
 
-  function depsFor(backing: Store, rules: ReadonlyMap<string, RuleRow> = RULES): ServerDeps {
+  function depsFor(backing: Store, rules: ReadonlyMap<string, RuleRow> = RULES, overrides: Partial<ServerDeps> = {}): ServerDeps {
     return {
       store: backing,
       clock: { now: () => AFTERNOON + 30 * SECOND_MS },
@@ -384,6 +384,7 @@ describe('two numbers for one correction that both read the prompt before either
       profile: DEMO_PROFILE,
       limits: STORE_LIMITS,
       rowsPerWrite: ROWS_PER_WRITE,
+      ...overrides,
     };
   }
 
@@ -494,6 +495,22 @@ describe('two numbers for one correction that both read the prompt before either
     });
     expect(JSON.stringify(result)).not.toMatch(/already corrected/);
     expect(appended.map((input) => input.event.kind)).toEqual(['reading', 'receipt']);
+  });
+
+  // A kitchen whose questions stay open longer than its correction window: the adapter's read must
+  // still find an open question older than the window.
+  it('refuses a held number said wrong after the window while a longer prompt expiry keeps its question open', async () => {
+    const screen = crypto.randomUUID();
+    const profile = { ...DEMO_PROFILE, promptExpirySeconds: 300 };
+    const at = (seconds: number) => depsFor(store, RULES, { profile, clock: { now: () => AFTERNOON + seconds * SECOND_MS } });
+    const held = await callThrough(at(0), { check_point: 'walk_in', value: 38, screen_id: screen, request_id: crypto.randomUUID() });
+    expect(promptOf(held).kind).toBe('who_is_logging');
+
+    const refused = await callThrough(at(200), { words: 'wrong number', screen_id: screen, request_id: crypto.randomUUID() });
+    const late = await callThrough(at(210), { initials: 'AB', pending_prompt_id: promptOf(held).id, screen_id: screen, request_id: crypto.randomUUID() });
+
+    expect(refused.structuredContent).toMatchObject({ outcome: 'refused', prompt: { kind: 'number' } });
+    expect(late.content[0]?.text).toMatch(/already answered/);
   });
 
   it('judges a correction by the rule snapshot of the line said wrong after the rule table changed', async () => {

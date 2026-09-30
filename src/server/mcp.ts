@@ -138,8 +138,10 @@ async function append(decision: Decided, hash: string, deps: ServerDeps, now: nu
   });
 }
 
-// A correction decides from the newest event this screen wrote inside the window, measured back from
-// the one clock read; any other call decides from the prompt it names.
+// A correction decides from the newest event this screen wrote, measured back from the one clock read
+// as far as the longer of the correction window and the prompt expiry: a line is corrected inside the
+// window, but a question stays correctable while it is open, and the domain holds each to its own
+// limit. Any other call decides from the prompt it names.
 async function decisionContext(args: LogReadingInput, deps: ServerDeps, now: number): Promise<DecisionContext> {
   const base = {
     now,
@@ -150,7 +152,8 @@ async function decisionContext(args: LogReadingInput, deps: ServerDeps, now: num
     profile: deps.profile,
   };
   if (saysCorrection(args.words, deps.profile)) {
-    const since = now - deps.profile.correctionWindowSeconds * SECOND_MS;
+    const reachSeconds = Math.max(deps.profile.correctionWindowSeconds, deps.profile.promptExpirySeconds);
+    const since = now - reachSeconds * SECOND_MS;
     return { ...base, latest: await deps.store.latestByScreen(deps.kitchen.id, args.screen_id, since) };
   }
   const promptId = args.pending_prompt_id;

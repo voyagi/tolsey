@@ -244,6 +244,16 @@ describe('decideCorrection', () => {
     });
   });
 
+  // The window bounds a line said wrong; a question is correctable for as long as it is open.
+  it('refuses a held number said wrong after the window while a longer prompt expiry keeps its question open', () => {
+    const longer = { ...profile, promptExpirySeconds: 300 };
+    const held = openPrompt({ id: 'hold-38', kind: 'held', valueTenths: 380, promptKind: 'who_is_logging', expiresAt: LOGGED_AT + 300_000 });
+
+    const decision = decideCorrection(wrongNumber(), ctxAt(LOGGED_AT + 200_000, { profile: longer }), held);
+
+    expect(decision).toMatchObject({ status: 'decided', event: { kind: 'refusal', answersId: 'hold-38' } });
+  });
+
   describe('nothing left to correct', () => {
     it('never supersedes a refusal', () => {
       expect(replyShape(correct(openPrompt({ kind: 'refusal', promptKind: 'number' })))).toEqual(NOTHING_TO_FIX_SHAPE);
