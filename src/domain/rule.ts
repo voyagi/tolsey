@@ -171,6 +171,10 @@ const ScheduleEntrySchema = z
 
 const ChecklistItemSchema = z.object({ id: IdSchema, text: z.string().min(1) }).strict();
 
+// A phrase is found as words inside what the cook said, so one holding no letter or digit would be
+// found in every call that says nothing, and silence would read as a correction or a hedge.
+const PhraseSchema = z.string().regex(/[a-z0-9]/i, 'a phrase holds at least one word or figure');
+
 const CoarseBandSchema = z
   .object({ lowF: z.number(), highF: z.number() })
   .strict()
@@ -200,7 +204,7 @@ export const KitchenProfileSchema = z
         nouns: z.array(z.string().min(1)),
         states: z.array(z.string().min(1)).min(1),
         // The phrases that say the number just logged was misheard (D-05).
-        corrections: z.array(z.string().min(1)).min(1),
+        corrections: z.array(PhraseSchema).min(1),
         // How a number said as a limit, a range or a guess is told from a reading (REFU-01).
         hedges: z
           .object({
@@ -213,7 +217,7 @@ export const KitchenProfileSchema = z
             decades: z.array(z.string().min(1)).min(1),
             tens: z.array(z.string().min(1)).min(1),
             ranges: z.array(z.string().min(1)).min(1),
-            phrases: z.array(z.string().min(1)).min(1),
+            phrases: z.array(PhraseSchema).min(1),
           })
           .strict()
           .refine((hedges) => hedges.limits.includes(hedges.below), {

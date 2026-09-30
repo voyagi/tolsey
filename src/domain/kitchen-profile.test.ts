@@ -11,6 +11,10 @@ const rules: ReadonlyMap<string, RuleRow> = new Map(table.rows.map((row) => [row
 const MINUTES_PER_HOUR = 60;
 const DEFAULT_GRACE_MINUTES = 10;
 const INVENTED_ROSTER = ['AB', 'MR', 'JT', 'KL'];
+const BLANK_PHRASE = '?!';
+const PHRASE_MESSAGE = 'a phrase holds at least one word or figure';
+
+type Vocabulary = typeof demoJson.vocabulary;
 
 const HOLDING = [
   { kind: 'hot', check: 'hot_holding', interval: 'hot_holding_check_interval' },
@@ -111,6 +115,18 @@ describe('the demo kitchen profile', () => {
     for (const point of withDefault) {
       expect(selectRule(point, point.defaultMeasured, profile, rules), point.id).toBeDefined();
     }
+  });
+
+  // A phrase is found as words inside what the cook said, so one that holds no word would be found in
+  // every call that says none, turning silence into a correction or a hedge: refused at load.
+  it.each<[string, (vocabulary: Vocabulary) => Vocabulary]>([
+    ['correction', (vocabulary) => ({ ...vocabulary, corrections: [...vocabulary.corrections, BLANK_PHRASE] })],
+    ['hedge', (vocabulary) => ({ ...vocabulary, hedges: { ...vocabulary.hedges, phrases: [...vocabulary.hedges.phrases, BLANK_PHRASE] } })],
+  ])('refuses a %s phrase that holds no word', (_, withBlank) => {
+    const parsed = KitchenProfileSchema.safeParse({ ...demoJson, vocabulary: withBlank(demoJson.vocabulary) });
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues.map((issue) => issue.message)).toEqual([PHRASE_MESSAGE]);
   });
 
   it('holds every check point the demo kitchen walks through', () => {
