@@ -1,0 +1,11 @@
+# Text is stored and checked out with LF on every platform, so a Windows checkout matches CI.
+* text=auto eol=lf
+
+# Binary assets are never normalized or diffed as text.
+*.png binary
+*.jpg binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
