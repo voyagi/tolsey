@@ -162,6 +162,35 @@ describe('decideLogReading with a pending prompt', () => {
     expect(decide(answer({ initials: 'MR' }), empty).result.structuredContent.outcome).toBe('refused');
   });
 
+  it('asks which check again, still holding the number, when an answer to which check names none', () => {
+    const whichCheck = prompt({ promptKind: 'which_check', checkPointId: null, measured: null, initials: 'AB' });
+    const resolved = resolvePrompt(whichCheck, answer({ initials: 'AB' }), ASKED_AT);
+    expect(resolved.kind === 'answer' && resolved.fill.checkPoint).toBeUndefined();
+    expect(decide(answer({ initials: 'AB' }), whichCheck).event).toMatchObject({
+      kind: 'held',
+      promptKind: 'which_check',
+      answersId: 'prompt-1',
+      checkPointId: null,
+      valueTenths: 380,
+    });
+  });
+
+  // Every decision that stores a number question names its check, so this case reaches the code only
+  // from a stored row; the missing check must still reach the fill as unset, never as null.
+  it('asks which check for the number answering a number question that names no check', () => {
+    const number = prompt({ promptKind: 'number', checkPointId: null, measured: null, valueTenths: null, initials: 'AB' });
+    const resolved = resolvePrompt(number, answer({ value: 38 }), ASKED_AT);
+    expect(resolved.kind === 'answer' && resolved.fill.checkPoint).toBeUndefined();
+    expect(decide(answer({ value: 38 }), number).event).toMatchObject({
+      kind: 'held',
+      promptKind: 'which_check',
+      answersId: 'prompt-1',
+      checkPointId: null,
+      initials: 'AB',
+      valueTenths: 380,
+    });
+  });
+
   it('answers an answered prompt with a receipt that answers nothing', () => {
     const { event, result } = decide(answer({ initials: 'MR' }), prompt({ answered: true }));
     expect(result.structuredContent.outcome).toBe('refused');

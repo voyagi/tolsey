@@ -1,8 +1,8 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { openTestD1, type TestD1 } from '../test-support/d1';
+import { dumpRecordTables, openTestD1, type TestD1 } from '../test-support/d1';
 import { byId, errorById, sendRaw, type RawResponse } from '../test-support/raw-mcp';
-import { createWorker, type WorkerEnv } from './worker';
+import productionWorker, { createWorker, type WorkerEnv } from './worker';
 
 const LISTED = 'localhost,127.0.0.1,tolsey.taranity.com';
 const JSON_AND_STREAM = 'application/json, text/event-stream';
@@ -33,6 +33,12 @@ function paddedToolsList(totalBytes: number): string {
   const shaped = (pad: string) =>
     JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: { _meta: { pad } } });
   return shaped('x'.repeat(totalBytes - shaped('').length));
+}
+
+// A kitchens body carrying only a label, padded with trailing spaces to exactly the given number of
+// bytes (ASCII only), so under the cap it is still a body the route mints from.
+function paddedKitchensBody(totalBytes: number): string {
+  return JSON.stringify({ label: 'conformance' }).padEnd(totalBytes, ' ');
 }
 
 function jsonBody(response: RawResponse): Record<string, unknown> {
@@ -104,6 +110,9 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
       ['a malformed IPv6 literal beside a good entry', 'localhost,[abc..def]'],
       ['an IPv6 literal not in its compressed form', 'localhost,[0:0:0:0:0:0:0:1]'],
       ['an IPv4 address in a short form', 'localhost,127.1'],
+      ['whitespace inside an entry', 'localhost,tolsey taranity.com'],
+      ['an IPv6 literal missing its closing bracket', 'localhost,[::1'],
+      ['an IPv6 literal without its brackets', 'localhost,::1'],
     ];
 
     it.each(MALFORMED)('answers /mcp with a named 503 and never throws when ALLOWED_HOSTNAMES is %s', async (_label, allowed) => {
@@ -127,6 +136,18 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
     it('names the form a Host header is compared in when an entry is written another way', async () => {
       const response = await send('/mcp', { allowed: 'localhost,[0:0:0:0:0:0:0:1]' });
       expect(jsonBody(response).message).toMatch(/give \[::1\]/);
+    });
+
+    // Without its own check the entry would fail the hostname label check, a 503 that names the
+    // wrong problem.
+    it('names whitespace inside an entry as its problem', async () => {
+      const response = await send('/mcp', { allowed: 'localhost,tolsey taranity.com' });
+      expect(jsonBody(response).message).toBe('ALLOWED_HOSTNAMES entry "tolsey taranity.com" holds whitespace');
+    });
+
+    it.each(['[::1', '[fe80::1%eth0]'])('names the entry %s, which opens a bracket, as no bracketed IPv6 literal', async (entry) => {
+      const response = await send('/mcp', { allowed: `localhost,${entry}` });
+      expect(jsonBody(response).message).toBe(`ALLOWED_HOSTNAMES entry "${entry}" is not a bracketed IPv6 literal`);
     });
 
     it('accepts a bracketed IPv6 literal and a Host of [::1] with a port', async () => {
@@ -206,6 +227,37 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
       expect(response.contentType).toMatch(/^application\/json/);
     });
 
+    // The answer must not differ, so the shape of a path tells a prober nothing about which ids exist.
+    it.each([
+      ['31 hex digits', UNKNOWN_KITCHEN.slice(1)],
+      ['33 hex digits', `${UNKNOWN_KITCHEN}0`],
+      ['uppercase hex digits', UNKNOWN_KITCHEN.toUpperCase()],
+      ['a character outside hex', `${UNKNOWN_KITCHEN.slice(1)}g`],
+      ['an extra path segment', `${UNKNOWN_KITCHEN}/extra`],
+      ['a trailing slash', `${UNKNOWN_KITCHEN}/`],
+    ])('answers a kitchen path with %s exactly as it answers an unknown well-formed id', async (_label, id) => {
+      const unknown = await send(`/mcp/k/${UNKNOWN_KITCHEN}`);
+      const malformed = await send(`/mcp/k/${id}`);
+      expect(unknown.status).toBe(404);
+      expect(malformed).toEqual(unknown);
+    });
+
+    it('stamps a kitchen minted through the default export with the wall clock', async () => {
+      const request = new Request('http://localhost/api/kitchens', {
+        method: 'POST',
+        headers: { host: 'localhost', 'content-type': 'application/json' },
+        body: '{}',
+      });
+      const before = Date.now();
+      const response = await productionWorker.fetch(request, envWith(LISTED));
+      const after = Date.now();
+      expect(response.status).toBe(201);
+      const { id } = (await response.json()) as { id: string };
+      const row = await d1.db.prepare('SELECT created_at FROM kitchens WHERE id = ?1').bind(id).first<{ created_at: number }>();
+      expect(row?.created_at).toBeGreaterThanOrEqual(before);
+      expect(row?.created_at).toBeLessThanOrEqual(after);
+    });
+
     it('hands GET / to the static assets', async () => {
       const response = await send('/', { method: 'GET' });
       expect(response.bodyText).toBe('asset');
@@ -249,6 +301,24 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
       const response = await send('/mcp', { body });
       expect(response.status).toBe(413);
       expect(response.contentType).toMatch(/^application\/json/);
+    });
+
+    it('mints from a kitchens body of exactly 64 KiB', async () => {
+      const body = paddedKitchensBody(BODY_CAP);
+      expect(new TextEncoder().encode(body).byteLength).toBe(BODY_CAP);
+      const response = await send('/api/kitchens', { body });
+      expect(response.status).toBe(201);
+    });
+
+    it('answers a kitchens body one byte over 64 KiB with 413 body_too_large and mints nothing', async () => {
+      const body = paddedKitchensBody(BODY_CAP + 1);
+      expect(new TextEncoder().encode(body).byteLength).toBe(BODY_CAP + 1);
+      const before = await dumpRecordTables(d1.db);
+      const response = await send('/api/kitchens', { body });
+      expect(response.status).toBe(413);
+      expect(response.contentType).toMatch(/^application\/json/);
+      expect(jsonBody(response)).toEqual({ error: 'body_too_large' });
+      expect(await dumpRecordTables(d1.db)).toBe(before);
     });
 
     it('answers a text/plain POST with 415', async () => {

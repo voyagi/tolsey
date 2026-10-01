@@ -82,4 +82,22 @@ describe('the log_reading fault path', () => {
     expect(logged).toBe(JSON.stringify([['[log_reading]', { name: 'Error', code: 'SQLITE_ERROR' }]]));
     expect(JSON.stringify(result)).not.toMatch(/walk-in|reads|AB|D1_ERROR/);
   });
+
+  // A fresh reading answers no prompt and supersedes no line, so an index conflict on its append
+  // breaks an invariant: it is answered as a fault and logged under a name an operator can find.
+  it.each(['supersedes', 'answers'] as const)(
+    'answers a fresh reading whose append trips the %s index with the fixed sentence and logs UnexpectedConflict only',
+    async (constraint) => {
+      const conflicting: Store = { ...faultingStore, append: async () => ({ status: 'conflict', constraint }) };
+      const { result, logged } = await callWithConsoleCaptured(conflicting);
+
+      expect(result).toMatchObject({
+        isError: true,
+        content: [{ type: 'text', text: 'Tolsey could not log that. Try again.' }],
+        _meta: { error: 'server_fault' },
+      });
+      expect(logged).toBe(JSON.stringify([['[log_reading]', { name: 'UnexpectedConflict' }]]));
+      expect(logged).not.toMatch(/walk-in|reads|AB|index/);
+    },
+  );
 });

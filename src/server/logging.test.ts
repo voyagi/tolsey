@@ -137,6 +137,40 @@ describe('what a fault leaves in the logs and the reply', () => {
     expect(errorCalls()).toContainEqual(['[log_reading]', { name: 'Error', code: 'STORE_DOWN' }]);
   });
 
+  // A thrown value that is no Error has no name to log, and its text is the very thing that may
+  // carry the words, so its type stands in for the name.
+  it('logs a thrown string by its type alone, with none of its text', async () => {
+    const thrown = `append failed on "${WORDS}" by ${INITIALS}`;
+    const { fetchWith } = workerFor(storeWith({ append: async () => { throw thrown; } }));
+    const result = await callWalkIn(fetchWith);
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toEqual([{ type: 'text', text: FIXED_SENTENCE }]);
+    expect(errorCalls()).toContainEqual(['[log_reading]', { name: 'string', code: undefined }]);
+    expectNameAndCodeOnly('[log_reading]');
+    expect(logged()).not.toContain(WORDS);
+    expect(logged()).not.toContain(INITIALS);
+    expect(logged()).not.toContain('failed on');
+  });
+
+  it('logs a thrown plain object by its type and its code, never its message', async () => {
+    const thrown = { code: 'STORE_DOWN', message: `findKitchen failed on "${WORDS}" by ${INITIALS}` };
+    const { fetchWith } = workerFor(storeWith({ findKitchen: async () => { throw thrown; } }));
+    const response = await sendRaw(
+      { url: new URL(`http://localhost/mcp/k/${KITCHEN_ID}`), fetch: fetchWith },
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+      },
+    );
+
+    expect(response.status).toBe(500);
+    expect(errorCalls()).toContainEqual(['[worker]', { name: 'object', code: 'STORE_DOWN' }]);
+    expect(logged()).not.toContain(WORDS);
+    expect(logged()).not.toContain('failed on');
+  });
+
   it('logs a text/plain POST through onerror as an object with only its name and code', async () => {
     const { fetchWith } = workerFor(storeWith({}));
     const response = await sendRaw(

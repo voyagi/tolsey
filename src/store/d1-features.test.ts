@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { countingD1 } from '../test-support/counting-d1';
 import { openTestD1, type TestD1 } from '../test-support/d1';
 import {
   appendInput,
@@ -60,6 +61,19 @@ class RowsMeter {
 
 const EVENT_KINDS: EventKind[] = ['reading', 'refusal', 'held', 'wrong_number', 'receipt'];
 const INDEX_SHAPES = ['none', 'supersedes', 'answers', 'both'] as const;
+const NO_ROWS = { changes: 0, rows_read: 0, rows_written: 0, last_row_id: 0 };
+
+// Local D1 always returns the follow-up read's one row, so only a stand-in can leave it empty: its
+// batch writes nothing and every read finds no row.
+function emptyD1(): D1Like {
+  const statement: D1StatementLike = {
+    bind: () => statement,
+    first: async () => null,
+    all: async () => ({ results: [], meta: NO_ROWS }),
+    run: async () => ({ results: [], meta: NO_ROWS }),
+  };
+  return { prepare: () => statement, batch: async (statements) => statements.map(() => ({ results: [], meta: NO_ROWS })) };
+}
 
 function expectStatus<Status extends AppendOutcome['status']>(
   outcome: AppendOutcome,
@@ -344,6 +358,38 @@ describe('what local D1 guarantees for the record', () => {
 
     const clash = testEvent(kitchenId, { id: first.id });
     await expect(store.append(appendInput(clash, limits))).rejects.toThrow(/UNIQUE constraint failed: events\.id/);
+  });
+
+  // An error naming no unique index is neither a repeat nor a conflict, so it leaves before any
+  // follow-up read.
+  it('rethrows a write the schema refuses, with no follow-up read and nothing written', async () => {
+    const kitchenId = await freshKitchen();
+    const counting = countingD1(d1.db);
+    const celsius = testEvent(kitchenId, { unit: 'C' as unknown as NewEvent['unit'] });
+
+    await expect(new D1Store(counting.db).append(appendInput(celsius, limits))).rejects.toThrow(/CHECK constraint failed/);
+    expect(counting.statements.map((statement) => statement.via)).toEqual(['batch', 'batch']);
+    expect(await countEvents(kitchenId)).toBe(0);
+  });
+
+  it.each([
+    ['a bare string', 'D1 went away'],
+    ['an Error naming no unique index', new Error('D1_ERROR: Network connection lost.')],
+  ])('rethrows %s from the batch unchanged, never reading it as a collision', async (_label, thrown) => {
+    const failing: D1Like = {
+      prepare: (query) => d1.db.prepare(query),
+      batch: async () => {
+        throw thrown;
+      },
+    };
+
+    await expect(new D1Store(failing).append(appendInput(testEvent('demo'), limits))).rejects.toBe(thrown);
+  });
+
+  it('throws a named error, never a TypeError, when the follow-up read after a refused write finds no row', async () => {
+    await expect(new D1Store(emptyD1()).append(appendInput(testEvent('demo'), limits))).rejects.toThrow(
+      /^the append follow-up read returned no row$/,
+    );
   });
 
   it('measures rows written per write kind equal to data/store/rows-per-write.json', async () => {

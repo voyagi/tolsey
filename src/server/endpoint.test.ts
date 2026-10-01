@@ -165,6 +165,19 @@ describe('POST /api/kitchens and the kitchen a visitor writes to', () => {
     expect(await dumpRecordTables(worker.db)).toBe(before);
   });
 
+  it.each([
+    ['a kind beside a valid label', { label: 'conformance', kind: 'demo' }],
+    ['an id beside a valid label', { label: 'capture', id: '0123456789abcdef0123456789abcdef' }],
+    ['a creation time and no label', { createdAt: 0 }],
+  ])('answers a kitchens body carrying %s with 400 invalid_body and mints nothing', async (_label, body) => {
+    const before = await dumpRecordTables(worker.db);
+    const response = await post('/api/kitchens', JSON.stringify(body));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'invalid_body' });
+    expect(await dumpRecordTables(worker.db)).toBe(before);
+  });
+
   it('answers GET /api/kitchens with 405 method_not_allowed', async () => {
     const response = await worker.fetch(new URL('/api/kitchens', worker.baseUrl));
     expect(response.status).toBe(405);

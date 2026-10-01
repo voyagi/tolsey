@@ -109,6 +109,16 @@ describe.each(LEGS)('the store contract on $name', (leg) => {
       expect(await store.createKitchen(kitchenInput(row, limits, { dailyRowCap: 10 }))).toEqual({ status: 'refused', reason: 'budget_full' });
       expect(await store.findKitchen(row.id)).toBeNull();
     });
+
+    it('refuses a second kitchen under an id already taken and keeps the first as created', async () => {
+      const row = scratchKitchen();
+      expect(await store.createKitchen(kitchenInput(row, limits))).toEqual({ status: 'created' });
+
+      await expect(store.createKitchen(kitchenInput({ ...row, label: 'capture' }, limits))).rejects.toThrow(
+        /UNIQUE constraint failed: kitchens\.id/,
+      );
+      expect(await store.findKitchen(row.id)).toEqual(row);
+    });
   });
 
   describe('lines and record codes', () => {
@@ -327,6 +337,32 @@ describe.each(LEGS)('the store contract on $name', (leg) => {
       await appended(second);
 
       expect((await store.pendingPrompt(kitchenId, second.id))?.repeats).toBe(1);
+    });
+
+    // A first hold names no chain head in ref_id, so its misses are counted against its own id: never
+    // against every hold that names none, which would count itself and the first hold of any other chain.
+    it("counts no misses on a chain's first digit-repeat hold, whatever holds other chains have opened", async () => {
+      const kitchenId = await kitchen();
+      const first = prompt(kitchenId, { promptKind: 'digit_repeat', valueTenths: 150 });
+      await appended(first);
+      await appended(prompt(kitchenId, { promptKind: 'digit_repeat', valueTenths: 510, checkPointId: 'reach_in_1' }));
+
+      expect(await store.pendingPrompt(kitchenId, first.id)).toMatchObject({ id: first.id, refId: null, repeats: 0 });
+    });
+
+    it('gives a question no supersede target when the line it says wrong belongs to another kitchen', async () => {
+      const kitchenId = await kitchen();
+      const foreign = testEvent(await kitchen());
+      await appended(foreign);
+      const own = testEvent(kitchenId);
+      await appended(own);
+      const saidForeign = prompt(kitchenId, { kind: 'wrong_number', promptKind: 'number_after_wrong', refId: foreign.id, valueTenths: null });
+      await appended(saidForeign);
+      const saidOwn = prompt(kitchenId, { kind: 'wrong_number', promptKind: 'number_after_wrong', refId: own.id, valueTenths: null });
+      await appended(saidOwn);
+
+      expect((await store.pendingPrompt(kitchenId, saidForeign.id))?.supersedes).toBeNull();
+      expect((await store.pendingPrompt(kitchenId, saidOwn.id))?.supersedes).toMatchObject({ lineId: own.id, rootId: own.id });
     });
 
     it("gives every prompt of a correction's chain the line said wrong as its supersede target", async () => {
