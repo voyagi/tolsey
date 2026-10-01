@@ -270,6 +270,21 @@ describe('decideCorrection', () => {
       expect(replyShape(correct(openPrompt({ kind: 'refusal', promptKind: 'number' })))).toEqual(NOTHING_TO_FIX_SHAPE);
     });
 
+    it.each(['number_after_wrong', 'digit_repeat', 'who_is_logging'])(
+      'never reads a refusal as an open question, even one storing a %s prompt',
+      (promptKind) => {
+        expect(replyShape(correct(openPrompt({ kind: 'refusal', promptKind })))).toEqual(NOTHING_TO_FIX_SHAPE);
+      },
+    );
+
+    // A null expiry compares as 0, so only a clock before 1970 tells a stored null from an expiry long past.
+    it('never reads a hold that stores no expiry as an open question, whatever the clock reads', () => {
+      const held = openPrompt({ id: 'hold-15', kind: 'held', valueTenths: 150, promptKind: 'digit_repeat', expiresAt: null });
+      for (const now of [LOGGED_AT + 30_000, -1]) {
+        expect(replyShape(correct(held, now))).toEqual(NOTHING_TO_FIX_SHAPE);
+      }
+    });
+
     it('answers a hold whose question a "Log it by hand" receipt answered', () => {
       expect(replyShape(correct(openPrompt({ kind: 'held', promptKind: 'digit_repeat', answered: true })))).toEqual(NOTHING_TO_FIX_SHAPE);
     });
@@ -392,5 +407,20 @@ describe('a correction through decideLogReading', () => {
 
     expect(judged.result.structuredContent).toMatchObject({ outcome: 'in_range', supersedesLineId: 'line-45' });
     expect(renamed).toThrow();
+  });
+
+  it("logs a correction's number under the rules version of the line it corrects", () => {
+    const row = table.rows.find((candidate) => candidate.id === 'unit_air_cold');
+    if (row?.kind !== 'temperature') throw new Error('unit_air_cold is not a temperature row');
+    const open: PendingPrompt = {
+      ...answeredCorrectionPrompt(),
+      answered: false,
+      supersedes: { lineId: 'line-45', rootId: 'line-45', ruleSnapshot: JSON.stringify(row), rulesVersion: '2026-09-01.1', superseded: false },
+    };
+
+    const decision = decide({ value: 40, screen_id: 'wall', request_id: 'request-3', pending_prompt_id: 'prompt-1' }, { prompt: open });
+
+    expect(table.rulesVersion).not.toBe('2026-09-01.1');
+    expect(decision.event).toMatchObject({ kind: 'reading', supersedesId: 'line-45', ruleId: 'unit_air_cold', rulesVersion: '2026-09-01.1' });
   });
 });

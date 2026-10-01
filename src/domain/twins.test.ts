@@ -96,4 +96,9 @@ describe('needsDigitRepeat', () => {
   it.each([380, 390, 400, 450])('judges %d tenths at the walk-in without a repeat', (tenths) => {
     expect(needsDigitRepeat(tenths, coldHolding, coldBand)).toBe(false);
   });
+
+  it('judges a reading on either edge of the cold band without a repeat', () => {
+    expect(needsDigitRepeat(coldBand.lowF * TENTHS, coldHolding, coldBand)).toBe(false);
+    expect(needsDigitRepeat(coldBand.highF * TENTHS, coldHolding, coldBand)).toBe(false);
+  });
 });

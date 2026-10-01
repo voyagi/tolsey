@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import demoJson from '../../data/kitchens/demo.json';
 import { PROBE_DAY_START, PROBE_ZONE, Q4_INSTANTS } from '../test-support/q4-instants';
-import { businessDay, kitchenSettings, lineTimeLabel, localParts, recordCode, validateDayStart } from './business-day';
+import { businessDay, isKnownTimeZone, kitchenSettings, lineTimeLabel, localParts, recordCode, validateDayStart } from './business-day';
 import { KitchenProfileSchema } from './rule';
 
 const at = (iso: string) => Date.parse(iso);
@@ -23,6 +23,12 @@ describe('the business day', () => {
     expect(dayAt('2026-11-01T07:30:00Z')).toBe('2026-10-31');
   });
 
+  it('counts the minutes past the hour of both the reading and the day start', () => {
+    expect(dayAt('2026-10-21T09:30:00Z')).toBe('2026-10-21');
+    expect(businessDay(at('2026-10-21T10:29:00Z'), PROBE_ZONE, '05:30')).toBe('2026-10-20');
+    expect(businessDay(at('2026-10-21T10:30:00Z'), PROBE_ZONE, '05:30')).toBe('2026-10-21');
+  });
+
   it.each(Q4_INSTANTS)('reads $iso as its documented Chicago wall clock', (instant) => {
     const { iso: _iso, ...expected } = instant;
     const { year: _year, ...parts } = localParts(at(instant.iso), PROBE_ZONE);
@@ -39,11 +45,11 @@ describe('the day start', () => {
     expect(validateDayStart(clock)).toBe(false);
   });
 
-  it.each(['00:59', '03:00', '04:00'])('accepts %s', (clock) => {
+  it.each(['00:59', '03:00', '03:30', '04:00'])('accepts %s', (clock) => {
     expect(validateDayStart(clock)).toBe(true);
   });
 
-  it.each(['4:00', '24:00', '12:60', '', 'noon'])('refuses the malformed day start %j', (clock) => {
+  it.each(['4:00', '24:00', '12:60', '', 'noon', '104:00', ' 04:00', '04:000', '04:00 '])('refuses the malformed day start %j', (clock) => {
     expect(validateDayStart(clock)).toBe(false);
   });
 
@@ -70,6 +76,11 @@ describe('the time zone', () => {
 
   it('throws for kitchen settings naming an unknown zone', () => {
     expect(() => kitchenSettings({ timeZone: 'America/Chicagoo' })).toThrow(/time zone/);
+  });
+
+  it('answers false for a zone Intl does not know and true for one it does', () => {
+    expect(isKnownTimeZone('America/Chicagoo')).toBe(false);
+    expect(isKnownTimeZone(PROBE_ZONE)).toBe(true);
   });
 
   it.each(['Europe/Amsterdam', 'UTC'])('accepts a kitchen in the real zone %s', (timeZone) => {
@@ -101,5 +112,9 @@ describe('the record code', () => {
   it('writes the business day as YYMMDD and the line number in three digits', () => {
     expect(recordCode('2026-10-20', 14)).toBe('261020-014');
     expect(recordCode('2026-01-05', 1)).toBe('260105-001');
+  });
+
+  it.each(['12026-10-20', '2026-10-201', '2026-10-20T04:00'])('refuses to write a code for the day %j', (day) => {
+    expect(() => recordCode(day, 1)).toThrow(RangeError);
   });
 });

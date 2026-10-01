@@ -1,5 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import demoJson from '../../data/kitchens/demo.json';
 import rulesJson from '../../data/rules/food-code-2022.json';
 import { describeSource } from './citation';
@@ -458,6 +459,30 @@ describe('RuleTableSchema', () => {
     const tightening = { ...durationRow, source: { ...durationRow.source, tightens: 'reheat_time' } };
     expect(refusal([tightening])).toContain('check_interval tightens reheat_time, which the table lacks');
   });
+
+  it('places the shared id refusal on the rows list', () => {
+    const parsed = RuleTableSchema.safeParse({ ...base, rows: [durationRow, { ...durationRow, minutes: 30 }] });
+    const shared = parsed.error?.issues.find((issue) => issue.message === 'two rows share an id');
+    expect(shared?.path).toEqual(['rows']);
+  });
+
+  it('accepts a house rule supporting two Code sections and refuses one supporting none', () => {
+    const supporting = (supports: string[]) => ({ ...durationRow, source: { ...durationRow.source, supports } });
+    expect(refusal([supporting(['3-501.16', '3-501.11'])])).toEqual([]);
+    expect(RuleTableSchema.safeParse({ ...base, rows: [supporting([])] }).success).toBe(false);
+  });
+
+  it('accepts an observation row passing two listed states and refuses one passing none', () => {
+    const states = ['frozen solid', 'frozen hard', 'thawed or soft'];
+    expect(refusal([{ ...observationRow, states, passingStates: ['frozen solid', 'frozen hard'] }])).toEqual([]);
+    expect(RuleTableSchema.safeParse({ ...base, rows: [{ ...observationRow, passingStates: [] }] }).success).toBe(false);
+  });
+
+  it('refuses an observation row passing a listed state beside one it does not list', () => {
+    expect(refusal([{ ...observationRow, passingStates: ['frozen solid', 'frozen hard'] }])).toContain(
+      'frozen_check passes a state it does not list',
+    );
+  });
 });
 
 // A fault log keeps only an error's name and code, so the code must say it was a stored rule copy
@@ -476,6 +501,25 @@ describe('temperatureRowFrom', () => {
     expect(codeOf(JSON.stringify(temperatureRow('cold_holding')))).toBe('read');
     expect(codeOf('not json')).toBe('rule_snapshot_unreadable');
     expect(codeOf(JSON.stringify({ ...temperatureRow('cold_holding'), limitFTenths: undefined, limitF: 41 }))).toBe('rule_snapshot_unreadable');
+  });
+
+  function errorOf(copy: string): Error {
+    try {
+      temperatureRowFrom(copy);
+    } catch (error) {
+      if (error instanceof Error) return error;
+    }
+    throw new Error('the copy was read without an error');
+  }
+
+  it('says what was unreadable in its message and keeps the failure that made it so as the cause', () => {
+    const notJson = errorOf('not json');
+    const otherShape = errorOf(JSON.stringify({ ...temperatureRow('cold_holding'), kind: 'duration' }));
+    for (const error of [notJson, otherShape]) {
+      expect(error.message).toBe('a stored rule copy no longer reads as a temperature row');
+    }
+    expect(notJson.cause).toBeInstanceOf(SyntaxError);
+    expect(otherShape.cause).toBeInstanceOf(z.ZodError);
   });
 });
 
@@ -511,6 +555,7 @@ describe('describeSource', () => {
     ['reheat_time', 'Food Code 2022 3-403.11(D), 120 minutes'],
     ['frozen_storage', 'Food Code 2022 3-501.11, frozen solid'],
     ['hot_holding', 'Food Code 2022 3-501.16(A)(1), 135°F or above'],
+    ['cooling_stage_1', 'Food Code 2022 3-501.14(A)(1), 70°F or less'],
   ])('shows a house rule tightening %s beside that Code figure', (tightens, codeFigure) => {
     const tighter: RuleRow = {
       kind: 'duration',
@@ -521,6 +566,28 @@ describe('describeSource', () => {
     };
     const withTighter: RuleTable = { ...table, rows: [...table.rows, tighter] };
     expect(describeSource(tighter, withTighter)).toBe(`house rule: this kitchen acts sooner, stricter than ${codeFigure}`);
+  });
+
+  it('joins the passing states of a tightened observation row with "or"', () => {
+    const storage = rowById('frozen_storage');
+    if (storage?.kind !== 'observation') throw new Error('frozen_storage is not an observation row');
+    const twoPassing: RuleRow = {
+      ...storage,
+      id: 'frozen_storage_hard',
+      states: ['frozen solid', 'frozen hard', 'thawed or soft'],
+      passingStates: ['frozen solid', 'frozen hard'],
+    };
+    const tighter: RuleRow = {
+      kind: 'duration',
+      id: 'house_tighter',
+      minutes: 30,
+      times: 'the kitchen acts sooner',
+      source: { kind: 'house_rule', reason: 'this kitchen acts sooner', tightens: 'frozen_storage_hard' },
+    };
+    const withBoth: RuleTable = { ...table, rows: [...table.rows, twoPassing, tighter] };
+    expect(describeSource(tighter, withBoth)).toBe(
+      'house rule: this kitchen acts sooner, stricter than Food Code 2022 3-501.11, frozen solid or frozen hard',
+    );
   });
 
   it.each(['hot_holding_fix_deadline', 'cold_holding_fix_deadline'])(

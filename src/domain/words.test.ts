@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import demoJson from '../../data/kitchens/demo.json';
 import { KitchenProfileSchema } from './rule';
-import { answerNumberWords, classifyNumberWords, rebuildWords, tokensOf } from './words';
+import { answerNumberWords, classifyNumberWords, rebuildWords, saysCorrection, tokensOf } from './words';
 
 const profile = KitchenProfileSchema.parse(demoJson);
 const walkIn = profile.checkPoints.find((point) => point.id === 'walk_in');
@@ -56,6 +56,8 @@ describe('classifyNumberWords', () => {
     '38ish',
     '38-ish',
     'forty-ish',
+    '38.5ish',
+    '38.25ish',
   ])('classifies "%s" as a hedge', (words) => {
     expect(classify(words)).toEqual({ kind: 'hedge' });
   });
@@ -86,6 +88,10 @@ describe('classifyNumberWords', () => {
 
   it('reads a sign word before a number said in words as below zero, of the magnitude the value gives', () => {
     expect(classify('the freezer reads minus five')).toEqual({ kind: 'negative', magnitude: undefined });
+  });
+
+  it.each(['0 below', 'minus 0', 'the freezer reads -0'])('reads "%s" as a plain zero, since zero takes no sign', (words) => {
+    expect(classify(words)).toEqual({ kind: 'plain' });
   });
 
   it('classifies a sign word standing apart from the figure said as a hedge', () => {
@@ -122,6 +128,16 @@ describe('classifyNumberWords', () => {
       expect(classify(words)).toEqual({ kind: 'hedge' });
     },
   );
+
+  it.each(['here', 'was', 'there'])('finds the one-word hedge phrase "%s" only in a call that says it', (phrase) => {
+    const { hedges } = demoJson.vocabulary;
+    const withPhrase = KitchenProfileSchema.parse({
+      ...demoJson,
+      vocabulary: { ...demoJson.vocabulary, hedges: { ...hedges, phrases: [...hedges.phrases, phrase] } },
+    });
+    expect(classifyNumberWords(tokensOf('the walk-in reads 38'), withPhrase)).toEqual({ kind: 'plain' });
+    expect(classifyNumberWords(tokensOf(`the walk-in reads 38 ${phrase}`), withPhrase)).toEqual({ kind: 'hedge' });
+  });
 });
 
 // Written to break the classifier: the shapes a host's transcript can take that the cases above do
@@ -155,6 +171,7 @@ describe('classifyNumberWords against transcript shapes', () => {
   it.each([
     ['the walk-in reads thirty eight', 'one figure in words'],
     ['delivery came in to thirty eight', 'a range word with no figure before it'],
+    ['log 38 to the walk-in', 'a range word with no figure after it'],
     ['the reach-in one reads forty', 'a number word inside a check point name'],
     ['the low boy reads 38', 'a decade word before a word, not a figure'],
   ])('classifies "%s" (%s) as plain', (words) => {
@@ -259,5 +276,22 @@ describe('rebuildWords on a refused line', () => {
   it('counts a digit a name also holds as a figure outside that name, and keeps the name whole', () => {
     expect(rebuildWords('1 2 1 1 2 2 1 2 1 2', profile, undefined, walkIn)).toBe('1 2');
     expect(rebuildWords('the reach-in 2 is 38 or 39', profile, undefined, walkIn)).toBe('the reach-in 2 is 38 or 39');
+  });
+});
+
+describe('tokensOf', () => {
+  it('leaves no empty token where punctuation opens or closes the words', () => {
+    expect(tokensOf('Walk-in: 38!')).toEqual(['walk-in', '38']);
+    expect(tokensOf('?!')).toEqual([]);
+  });
+
+  it('trims every dot at the end of a token and keeps the decimal point inside it', () => {
+    expect(tokensOf('the walk-in reads 38.5...')).toEqual(['the', 'walk-in', 'reads', '38.5']);
+  });
+});
+
+describe('saysCorrection', () => {
+  it('finds a correction phrase across a pause written as dots', () => {
+    expect(saysCorrection('wrong ... number', profile)).toBe(true);
   });
 });

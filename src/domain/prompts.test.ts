@@ -155,6 +155,13 @@ describe('decideLogReading with a pending prompt', () => {
     expect(event).toMatchObject({ kind: 'held', answersId: 'hold-2', refId: 'hold-1', valueTenths: 160 });
   });
 
+  it('refuses an answer to a question that holds no number, never logging it as zero', () => {
+    const empty = prompt({ valueTenths: null });
+    const resolved = resolvePrompt(empty, answer({ initials: 'MR' }), ASKED_AT);
+    expect(resolved.kind === 'answer' && resolved.fill.value).toBeUndefined();
+    expect(decide(answer({ initials: 'MR' }), empty).result.structuredContent.outcome).toBe('refused');
+  });
+
   it('answers an answered prompt with a receipt that answers nothing', () => {
     const { event, result } = decide(answer({ initials: 'MR' }), prompt({ answered: true }));
     expect(result.structuredContent.outcome).toBe('refused');

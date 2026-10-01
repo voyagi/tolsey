@@ -4,7 +4,7 @@ import demoJson from '../../data/kitchens/demo.json';
 import rulesJson from '../../data/rules/food-code-2022.json';
 import { LogReadingInputSchema, LogReadingOutputSchema, type LogReadingInput } from '../contract/log-reading';
 import { kitchenSettings } from './business-day';
-import { decideLogReading, type DecisionContext } from './log-reading';
+import { alreadyAnswered, decideLogReading, spokenReadback, type DecisionContext } from './log-reading';
 import { KitchenProfileSchema, RuleTableSchema } from './rule';
 
 const table = RuleTableSchema.parse(rulesJson);
@@ -68,6 +68,16 @@ describe('the read-back and the structured result', () => {
   });
 });
 
+describe('spokenReadback', () => {
+  it('speaks only the parts a result carries', () => {
+    const { structuredContent } = spokenPair(walkIn());
+    const { checkPoint: _checkPoint, initials: _initials, ...unnamed } = structuredContent;
+    const { value: _value, ...valueless } = structuredContent;
+    expect(spokenReadback(unnamed)).toBe('38, in range');
+    expect(spokenReadback(valueless)).toBe('Walk-in, in range, AB');
+  });
+});
+
 describe('the rule a reading is judged against', () => {
   it('judges the walk-in air by the house rule, with limit 41 and no Code section', () => {
     const { rule } = spokenPair(walkIn()).structuredContent;
@@ -128,6 +138,38 @@ describe('the number judged and the number read back', () => {
         expect(LogReadingOutputSchema.safeParse(stored).success).toBe(true);
       }),
     );
+  });
+});
+
+describe('the sign the words give a value', () => {
+  it('stores a zero said with a sign word as zero, never as negative zero', () => {
+    const { event, result } = decided(walkIn({ check_point: 'freezer', value: 0, words: 'the freezer reads minus zero' }));
+    expect(event.valueTenths).toBe(0);
+    expect(result.structuredContent.value).toBe(0);
+  });
+
+  it('refuses a value beside sign words that name another figure', () => {
+    const { result } = decided(walkIn({ check_point: 'freezer', value: 7, words: 'the freezer reads 5 below' }));
+    expect(result.structuredContent.outcome).toBe('refused');
+  });
+});
+
+describe('a check given with no number', () => {
+  it('is refused under the one id it draws', () => {
+    let drawn = 0;
+    const counting: DecisionContext = { ...ctx, newId: () => `id-${++drawn}` };
+    const decision = decideLogReading(walkIn({ value: undefined, words: 'the walk-in is fine' }), counting);
+    expect(decision).toMatchObject({ status: 'decided', event: { kind: 'refusal', id: 'id-1' } });
+    expect(drawn).toBe(1);
+  });
+});
+
+describe('alreadyAnswered', () => {
+  it('answers a call whose question could not be read back, naming no check when the call names none', () => {
+    const decision = alreadyAnswered({ initials: 'mr', screen_id: 'wall', request_id: 'request-2' }, ctx, null);
+    expect(decision.result.content[0].text).toBe('That question was already answered. Say the check and its number again.');
+    expect(decision.result.structuredContent).not.toHaveProperty('checkPoint');
+    expect(decision.event).toMatchObject({ kind: 'receipt', checkPointId: null, initials: 'MR', answersId: null });
   });
 });
 

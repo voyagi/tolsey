@@ -15,6 +15,8 @@ const DEFAULT_GRACE_MINUTES = 10;
 const INVENTED_ROSTER = ['AB', 'MR', 'JT', 'KL'];
 const BLANK_PHRASE = '?!';
 const PHRASE_MESSAGE = 'a phrase holds at least one word or figure';
+const BAND_MESSAGE = 'a coarse band runs from low to high';
+const BELOW_MESSAGE = 'the word that makes a negative ("5 below") is also a limit word ("below 5")';
 
 type Vocabulary = typeof demoJson.vocabulary;
 
@@ -91,6 +93,24 @@ describe('the demo kitchen profile', () => {
     const freezer = profile.coarseBands.freezer;
     expect(freezer.lowF).toBeLessThanOrEqual(-5);
     expect(freezer.highF).toBeGreaterThanOrEqual(-5);
+  });
+
+  it.each([
+    ['runs from high to low', { lowF: 60, highF: 20 }],
+    ['has no width', { lowF: 30, highF: 30 }],
+  ])('refuses a coarse band that %s', (_, band) => {
+    const parsed = KitchenProfileSchema.safeParse({ ...demoJson, coarseBands: { ...demoJson.coarseBands, cold: band } });
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues.map((issue) => issue.message)).toEqual([BAND_MESSAGE]);
+  });
+
+  it('refuses hedges whose below word is not also a limit word', () => {
+    const hedges = { ...demoJson.vocabulary.hedges, below: 'beneath' };
+    const parsed = KitchenProfileSchema.safeParse({ ...demoJson, vocabulary: { ...demoJson.vocabulary, hedges } });
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues.map((issue) => issue.message)).toEqual([BELOW_MESSAGE]);
   });
 
   it('names only rules the table holds', () => {
