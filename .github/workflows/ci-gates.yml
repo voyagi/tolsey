@@ -22,6 +22,7 @@ jobs:
     # Pinned rather than ubuntu-latest, which moves to Ubuntu 26.04 from 2026-10-19 (rollout ends
     # 2026-11-19): the OS version changes only by an edit here, never under a release in flight.
     # The pin does not freeze the image's installed tools, which GitHub still updates weekly.
+    # Dates: https://github.blog/changelog/2026-09-17-ubuntu-26-generally-available-and-latest-migration/
     runs-on: ubuntu-24.04
     steps:
       # SHA-pinned: a tag is
