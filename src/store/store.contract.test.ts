@@ -552,7 +552,9 @@ describe('one event log through both stores', () => {
     };
   }
 
-  it('reads back the same outcomes, lines, open checks, prompts, newest event and stored calls', async () => {
+  // This test starts its own local D1 inside its body, which the default 5 s test timeout also has to
+  // cover: under coverage it was measured at 5013 ms once, so it gets the time a setup hook would.
+  it('reads back the same outcomes, lines, open checks, prompts, newest event and stored calls', { timeout: 20_000 }, async () => {
     const d1 = await openTestD1();
     try {
       const fromMemory = await transcript(new MemoryStore());

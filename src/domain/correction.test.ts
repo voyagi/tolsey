@@ -298,6 +298,9 @@ describe('decideCorrection', () => {
       expect(replyShape(correct(openPrompt({ kind: 'held', promptKind: 'toString' })))).toEqual(NOTHING_TO_FIX_SHAPE);
       expect(replyShape(correct(openPrompt({ kind: 'held', checkPointId: null, promptKind: 'digit_repeat' })))).toEqual(NOTHING_TO_FIX_SHAPE);
       expect(replyShape(correct(openPrompt({ kind: 'held', promptKind: null, expiresAt: null })))).toEqual(NOTHING_TO_FIX_SHAPE);
+      // Only a refusal asks for the number, so a hold storing that question comes from a stored row
+      // alone, and the number it asks for is not one this code asks again.
+      expect(replyShape(correct(openPrompt({ kind: 'held', promptKind: 'number' })))).toEqual(NOTHING_TO_FIX_SHAPE);
     });
   });
 });
