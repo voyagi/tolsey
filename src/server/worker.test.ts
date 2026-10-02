@@ -150,6 +150,20 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
       expect(jsonBody(response).message).toBe(`ALLOWED_HOSTNAMES entry "${entry}" is not a bracketed IPv6 literal`);
     });
 
+    // Each shape would otherwise get advice for a different shape: an address's colons read as a
+    // port, a bracketed address with a port read as a broken address, a trailing dot read as non-ASCII.
+    it.each([
+      ['localhost:8787', 'holds a port: give the hostname without it'],
+      ['::1', 'is an IPv6 literal without its brackets: give [::1]'],
+      ['0:0:0:0:0:0:0:1', 'is an IPv6 literal without its brackets: give [::1]'],
+      ['fe80::1%eth0', 'is not an address a Host header can carry'],
+      ['[::1]:8787', 'holds a port: give the hostname without it'],
+      ['tolsey.taranity.com.', 'ends in a dot: give the hostname without it'],
+    ])('names the problem with the entry %s', async (entry, problem) => {
+      const response = await send('/mcp', { allowed: `localhost,${entry}` });
+      expect(jsonBody(response).message).toBe(`ALLOWED_HOSTNAMES entry "${entry}" ${problem}`);
+    });
+
     it('accepts a bracketed IPv6 literal and a Host of [::1] with a port', async () => {
       const response = await send('/mcp', { allowed: '[::1],localhost', host: '[::1]:8787' });
       expect(byId(response, 1)).toMatchObject({ protocolVersion: '2025-11-25' });
