@@ -84,6 +84,13 @@ function readReport(path, vitestCode, stderr) {
   return { report };
 }
 
+// The first line of a failure is what tells a timed-out database start from a wrong answer: without
+// it, a run that failed under load reads exactly like a broken build.
+function causeOf(messages) {
+  const line = String((messages ?? [])[0] ?? '').split(/\r?\n/)[0].trim();
+  return line ? ` (${line.slice(0, 200)})` : '';
+}
+
 // Any sign of failure ends the gate before a count is compared, so enough passing tests elsewhere
 // can never outvote a failed one.
 function failedRunFindings(cwd, report, vitestCode) {
@@ -95,7 +102,7 @@ function failedRunFindings(cwd, report, vitestCode) {
     const name = relName(cwd, String(file.name));
     if (file.status === 'failed') findings.push(`${name}: failed${file.message ? `: ${file.message}` : ''}`);
     for (const t of file.assertionResults ?? []) {
-      if (t.status === 'failed') findings.push(`${name}: failed test: ${t.fullName}`);
+      if (t.status === 'failed') findings.push(`${name}: failed test: ${t.fullName}${causeOf(t.failureMessages)}`);
     }
   }
   return findings;
@@ -300,6 +307,13 @@ function selftest() {
       fixture: report(passing(root, { domain: file(root, 'src/domain/a.test.ts', [test('judges a reading'), test('judges 41.4 as out of range', 'failed')]) })),
       args: ['--floor', '1'], stubExit: 1,
     }), 1, /src\/domain\/a\.test\.ts: failed test: judges 41\.4 as out of range/);
+
+    root = makeRoot();
+    const timedOut = { ...test('stores a line', 'failed'), failureMessages: ['Error: Hook timed out in 10000ms.\n    at a stack line'] };
+    check('a failed test is named with the first line of its failure, so a timeout reads as one', runCli(root, {
+      fixture: report(passing(root, { store: file(root, 'src/store/b.test.ts', [timedOut]) })),
+      args: ['--floor', '1'], stubExit: 1,
+    }), 1, /src\/store\/b\.test\.ts: failed test: stores a line \(Error: Hook timed out in 10000ms\.\)\n/);
 
     root = makeRoot();
     check('a file that failed to collect, with a message and no tests, exits 1 naming the file and its message', runCli(root, {
