@@ -65,16 +65,19 @@ function correct(latest: ScreenEvent | null, now = LOGGED_AT + 30_000, input = w
   return decision;
 }
 
-// What a nothing_to_fix answer is made of: its reply and a receipt that points at nothing.
+// What a nothing_to_fix answer is made of: its reply, the verdict the host reads, and a receipt that
+// points at nothing.
 function replyShape(decision: Decided) {
   const { kind, refId, answersId, supersedesId, valueTenths } = decision.event;
   const { text } = decision.result.content[0];
-  return { text, outcome: decision.result.structuredContent.outcome, kind, refId, answersId, supersedesId, valueTenths };
+  const { outcome, verdict } = decision.result.structuredContent;
+  return { text, outcome, verdict, kind, refId, answersId, supersedesId, valueTenths };
 }
 
 const NOTHING_TO_FIX_SHAPE = {
   text: NOTHING_TO_FIX,
   outcome: 'nothing_to_fix',
+  verdict: 'nothing to fix',
   kind: 'receipt',
   refId: null,
   answersId: null,
