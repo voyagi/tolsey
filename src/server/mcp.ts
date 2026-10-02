@@ -76,8 +76,8 @@ const REFUSAL_TEXT: Record<RefusalReason, string> = {
 };
 
 // The text is what the host's model reads; the machine code rides in _meta for code.
-function errorResult(text: string, code?: string): CallToolResult {
-  return { content: [{ type: 'text', text }], isError: true, ...(code ? { _meta: { error: code } } : {}) };
+function errorResult(text: string, code: string): CallToolResult {
+  return { content: [{ type: 'text', text }], isError: true, _meta: { error: code } };
 }
 
 function hex(bytes: ArrayBuffer): string {
