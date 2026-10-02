@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // mutate-incremental.mjs - `npm run mutate`: Stryker's incremental mode, cleared whenever any input
-// has changed since the last successful run.
+// has changed since the last successful run, and run at below-normal CPU priority.
 //
-// WHY. Stryker runs this repo's tests through its command runner, which reports the whole command
-// as one aggregate test (command-test-runner.js in @stryker-mutator/core 10). Its incremental mode
-// can then detect changed mutants only, never a changed test (Stryker's incremental docs,
-// "Limitations"), so a Killed result would outlive the test, fixture, rule row or config that
+// WHY THE CLEARING. Stryker runs this repo's tests through its command runner, which reports the
+// whole command as one aggregate test (command-test-runner.js in @stryker-mutator/core 10). Its
+// incremental mode can then detect changed mutants only, never a changed test (Stryker's incremental
+// docs, "Limitations"), so a Killed result would outlive the test, fixture, rule row or config that
 // killed it. The mutated source counts too: Stryker re-tests only the mutants whose own code
 // changed, so after a change to words.ts a mutant in log-reading.ts whose kill went through
 // words.ts would keep its old result. This wrapper hashes every input and deletes the incremental
@@ -16,13 +16,19 @@
 // hash, so the next run clears the file again: the safe direction. Every recorded mutation score
 // comes from `npm run mutate:full`, never from this script.
 //
+// WHY THE PRIORITY. The step shares one machine with other work, and a full run keeps several cores
+// busy for its whole length. Before starting Stryker the wrapper lowers its own priority to below
+// normal. Windows gives that priority class to every process the wrapper starts and POSIX children
+// inherit the niceness, so Stryker, its test runners and the workerd processes the tests open all
+// yield to interactive work. It only ever lowers: a step started at an even lower priority keeps it.
+//
 // Exit codes: Stryker's own; 2 when Stryker is not installed or the inputs cannot be listed.
 //
 // Usage: node scripts/mutate-incremental.mjs [--selftest]
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { tmpdir, getPriority, setPriority, constants } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -31,8 +37,9 @@ const INCREMENTAL_FILE = join('reports', 'stryker-incremental.json');
 const HASH_FILE = join('reports', 'stryker-inputs.sha256');
 const INPUT_PATHSPECS = [
   'src', 'data', 'migrations', 'package.json', 'package-lock.json', 'stryker.config.json',
-  'vitest.config.ts', 'tsconfig*.json', 'wrangler.jsonc',
+  'vitest.config.ts', 'vitest.stryker.config.ts', 'tsconfig*.json', 'wrangler.jsonc',
 ];
+const BELOW_NORMAL = constants.priority.PRIORITY_BELOW_NORMAL;
 
 // Untracked files count too (--others): a new test file must clear results before it is committed.
 function listInputs(cwd) {
@@ -50,6 +57,18 @@ function hashInputs(cwd, paths) {
     all.update(`${path}\0${content}\n`);
   }
   return all.digest('hex');
+}
+
+// A higher number is a lower priority on every platform (os.constants.priority), so this lowers to
+// BELOW_NORMAL and leaves a lower priority alone. A refusal is reported, never fatal: the results
+// do not depend on the priority, only how hard the run presses on everything else does.
+function lowerPriority() {
+  try {
+    if (getPriority() < BELOW_NORMAL) setPriority(BELOW_NORMAL);
+    console.log('[mutate] running at below-normal priority or lower, so other work on this machine goes first.');
+  } catch (e) {
+    console.warn(`[mutate] could not lower this process's priority (${e.message}). Stryker runs at the current one.`);
+  }
 }
 
 function run(cwd) {
@@ -79,6 +98,7 @@ function run(cwd) {
     rmSync(join(cwd, INCREMENTAL_FILE), { force: true });
     console.log(`[mutate] inputs changed, incremental results cleared: this is a full run (${inputs.length} inputs hashed).`);
   }
+  lowerPriority();
   const result = spawnSync(process.execPath, [stryker, 'run', '--incremental'], { cwd, stdio: 'inherit' });
   if (result.error) {
     console.error(`[mutate] Stryker could not start: ${result.error.message}`);
@@ -96,12 +116,14 @@ function run(cwd) {
 }
 
 // --- selftest ---------------------------------------------------------------
-// Hermetic: a temp git repository with a STUB Stryker that records the arguments it received and
-// whether the incremental file existed when it started, then writes that file as Stryker would.
+// Hermetic: a temp git repository with a STUB Stryker that records the arguments it received, the
+// priority it started at and whether the incremental file existed when it started, then writes
+// that file as Stryker would.
 const STUB = [
   "const fs = require('node:fs');",
+  "const { getPriority } = require('node:os');",
   "const existed = fs.existsSync('reports/stryker-incremental.json');",
-  "fs.appendFileSync('stub-calls.jsonl', JSON.stringify({ args: process.argv.slice(2), existed }) + '\\n');",
+  "fs.appendFileSync('stub-calls.jsonl', JSON.stringify({ args: process.argv.slice(2), existed, priority: getPriority() }) + '\\n');",
   "fs.mkdirSync('reports', { recursive: true });",
   "fs.writeFileSync('reports/stryker-incremental.json', '{}');",
   'process.exit(Number(process.env.STUB_EXIT || 0));',
@@ -120,6 +142,7 @@ function selftest() {
     };
     put('package.json', '{"name":"fx","private":true}\n');
     put('stryker.config.json', '{}\n');
+    put('vitest.stryker.config.ts', 'export default {};\n');
     put('src/domain/judge.ts', 'export const limit = 1;\n');
     put('src/domain/judge.test.ts', 'one test\n');
     put('data/rules.json', '[]\n');
@@ -127,7 +150,7 @@ function selftest() {
     put('reports/stryker-incremental.json', '{"stale":true}\n');
     if (git) {
       execFileSync('git', ['init', '-q'], { cwd: root, stdio: 'pipe' });
-      execFileSync('git', ['add', 'package.json', 'stryker.config.json', 'src', 'data'], { cwd: root, stdio: 'pipe' });
+      execFileSync('git', ['add', 'package.json', 'stryker.config.json', 'vitest.stryker.config.ts', 'src', 'data'], { cwd: root, stdio: 'pipe' });
     }
     return { root, put };
   };
@@ -150,10 +173,16 @@ function selftest() {
   const cleared = (got) => got.last !== undefined && got.last.existed === false;
   const kept = (got) => got.last !== undefined && got.last.existed === true;
   const seen = (got) => (got.last === undefined ? 'the stub never ran' : `the stub saw the file ${got.last.existed ? 'present' : 'absent'}, exit ${got.code}`);
+  // The stub inherits whatever priority the selftest runs at, so the check below proves the
+  // lowering only from a selftest running above BELOW_NORMAL. From a lower start it fails and says so.
+  const selfPriority = getPriority();
   try {
     const { root, put } = makeRoot();
     let got = runCli(root);
     check('the first run, with no stored hash, clears the incremental file and runs', cleared(got) && got.code === 0 && /inputs changed/.test(got.out), seen(got));
+    check('Stryker starts at below-normal priority, lowered from the higher priority this selftest runs at',
+      selfPriority < BELOW_NORMAL && got.last !== undefined && got.last.priority >= BELOW_NORMAL,
+      `the selftest runs at priority ${selfPriority} (it must run above ${BELOW_NORMAL} to prove anything) and the stub ${got.last === undefined ? 'never ran' : `started at ${got.last.priority}`}`);
     got = runCli(root);
     check('a second run with nothing changed keeps the incremental file', kept(got) && got.code === 0, seen(got));
     put('src/domain/judge.test.ts', 'two tests\n');
@@ -165,6 +194,9 @@ function selftest() {
     put('stryker.config.json', '{"concurrency":2}\n');
     got = runCli(root);
     check('a changed stryker.config.json clears the incremental file', cleared(got), seen(got));
+    put('vitest.stryker.config.ts', 'export default { test: { projects: [] } };\n');
+    got = runCli(root);
+    check('a changed vitest.stryker.config.ts clears the incremental file', cleared(got), seen(got));
     put('src/domain/judge.ts', 'export const limit = 2;\n');
     got = runCli(root);
     check('a changed non-test file under src/domain clears the incremental file (a mutant in another file can depend on it)', cleared(got), seen(got));
@@ -177,7 +209,7 @@ function selftest() {
     got = runCli(root);
     check('after a failed run the stored hash is unchanged, so the next run clears the file again', cleared(got) && got.code === 0, seen(got));
     const badArgs = got.calls.filter((c) => JSON.stringify(c.args) !== '["run","--incremental"]');
-    check('every run passed Stryker exactly run --incremental', got.calls.length === 9 && badArgs.length === 0,
+    check('every run passed Stryker exactly run --incremental', got.calls.length === 10 && badArgs.length === 0,
       `${got.calls.length} stub calls, ${badArgs.length} with other arguments: ${JSON.stringify(badArgs.map((c) => c.args))}`);
 
     const outside = makeRoot({ git: false });
@@ -193,7 +225,7 @@ function selftest() {
     console.error(`\n[mutate] SELFTEST FAILED (${failures}). Do not trust this wrapper.`);
     return 1;
   }
-  console.log('\n[mutate] selftest passed: every changed input, mutated source included, clears the incremental results.');
+  console.log('\n[mutate] selftest passed: every changed input, mutated source included, clears the incremental results, and Stryker starts at below-normal priority.');
   return 0;
 }
 

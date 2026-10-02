@@ -3,7 +3,7 @@
   "packageManager": "npm",
   "testRunner": "command",
   "commandRunner": {
-    "command": "node node_modules/vitest/vitest.mjs run --project unit --project conformance --bail 1"
+    "command": "node node_modules/vitest/vitest.mjs run --config vitest.stryker.config.ts --bail 1"
   },
   "coverageAnalysis": "off",
   "mutate": ["src/domain/**/*.ts", "src/server/**/*.ts", "!src/**/*.test.ts"],
