@@ -152,6 +152,23 @@ describe('the sign the words give a value', () => {
     const { result } = decided(walkIn({ check_point: 'freezer', value: 7, words: 'the freezer reads 5 below' }));
     expect(result.structuredContent.outcome).toBe('refused');
   });
+
+  // Zero is no exception: the words name a figure below zero, so a 0 beside them is a number the
+  // cook did not say, and storing it would put a reading in the record that nobody read.
+  it.each(['the freezer reads 5 below', 'the freezer reads minus 5', 'the freezer reads -5'])(
+    'refuses the value 0 beside "%s", whose figure is not the value',
+    (words) => {
+      const { event, result } = decided(walkIn({ check_point: 'freezer', value: 0, words }));
+      expect(result.structuredContent.outcome).toBe('refused');
+      expect(event).toMatchObject({ kind: 'refusal', valueTenths: null });
+    },
+  );
+
+  it('stores the value 0 beside "0 below", whose figure is the value', () => {
+    const { event, result } = decided(walkIn({ check_point: 'freezer', value: 0, words: 'the freezer reads 0 below' }));
+    expect(event).toMatchObject({ kind: 'reading', valueTenths: 0 });
+    expect(result.structuredContent.outcome).toBe('in_range');
+  });
 });
 
 describe('a check given with no number', () => {

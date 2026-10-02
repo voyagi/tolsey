@@ -232,14 +232,15 @@ function nextRepeat(facts: ReadingFacts, ctx: DecisionContext, prompt: PendingPr
 // other way too: a figure said with no sign is above zero, so a negative value beside it would turn
 // a failing freezer into a pass. A sign said before a number in words ("minus five") makes the value
 // negative whatever sign the host gave it, but never below absolute zero, which the contract refuses
-// in a value too.
+// in a value too. Zero follows the same pairing rule: a 0 beside "5 below" is refused, and only a
+// zero said with a sign ("minus zero") is stored, as 0, since zero takes no sign.
 function valueAsSaid(value: number, said: NumberWords, figureSaid: boolean): number | undefined {
   if (said.kind === 'hedge') return undefined;
-  const magnitude = Math.abs(value);
-  if (magnitude === 0) return value;
   if (said.kind === 'plain') return value < 0 && figureSaid ? undefined : value;
-  const matches = said.magnitude === undefined || said.magnitude === magnitude;
-  return matches && -magnitude >= LOWEST_READING_F ? -magnitude : undefined;
+  const magnitude = Math.abs(value);
+  if (said.magnitude !== undefined && said.magnitude !== magnitude) return undefined;
+  if (magnitude === 0) return 0;
+  return -magnitude >= LOWEST_READING_F ? -magnitude : undefined;
 }
 
 function valueFromWords(facts: Facts, ctx: DecisionContext): number | undefined {
