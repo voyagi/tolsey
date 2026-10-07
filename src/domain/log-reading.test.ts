@@ -189,6 +189,13 @@ describe('the sign the words give a value', () => {
     expect(inWords).toMatchObject({ value, outcome: said('the freezer reads minus 0').outcome });
     expect(inWords.outcome).not.toBe('refused');
   });
+
+  // A zero that opens a number said in words ("minus zero point five") is not the whole number, so
+  // the sign still belongs to the value.
+  it('stores the value 0.5 beside "minus zero point five" as -0.5', () => {
+    const { event } = decided(walkIn({ check_point: 'freezer', value: 0.5, words: 'the freezer reads minus zero point five' }));
+    expect(event.valueTenths).toBe(-5);
+  });
 });
 
 describe('a check given with no number', () => {

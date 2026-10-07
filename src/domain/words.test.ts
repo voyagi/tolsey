@@ -101,6 +101,10 @@ describe('classifyNumberWords', () => {
     expect(classify('minus zero, walk-in 38')).toEqual({ kind: 'hedge' });
   });
 
+  it('reads a zero word opening a number said in words as below zero, of the magnitude the value gives', () => {
+    expect(classify('the freezer reads minus zero point five')).toEqual({ kind: 'negative', magnitude: undefined });
+  });
+
   it('classifies a sign word standing apart from the figure said as a hedge', () => {
     expect(classify('minus uh 5')).toEqual({ kind: 'hedge' });
     expect(classify('negative on the door, walk-in 38')).toEqual({ kind: 'hedge' });
