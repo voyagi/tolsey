@@ -195,6 +195,13 @@ function below(figure: string | undefined): NumberWords | undefined {
   return magnitude > 0 ? { kind: 'negative', magnitude } : undefined;
 }
 
+// A zero in digits after a sign ("minus 0", "-0") is a plain zero when it is the last figure said.
+// With a figure after it ("minus 0 point 5") the sign could belong to either, as in "minus, uh, 5".
+function signedFigure(tokens: readonly string[], at: number): NumberWords | undefined {
+  const figure = tokens[at].replace(/^-/, '');
+  return below(figure) ?? (tokens.slice(at + 1).some(isFigure) ? HEDGE : undefined);
+}
+
 // "5 below" names its figure before the sign and "minus 5" after it. A sign word with no figure in
 // the words at all ("minus five") still says the reading is below zero, of a magnitude the words do
 // not give. A sign word apart from the one figure said ("minus, uh, 5") could belong to anything, so
@@ -204,12 +211,12 @@ function signedOf(tokens: readonly string[], hedges: Hedges): NumberWords | unde
   const signBelow = tokens.findIndex((_, at) => isSignBelow(tokens, at, hedges));
   if (signBelow >= 0) return below(figureBefore(tokens, signBelow));
   // A figure written with its own minus, "-5", names its magnitude the way "minus 5" does.
-  const minusFigure = tokens.find((token) => isNumber(token) && token.startsWith('-'));
-  if (minusFigure !== undefined) return below(minusFigure.slice(1));
+  const minusFigure = tokens.findIndex((token) => isNumber(token) && token.startsWith('-'));
+  if (minusFigure >= 0) return signedFigure(tokens, minusFigure);
   const sign = tokens.findIndex((token) => hedges.signs.includes(token));
   if (sign < 0) return undefined;
   const figure = tokens[sign + 1];
-  if (isNumber(figure)) return below(figure);
+  if (isNumber(figure)) return signedFigure(tokens, sign + 1);
   if (tokens.some(isNumber)) return HEDGE;
   const wholeZero = figure === hedges.zero && !tokens.slice(sign + 2).some(isFigure);
   return wholeZero ? undefined : { kind: 'negative', magnitude: undefined };

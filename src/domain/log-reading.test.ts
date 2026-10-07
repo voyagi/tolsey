@@ -196,6 +196,16 @@ describe('the sign the words give a value', () => {
     const { event } = decided(walkIn({ check_point: 'freezer', value: 0.5, words: 'the freezer reads minus zero point five' }));
     expect(event.valueTenths).toBe(-5);
   });
+
+  // Read as a plain zero, these words would store 0.5 for a freezer the cook said was below zero.
+  it.each(['the freezer reads minus 0 point 5', 'the freezer reads -0 point 5'])(
+    'refuses the value 0.5 beside "%s", whose sign could belong to either figure',
+    (words) => {
+      const { event, result } = decided(walkIn({ check_point: 'freezer', value: 0.5, words }));
+      expect(result.structuredContent.outcome).toBe('refused');
+      expect(event).toMatchObject({ kind: 'refusal', valueTenths: null });
+    },
+  );
 });
 
 describe('a check given with no number', () => {
