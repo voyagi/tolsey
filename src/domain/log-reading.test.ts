@@ -169,6 +169,26 @@ describe('the sign the words give a value', () => {
     expect(event).toMatchObject({ kind: 'reading', valueTenths: 0 });
     expect(result.structuredContent.outcome).toBe('in_range');
   });
+
+  // A figure said in words after a sign is not a zero unless it is the zero word, so the value 0
+  // beside "minus five" is a number the cook did not say, the same as beside "minus 5".
+  it.each(['the freezer reads minus five', 'the freezer reads negative five', 'the freezer reads minus'])(
+    'refuses the value 0 beside "%s", which says a reading below zero',
+    (words) => {
+      const { event, result } = decided(walkIn({ check_point: 'freezer', value: 0, words }));
+      expect(result.structuredContent.outcome).toBe('refused');
+      expect(event).toMatchObject({ kind: 'refusal', valueTenths: null });
+    },
+  );
+
+  // "minus zero" is a zero, which takes no sign, so its words never turn another value negative: they
+  // decide exactly as "minus 0" does.
+  it.each([0, 5])('decides the value %d beside "minus zero" as it does beside "minus 0"', (value) => {
+    const said = (words: string) => decided(walkIn({ check_point: 'freezer', value, words })).result.structuredContent;
+    const inWords = said('the freezer reads minus zero');
+    expect(inWords).toMatchObject({ value, outcome: said('the freezer reads minus 0').outcome });
+    expect(inWords.outcome).not.toBe('refused');
+  });
 });
 
 describe('a check given with no number', () => {

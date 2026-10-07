@@ -90,8 +90,15 @@ describe('classifyNumberWords', () => {
     expect(classify('the freezer reads minus five')).toEqual({ kind: 'negative', magnitude: undefined });
   });
 
-  it.each(['0 below', 'minus 0', 'the freezer reads -0'])('reads "%s" as a plain zero, since zero takes no sign', (words) => {
-    expect(classify(words)).toEqual({ kind: 'plain' });
+  it.each(['0 below', 'minus 0', 'the freezer reads -0', 'minus zero', 'the freezer reads negative zero'])(
+    'reads "%s" as a plain zero, since zero takes no sign',
+    (words) => {
+      expect(classify(words)).toEqual({ kind: 'plain' });
+    },
+  );
+
+  it('still reads "minus zero" beside a figure in digits as a sign standing apart from it', () => {
+    expect(classify('minus zero, walk-in 38')).toEqual({ kind: 'hedge' });
   });
 
   it('classifies a sign word standing apart from the figure said as a hedge', () => {
@@ -236,6 +243,10 @@ describe('answerNumberWords', () => {
 
   it('reads "MR, 5 below" as 5 below zero', () => {
     expect(answer('MR, 5 below')).toEqual({ kind: 'negative', magnitude: 5 });
+  });
+
+  it.each(['MR, minus zero', 'MR, 0 below'])('reads "%s" as a plain zero, since zero takes no sign', (words) => {
+    expect(answer(words)).toEqual({ kind: 'plain' });
   });
 
   // Unlike a fresh call, a state word here answers the question and never refuses the held number.

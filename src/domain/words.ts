@@ -101,7 +101,8 @@ export function formatValue(value: number): string {
 }
 
 // A negative carries the magnitude its words name, or none when the number after the sign was said in
-// words ("minus five"): the value then gives the magnitude and the words only its sign.
+// words ("minus five"): the value then gives the magnitude and the words only its sign. Either way the
+// magnitude is above zero, since a zero said with a sign ("0 below", "minus zero") is a plain zero.
 export type NumberWords = { kind: 'plain' } | { kind: 'negative'; magnitude: number | undefined } | { kind: 'hedge' };
 
 const PLAIN: NumberWords = { kind: 'plain' };
@@ -197,7 +198,7 @@ function below(figure: string | undefined): NumberWords | undefined {
 // "5 below" names its figure before the sign and "minus 5" after it. A sign word with no figure in
 // the words at all ("minus five") still says the reading is below zero, of a magnitude the words do
 // not give. A sign word apart from the one figure said ("minus, uh, 5") could belong to anything, so
-// the words are not a reading.
+// the words are not a reading. Zero takes no sign, so "minus zero" is a plain zero, as "minus 0" is.
 function signedOf(tokens: readonly string[], hedges: Hedges): NumberWords | undefined {
   const signBelow = tokens.findIndex((_, at) => isSignBelow(tokens, at, hedges));
   if (signBelow >= 0) return below(figureBefore(tokens, signBelow));
@@ -208,7 +209,8 @@ function signedOf(tokens: readonly string[], hedges: Hedges): NumberWords | unde
   if (sign < 0) return undefined;
   const figure = tokens[sign + 1];
   if (isNumber(figure)) return below(figure);
-  return tokens.some(isNumber) ? HEDGE : { kind: 'negative', magnitude: undefined };
+  if (tokens.some(isNumber)) return HEDGE;
+  return figure === hedges.zero ? undefined : { kind: 'negative', magnitude: undefined };
 }
 
 // Names are taken out first, so only what the cook said about the check is judged.

@@ -118,7 +118,7 @@ describe('the record code', () => {
     expect(() => recordCode(day, 1)).toThrow(RangeError);
   });
 
-  // A line numbered 0 would print as -000, a code no line of the day can carry.
+  // A line numbered 0 would print as 000 and line -1 as 0-1, codes no line of the day can carry.
   it.each([0, -1, 1.5])('refuses to write a code for line %d, naming what a code needs', (dayLine) => {
     expect(() => recordCode('2026-10-20', dayLine)).toThrow(
       new RangeError('a record code needs a YYYY-MM-DD business day and a positive line number'),

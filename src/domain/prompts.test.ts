@@ -138,10 +138,10 @@ describe('decideLogReading with a pending prompt', () => {
     expect(event).toMatchObject({ kind: 'reading', valueTenths: -50, answersId: 'prompt-1' });
   });
 
-  // A held 0 has no sign to give, so an answer whose words name a figure below zero contradicts it.
-  it('refuses a held 0 when the answer to "Who is logging?" says "5 below"', () => {
+  // A held 0 has no sign to give, so an answer whose words say a reading below zero contradicts it.
+  it.each(['MR, 5 below', 'MR, minus five'])('refuses a held 0 when the answer to "Who is logging?" says "%s"', (words) => {
     const held = prompt({ checkPointId: 'freezer', valueTenths: 0 });
-    const { event, result } = decide(answer({ initials: 'MR', words: 'MR, 5 below' }), held);
+    const { event, result } = decide(answer({ initials: 'MR', words }), held);
     expect(result.structuredContent.outcome).toBe('refused');
     expect(event).toMatchObject({ kind: 'refusal', answersId: 'prompt-1', checkPointId: 'freezer', valueTenths: null });
   });
