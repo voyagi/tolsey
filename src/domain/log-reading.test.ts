@@ -208,6 +208,56 @@ describe('the sign the words give a value', () => {
   );
 });
 
+// Written to break the sign rules: every value the contract accepts, beside words that give a sign.
+describe('the sign the words give, against every value', () => {
+  const contractTenths = fc.integer({ min: -4596, max: 10000 });
+  const figure = fc.integer({ min: 1, max: 99 });
+  const saysBelowZero = fc.oneof(
+    figure.map((m) => `the freezer reads ${m} below`),
+    figure.map((m) => `the freezer is ${m} degrees below zero`),
+    figure.map((m) => `the freezer reads minus ${m}`),
+    figure.map((m) => `the freezer reads negative ${m}`),
+    figure.map((m) => `the freezer reads -${m}`),
+    fc.constantFrom('the freezer reads minus five', 'the freezer reads negative twelve', 'the freezer reads minus zero point five'),
+  );
+  const saysAFigure = fc.oneof(
+    figure.map((m) => `the freezer reads ${m}`),
+    fc.constantFrom('the freezer reads zero', 'the freezer reads 0', 'the freezer reads minus 0', 'the freezer reads minus zero', 'the freezer reads 0 below'),
+  );
+
+  function storedTenths(tenths: number, words: string): number | null {
+    return decided(walkIn({ check_point: 'freezer', value: tenths / 10, words })).event.valueTenths ?? null;
+  }
+
+  it('never stores a value above zero beside words that say a reading below zero', () => {
+    fc.assert(
+      fc.property(contractTenths, saysBelowZero, (tenths, words) => {
+        const stored = storedTenths(tenths, words);
+        if (stored !== null) expect(stored).toBeLessThan(0);
+      }),
+      { numRuns: 500 },
+    );
+  });
+
+  it('never stores a value below zero beside plain words that name a figure, and stores any other as given', () => {
+    fc.assert(
+      fc.property(contractTenths, saysAFigure, (tenths, words) => {
+        const stored = storedTenths(tenths, words);
+        if (tenths < 0) expect(stored).toBeNull();
+        else if (stored !== null) expect(stored).toBe(tenths);
+      }),
+      { numRuns: 500 },
+    );
+  });
+
+  // The contract accepts -0, and a JSON body can carry it. Zero takes no sign.
+  it.each(['the freezer reads 0', 'the freezer reads minus zero', undefined])('stores the value -0 beside %j as 0, never as -0', (words) => {
+    const { event, result } = decided(walkIn({ check_point: 'freezer', value: -0, words }));
+    expect(event.valueTenths).toBe(0);
+    expect(result.structuredContent.value).toBe(0);
+  });
+});
+
 describe('a check given with no number', () => {
   it('is refused under the one id it draws', () => {
     let drawn = 0;

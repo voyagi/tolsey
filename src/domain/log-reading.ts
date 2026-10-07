@@ -226,6 +226,11 @@ function nextRepeat(facts: ReadingFacts, ctx: DecisionContext, prompt: PendingPr
   return heldDecision(facts, ctx, links, 'digit_repeat', digitRepeatReply(facts.checkPoint));
 }
 
+// -0 equals 0, so this returns the literal 0 for both.
+function unsignedZero(value: number): number {
+  return value === 0 ? 0 : value;
+}
+
 // A hedge refuses the call even with a value attached, so a limit or a guess is never stored as the
 // number the host put beside it (N1). "5 below" and "minus 5" make the value negative only when their
 // digits are the value's own; any other pairing of words and value is not a reading. That holds the
@@ -234,10 +239,10 @@ function nextRepeat(facts: ReadingFacts, ctx: DecisionContext, prompt: PendingPr
 // negative whatever sign the host gave it, but never below absolute zero, which the contract refuses
 // in a value too. Zero takes no sign, so words that say a reading below zero refuse a 0 beside them
 // whichever way they say it ("5 below", "minus five"), and a zero said with a sign ("0 below", "minus
-// zero") reaches here as plain words.
+// zero") reaches here as plain words. The contract and a JSON body both carry -0, which is stored as 0.
 function valueAsSaid(value: number, said: NumberWords, figureSaid: boolean): number | undefined {
   if (said.kind === 'hedge') return undefined;
-  if (said.kind === 'plain') return value < 0 && figureSaid ? undefined : value;
+  if (said.kind === 'plain') return value < 0 && figureSaid ? undefined : unsignedZero(value);
   const magnitude = Math.abs(value);
   if (magnitude === 0) return undefined;
   if (said.magnitude !== undefined && said.magnitude !== magnitude) return undefined;
