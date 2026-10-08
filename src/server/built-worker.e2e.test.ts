@@ -1,21 +1,18 @@
+import { readFileSync } from 'node:fs';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestHarness } from 'wrangler';
 import { D1Store } from '../store/d1-store';
 import type { D1Like } from '../store/port';
 import { appendInput, kitchenInput, readLimits, scratchKitchen, testEvent } from '../test-support/events';
-
-// The built config, not wrangler.jsonc: vite build writes dist/tolsey/wrangler.json with the
-// bundled Worker, the ASSETS directory and migrations_dir pointing back at migrations/.
-const BUILT_CONFIG = './dist/tolsey/wrangler.json';
+import { BUILT_CONFIG, builtWorkerHarness } from '../test-support/target';
 
 describe('the built Worker in workerd', () => {
-  let harness: ReturnType<typeof createTestHarness>;
+  let harness: ReturnType<typeof builtWorkerHarness>;
   let url: URL;
   let db: D1Like;
 
   beforeAll(async () => {
-    harness = createTestHarness({ workers: [{ configPath: BUILT_CONFIG }] });
+    harness = builtWorkerHarness();
     ({ url } = await harness.listen());
     const worker = harness.getWorker<{ DB: D1Like }>();
     await worker.applyD1Migrations('DB');
@@ -35,6 +32,11 @@ describe('the built Worker in workerd', () => {
     } finally {
       await client.close();
     }
+  });
+
+  it('ships an allowlist that names the deployed host and no loopback host', () => {
+    const built = JSON.parse(readFileSync(BUILT_CONFIG, 'utf8')) as { vars?: { ALLOWED_HOSTNAMES?: string } };
+    expect(built.vars?.ALLOWED_HOSTNAMES).toBe('tolsey.taranity.com');
   });
 
   it('serves the asset page at the root', async () => {

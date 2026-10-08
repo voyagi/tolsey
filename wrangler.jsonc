@@ -16,7 +16,7 @@
     }
   ],
   "vars": {
-    "ALLOWED_HOSTNAMES": "localhost,127.0.0.1,tolsey.taranity.com"
+    "ALLOWED_HOSTNAMES": "tolsey.taranity.com"
   },
   "routes": [{ "pattern": "tolsey.taranity.com", "custom_domain": true }],
   "workers_dev": false,

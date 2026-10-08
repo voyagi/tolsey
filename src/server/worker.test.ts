@@ -4,7 +4,9 @@ import { dumpRecordTables, openTestD1, type TestD1 } from '../test-support/d1';
 import { byId, errorById, sendRaw, type RawResponse } from '../test-support/raw-mcp';
 import productionWorker, { createWorker, type WorkerEnv } from './worker';
 
-const LISTED = 'localhost,127.0.0.1,tolsey.taranity.com';
+// The list a local run binds; the deployed config names only the deployed host.
+const LISTED = 'localhost,127.0.0.1';
+const DEPLOYED = 'tolsey.taranity.com';
 const JSON_AND_STREAM = 'application/json, text/event-stream';
 const BODY_CAP = 65_536;
 const UNKNOWN_KITCHEN = '0123456789abcdef0123456789abcdef';
@@ -217,8 +219,22 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
       expect(response.status).toBe(403);
     });
 
-    it('accepts Origin http://localhost:5173, whose hostname is listed', async () => {
+    it('accepts Origin http://localhost:5173 on a local run, whose list names localhost', async () => {
       const response = await send('/mcp', { origin: 'http://localhost:5173' });
+      expect(byId(response, 1)).toMatchObject({ protocolVersion: '2025-11-25' });
+    });
+
+    // A page on any loopback origin must not drive the deployed Worker from a cook's browser.
+    it.each(['http://localhost:5173', 'http://127.0.0.1:8787'])(
+      'refuses Origin %s under the deployed list with 403',
+      async (origin) => {
+        const response = await send('/mcp', { allowed: DEPLOYED, host: DEPLOYED, origin });
+        expect(response.status).toBe(403);
+      },
+    );
+
+    it('accepts the deployed origin under the deployed list', async () => {
+      const response = await send('/mcp', { allowed: DEPLOYED, host: DEPLOYED, origin: `https://${DEPLOYED}` });
       expect(byId(response, 1)).toMatchObject({ protocolVersion: '2025-11-25' });
     });
 
@@ -297,6 +313,35 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
       const response = await send('/api/kitchens', { body: '{"label":' });
       expect(response.status).toBe(400);
       expect(jsonBody(response)).toEqual({ error: 'invalid_body' });
+    });
+
+    // A text/plain POST is one a page on another origin can send with no CORS preflight.
+    it.each(['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data; boundary=x'])(
+      'answers a kitchens body sent as %s with 415 and mints nothing',
+      async (contentType) => {
+        const before = await dumpRecordTables(d1.db);
+        const response = await send('/api/kitchens', { contentType, body: JSON.stringify({ label: 'conformance' }) });
+        expect(response.status).toBe(415);
+        expect(response.contentType).toMatch(/^application\/json/);
+        expect(jsonBody(response)).toEqual({ error: 'unsupported_media_type' });
+        expect(await dumpRecordTables(d1.db)).toBe(before);
+      },
+    );
+
+    it('answers a kitchens body with no content type with 415, having read the body to its end', async () => {
+      const request = new Request('http://localhost/api/kitchens', {
+        method: 'POST',
+        headers: { host: 'localhost' },
+        body: new Blob([JSON.stringify({ label: 'conformance' })]),
+      });
+      const response = await worker.fetch(request, envWith(LISTED));
+      expect(response.status).toBe(415);
+      expect(request.bodyUsed).toBe(true);
+    });
+
+    it('mints from an empty POST whatever its content type', async () => {
+      const response = await send('/api/kitchens', { contentType: 'text/plain', body: '' });
+      expect(response.status).toBe(201);
     });
   });
 

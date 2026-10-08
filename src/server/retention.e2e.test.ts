@@ -1,9 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestHarness } from 'wrangler';
 import type { D1Like } from '../store/port';
 import { HOUR_MS, insertLines, insertScratchKitchens, readLimits } from '../test-support/events';
+import { builtWorkerHarness } from '../test-support/target';
 
-const BUILT_CONFIG = './dist/tolsey/wrangler.json';
 const MINUTE_MS = 60_000;
 const LINES_EACH = 3;
 // 16:00 UTC on 2026-10-21: the hourly Cron Trigger's own instant.
@@ -11,11 +10,11 @@ const SCHEDULED_AT = Date.UTC(2026, 9, 21, 16, 0);
 const SCHEDULED_DATE = '2026-10-21';
 
 describe('the hourly retention sweep in the built Worker (workerd)', () => {
-  let harness: ReturnType<typeof createTestHarness>;
+  let harness: ReturnType<typeof builtWorkerHarness>;
   let db: D1Like;
 
   beforeAll(async () => {
-    harness = createTestHarness({ workers: [{ configPath: BUILT_CONFIG }] });
+    harness = builtWorkerHarness();
     await harness.listen();
     const worker = harness.getWorker<{ DB: D1Like }>();
     await worker.applyD1Migrations('DB');

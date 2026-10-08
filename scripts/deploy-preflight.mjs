@@ -17,7 +17,8 @@
 //   - d1_databases has an entry with binding DB whose database_id is set, not empty, not all zeros
 //   - vars.ALLOWED_HOSTNAMES passes the Worker's own list rules (src/server/allowlist.ts, loaded
 //     here as TypeScript, which Node 24 runs directly) and names tolsey.taranity.com: the Worker
-//     refuses the whole list over one bad entry, so a list the Worker refuses must not deploy
+//     refuses the whole list over one bad entry, so a list the Worker refuses must not deploy;
+//     it names no loopback host (localhost, *.localhost, 127.x.x.x, [::1])
 //   - workers_dev and preview_urls are exactly false (absent is not false)
 //   - routes holds { pattern: tolsey.taranity.com, custom_domain: true }
 //   - triggers.crons holds the hourly "0 * * * *" retention schedule
@@ -47,6 +48,12 @@ const DEPLOY_STEPS = [
   { name: 'wrangler deploy', re: /^wrangler\s+deploy$/ },
 ];
 
+// The Origin check compares hostnames only, so any page a cook's browser loads from its own machine
+// (a dev server, a local tool) would pass if a loopback name were listed.
+function isLoopback(hostname) {
+  return hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.startsWith('127.') || hostname === '[::1]';
+}
+
 function readJson(file) {
   try {
     return { value: JSON.parse(readFileSync(file, 'utf8')) };
@@ -72,8 +79,14 @@ function configProblems(config) {
   const allowlist = parseAllowlist(raw);
   if (!allowlist.ok) {
     problems.push(`${allowlist.reason}, so the deployed Worker would answer every request with 503`);
-  } else if (!allowlist.hostnames.includes(DEPLOYED_HOST)) {
-    problems.push(`vars.ALLOWED_HOSTNAMES does not name ${DEPLOYED_HOST}, so the Host check would refuse every request to the deployed Worker`);
+  } else {
+    if (!allowlist.hostnames.includes(DEPLOYED_HOST)) {
+      problems.push(`vars.ALLOWED_HOSTNAMES does not name ${DEPLOYED_HOST}, so the Host check would refuse every request to the deployed Worker`);
+    }
+    const loopback = allowlist.hostnames.filter(isLoopback);
+    if (loopback.length) {
+      problems.push(`vars.ALLOWED_HOSTNAMES names the loopback host(s) ${loopback.join(', ')}: a page on any loopback origin would pass the deployed Worker's Origin check. Local runs bind their own list (vite.config.ts, src/test-support/target.ts)`);
+    }
   }
   for (const key of ['workers_dev', 'preview_urls']) {
     if (config[key] !== false) {
@@ -161,7 +174,7 @@ function cleanConfig() {
     preview_urls: false,
     routes: [{ pattern: DEPLOYED_HOST, custom_domain: true }],
     triggers: { crons: [RETENTION_CRON] },
-    vars: { ALLOWED_HOSTNAMES: `localhost,127.0.0.1,${DEPLOYED_HOST}` },
+    vars: { ALLOWED_HOSTNAMES: DEPLOYED_HOST },
     d1_databases: [
       { binding: 'DB', database_name: 'tolsey', database_id: '11111111-2222-4333-8444-555555555555', migrations_dir: '../../migrations' },
     ],
@@ -232,6 +245,11 @@ function selftest() {
       runCli(fixture({ mutate: (c) => { c.vars.ALLOWED_HOSTNAMES = 'localhost,evil-tolsey.taranity.com.example'; } })), 1, /ALLOWED_HOSTNAMES does not name/);
     check('a list naming the deployed host beside an entry with a port is refused, as the Worker would refuse it',
       runCli(fixture({ mutate: (c) => { c.vars.ALLOWED_HOSTNAMES = `localhost:8787,127.0.0.1,${DEPLOYED_HOST}`; } })), 1, /ALLOWED_HOSTNAMES entry "localhost:8787" holds a port/);
+    for (const loopback of ['localhost', '127.0.0.1', '[::1]', '127.0.0.2', 'app.localhost']) {
+      check(`a list naming the loopback host ${loopback} beside the deployed host is refused`,
+        runCli(fixture({ mutate: (c) => { c.vars.ALLOWED_HOSTNAMES = `${loopback},${DEPLOYED_HOST}`; } })), 1,
+        new RegExp(`ALLOWED_HOSTNAMES names the loopback host\\(s\\) ${loopback.replace(/[.[\]]/g, '\\$&')}:`));
+    }
     check('a list naming the deployed host beside a wildcard entry is refused',
       runCli(fixture({ mutate: (c) => { c.vars.ALLOWED_HOSTNAMES = `localhost,*.taranity.com,${DEPLOYED_HOST}`; } })), 1, /ALLOWED_HOSTNAMES entry "\*\.taranity\.com"/);
     check('workers_dev absent is refused, since wrangler defaults it to true (E30)',

@@ -47,8 +47,15 @@ export interface InProcessWorker {
 
 // The built config, not wrangler.jsonc: vite build writes dist/tolsey/wrangler.json with the
 // bundled Worker, the ASSETS directory and migrations_dir pointing back at migrations/.
-const BUILT_CONFIG = './dist/tolsey/wrangler.json';
+export const BUILT_CONFIG = './dist/tolsey/wrangler.json';
 const IN_PROCESS_BASE = 'http://localhost/';
+// The built config lists only the deployed host, so a local run binds the names it answers on.
+const LOCAL_HOSTNAMES = 'localhost,127.0.0.1';
+
+// The built Worker in workerd, as it deploys except for the hostnames a local run answers on.
+export function builtWorkerHarness(): ReturnType<typeof createTestHarness> {
+  return createTestHarness({ workers: [{ configPath: BUILT_CONFIG, vars: { ALLOWED_HOSTNAMES: LOCAL_HOSTNAMES } }] });
+}
 
 function settableClock(start: number): TestClock {
   let instant = start;
@@ -118,7 +125,7 @@ async function inProcessTarget(): Promise<Target> {
 }
 
 async function workerdTarget(): Promise<Target> {
-  const harness = createTestHarness({ workers: [{ configPath: BUILT_CONFIG }] });
+  const harness = builtWorkerHarness();
   const { url } = await harness.listen();
   const worker = harness.getWorker<{ DB: D1Like }>();
   await worker.applyD1Migrations('DB');

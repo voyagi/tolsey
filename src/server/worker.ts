@@ -85,10 +85,21 @@ async function readBody(request: Request): Promise<ReadBody | 'too_large'> {
   return { forward, parsed: parseJsonBody(bytes) };
 }
 
+// Only JSON is read: a text/plain or form POST is one a page on any origin can send without a CORS
+// preflight, so it must never mint.
+function isJsonContentType(header: string | null): boolean {
+  return header?.split(';')[0]?.trim().toLowerCase() === 'application/json';
+}
+
+// The body is read to its end (or cancelled past the cap) before any refusal, so no answer leaves
+// a request body unread on the connection.
 async function serveApi(request: Request, pathname: string, store: Store, db: D1Like, clock: Clock): Promise<Response> {
   const body = await readBody(request);
   if (body === 'too_large') return jsonError(413, { error: 'body_too_large' });
   if (pathname !== '/api/kitchens') return jsonError(404, { error: 'not_found' });
+  if (body.parsed.kind !== 'empty' && !isJsonContentType(request.headers.get('content-type'))) {
+    return jsonError(415, { error: 'unsupported_media_type' });
+  }
   return handleKitchensRoute(request.method, body.parsed, {
     store,
     db,

@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestHarness } from 'wrangler';
+import { builtWorkerHarness } from '../test-support/target';
 
-const BUILT_CONFIG = './dist/tolsey/wrangler.json';
 const UNKNOWN_KITCHEN = '0123456789abcdef0123456789abcdef';
 
 // Sent the way a browser navigation is: under a run_worker_first pattern list anything no pattern
@@ -14,11 +13,11 @@ const NAVIGATION = {
 };
 
 describe('the built Worker answers its own routes with JSON, never the page (workerd, ASSETS bound)', () => {
-  let harness: ReturnType<typeof createTestHarness>;
+  let harness: ReturnType<typeof builtWorkerHarness>;
   let baseUrl: URL;
 
   beforeAll(async () => {
-    harness = createTestHarness({ workers: [{ configPath: BUILT_CONFIG }] });
+    harness = builtWorkerHarness();
     ({ url: baseUrl } = await harness.listen());
     await harness.getWorker().applyD1Migrations('DB');
   });
