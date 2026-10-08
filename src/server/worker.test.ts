@@ -418,6 +418,60 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
     );
   });
 
+  // A refusal that leaves the body unread breaks the next request on that connection under local
+  // wrangler dev, so each refusal must still consume what was sent.
+  describe('a refusal ahead of the body read', () => {
+    function requestWithBody(path: string, init: { method?: string; host?: string; origin?: string } = {}): Request {
+      const headers: Record<string, string> = { host: init.host ?? 'localhost', 'content-type': 'application/json' };
+      if (init.origin !== undefined) headers.origin = init.origin;
+      return new Request(new URL(path, 'http://localhost'), { method: init.method ?? 'POST', headers, body: TOOLS_LIST });
+    }
+
+    it.each(['/mcp', '/api/kitchens'])('reads the body of a POST %s it refuses for a bad Origin', async (path) => {
+      const request = requestWithBody(path, { origin: 'https://attacker.example' });
+      const response = await worker.fetch(request, envWith(LISTED));
+      expect(response.status).toBe(403);
+      expect(request.bodyUsed).toBe(true);
+    });
+
+    it.each(['/mcp', '/api/kitchens'])('reads the body of a POST %s it refuses for a bad Host', async (path) => {
+      const request = requestWithBody(path, { host: 'attacker.example' });
+      const response = await worker.fetch(request, envWith(LISTED));
+      expect(response.status).toBe(403);
+      expect(request.bodyUsed).toBe(true);
+    });
+
+    it.each(['/mcp', '/api/kitchens'])('reads the body of a POST %s it refuses for a bad ALLOWED_HOSTNAMES', async (path) => {
+      const request = requestWithBody(path);
+      const response = await worker.fetch(request, envWith('localhost:8787'));
+      expect(response.status).toBe(503);
+      expect(request.bodyUsed).toBe(true);
+    });
+
+    it.each(['/mcp', '/api/kitchens'])('reads the body of a POST %s answered with a fault raised before the read', async (path) => {
+      const faulty = createWorker({
+        clock: { now: () => 0 },
+        storeFor: () => {
+          throw new Error('no store');
+        },
+      });
+      const request = requestWithBody(path);
+      const response = await faulty.fetch(request, envWith(LISTED));
+      expect(response.status).toBe(500);
+      expect(request.bodyUsed).toBe(true);
+    });
+
+    it.each([
+      ['PUT', '/api/kitchens'],
+      ['DELETE', '/mcp'],
+    ])('reads the body of a %s %s it refuses with 405', async (method, path) => {
+      const request = requestWithBody(path, { method });
+      const response = await worker.fetch(request, envWith(LISTED));
+      expect(response.status).toBe(405);
+      expect(request.bodyUsed).toBe(true);
+    });
+  });
+
   describe('the modern era', () => {
     it('refuses a request the SDK classifies modern with 400 and a -32000 error naming the supported versions', async () => {
       const seen: { status: number; body: string }[] = [];

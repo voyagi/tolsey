@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { D1Store } from '../store/d1-store';
 import type { D1Like } from '../store/port';
 import { appendInput, kitchenInput, readLimits, scratchKitchen, testEvent } from '../test-support/events';
-import { BUILT_CONFIG, builtWorkerHarness } from '../test-support/target';
+import { BUILT_CONFIG, builtWorkerHarness, mintThroughRoute } from '../test-support/target';
 
 describe('the built Worker in workerd', () => {
   let harness: ReturnType<typeof builtWorkerHarness>;
@@ -37,6 +37,38 @@ describe('the built Worker in workerd', () => {
   it('ships an allowlist that names the deployed host and no loopback host', () => {
     const built = JSON.parse(readFileSync(BUILT_CONFIG, 'utf8')) as { vars?: { ALLOWED_HOSTNAMES?: string } };
     expect(built.vars?.ALLOWED_HOSTNAMES).toBe('tolsey.taranity.com');
+  });
+
+  // Local wrangler dev answered the request after a refusal that left its body unread with a 500,
+  // "Network connection lost".
+  it.each([
+    ['/mcp', JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })],
+    ['/api/kitchens', JSON.stringify({ label: 'conformance' })],
+  ])('answers the next request normally after refusing a bad-Origin POST %s with 403', async (path, body) => {
+    const refused = await fetch(new URL(path, url), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://attacker.example' },
+      body,
+    });
+    expect(refused.status).toBe(403);
+    await refused.body?.cancel();
+    const next = await mintThroughRoute(fetch, url);
+    expect(next.id).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  it.each([
+    ['PUT', '/api/kitchens', 405],
+    ['DELETE', '/mcp', 405],
+  ])('answers the next request normally after refusing a %s %s that carries a body', async (method, path, status) => {
+    const refused = await fetch(new URL(path, url), {
+      method,
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({ label: 'conformance' }),
+    });
+    expect(refused.status).toBe(status);
+    await refused.body?.cancel();
+    const next = await mintThroughRoute(fetch, url);
+    expect(next.id).toMatch(/^[0-9a-f]{32}$/);
   });
 
   it('serves the asset page at the root', async () => {

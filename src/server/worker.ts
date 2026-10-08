@@ -75,10 +75,27 @@ function hostOrOriginRejection(request: Request, hostnames: string[]): Response 
   return hostHeaderValidationResponse(request, hostnames) ?? originValidationResponse(request, hostnames);
 }
 
+// Local wrangler dev fails the next request on a connection whose last answer left the request body
+// unread ("Network connection lost"), so an answer given without the body still reads it, under the
+// same cap. A failed read is logged and dropped: the answer already decided stands.
+async function drainBody(request: Request): Promise<void> {
+  if (!request.body || request.bodyUsed) return;
+  try {
+    await readCappedBody(request);
+  } catch (error) {
+    logFault('[worker]', error);
+  }
+}
+
 // The body is read once, under the cap; forward carries the same bytes, because the original
 // request's body is spent and the SDK must still be able to read or clone the one it gets.
 async function readBody(request: Request): Promise<ReadBody | 'too_large'> {
-  if (request.method !== 'POST') return { forward: request, parsed: { kind: 'empty' } };
+  if (request.method !== 'POST') {
+    if (!request.body) return { forward: request, parsed: { kind: 'empty' } };
+    // Only a POST is served; whatever else carries a body is refused without it.
+    await drainBody(request);
+    return { forward: new Request(request.url, { method: request.method, headers: request.headers }), parsed: { kind: 'empty' } };
+  }
   const bytes = await readCappedBody(request);
   if (bytes === 'too_large') return 'too_large';
   const forward = new Request(request.url, { method: request.method, headers: request.headers, body: bytes });
@@ -149,15 +166,22 @@ export function createWorker({ clock, storeFor = (env) => new D1Store(env.DB) }:
       const family = familyOf(pathname);
       if (family === null) return env.ASSETS.fetch(request);
       const allowlist = parseAllowlist(env.ALLOWED_HOSTNAMES);
-      if (!allowlist.ok) return jsonError(503, { error: 'allowlist_unconfigured', message: allowlist.reason });
+      if (!allowlist.ok) {
+        await drainBody(request);
+        return jsonError(503, { error: 'allowlist_unconfigured', message: allowlist.reason });
+      }
       const rejected = hostOrOriginRejection(request, allowlist.hostnames);
-      if (rejected) return rejected;
+      if (rejected) {
+        await drainBody(request);
+        return rejected;
+      }
       try {
         const store = storeFor(env);
         return family === 'api'
           ? await serveApi(request, pathname, store, env.DB, clock)
           : await serveMcp(request, pathname, store, clock);
       } catch (error) {
+        await drainBody(request);
         return serverFault(family, error);
       }
     },
