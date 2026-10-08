@@ -288,6 +288,42 @@ describe('pending prompts answered in separate requests, and initials from the r
       expect(await lines(kitchenId)).toHaveLength(stored.length);
     });
 
+    // A numberless answer is a miss too, and the refusal it stores stays on the chain, so a number
+    // sent in answer to that refusal is held on the same count rather than starting a new one.
+    it('carries the chain through a numberless answer, so a third miss still ends it "Log it by hand"', async () => {
+      const kitchenId = await kitchen();
+      const first = await heldFifteen(kitchenId);
+      const refused = promptOf(await say(kitchenId, { words: 'the walk-in is fine', pending_prompt_id: first.id }));
+      expect(refused.kind).toBe('number');
+      const again = promptOf(await say(kitchenId, { value: 15, pending_prompt_id: refused.id }));
+      expect(again.kind).toBe('digit_repeat');
+
+      const byHand = await say(kitchenId, { value: 51, pending_prompt_id: again.id });
+
+      expect(byHand.content[0]?.text).toBe('Log it by hand.');
+      const stored = await lines(kitchenId);
+      expect(ofKind(stored, 'refusal')).toEqual([expect.objectContaining({ answersId: first.id, refId: first.id })]);
+      expect(ofKind(stored, 'held')[1]).toMatchObject({ answersId: refused.id, refId: first.id });
+      expect(ofKind(stored, 'receipt')).toEqual([expect.objectContaining({ answersId: again.id, refId: first.id })]);
+      expect(await worker.store.openChecks(kitchenId, DAY)).toEqual(['walk_in']);
+    });
+
+    it('ends the chain "Log it by hand" on a third miss that gives no number', async () => {
+      const kitchenId = await kitchen();
+      const first = await heldFifteen(kitchenId);
+      const refused = promptOf(await say(kitchenId, { words: 'the walk-in is fine', pending_prompt_id: first.id }));
+      const again = promptOf(await say(kitchenId, { value: 15, pending_prompt_id: refused.id }));
+
+      const byHand = await say(kitchenId, { words: 'the walk-in is fine', pending_prompt_id: again.id });
+
+      expect(byHand.content[0]?.text).toBe('Log it by hand.');
+      expect(byHand.structuredContent).not.toHaveProperty('prompt');
+      const stored = await lines(kitchenId);
+      expect(ofKind(stored, 'refusal')).toHaveLength(1);
+      expect(ofKind(stored, 'receipt')).toEqual([expect.objectContaining({ answersId: again.id, refId: first.id })]);
+      expect(await worker.store.openChecks(kitchenId, DAY)).toEqual(['walk_in']);
+    });
+
     it('never confirms the held number with a yes on its own', async () => {
       const kitchenId = await kitchen();
       const prompt = await heldFifteen(kitchenId);

@@ -189,7 +189,10 @@ export class MemoryStore implements Store {
   private repeatsOf(asked: StoredLine): number {
     const first = asked.refId ?? asked.id;
     return this.events.filter(
-      (line) => line.kitchenId === asked.kitchenId && line.refId === first && line.kind === 'held' && line.promptKind === 'digit_repeat',
+      (line) =>
+        line.kitchenId === asked.kitchenId &&
+        line.refId === first &&
+        ((line.kind === 'held' && line.promptKind === 'digit_repeat') || line.kind === 'refusal'),
     ).length;
   }
 

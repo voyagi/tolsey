@@ -122,8 +122,10 @@ ORDER BY line.check_point_id`;
 // Null for an id naming nothing this kitchen asked, a reading or a receipt among them, so a stale or
 // foreign id is a fresh call rather than a fault. Any event carrying the id as answers_id answers it,
 // a receipt included, which is how "Log it by hand" closes the prompt it answers. The repeat count
-// walks this kitchen's events, since ref_id has no index of its own, so it runs only for a digit
-// repeat: SQLite evaluates only the CASE branch it takes (202 rows read at 198 lines otherwise).
+// takes every miss on the chain: a hold for a different number, and a refusal for none, the only
+// refusal that names a ref_id. It walks this kitchen's events, since ref_id has no index of its own,
+// so it runs only for a digit repeat: SQLite evaluates only the CASE branch it takes (202 rows read at
+// 198 lines otherwise).
 // The supersede target is the line a "wrong number" said wrong. A wrong_number event names it in
 // ref_id; any other prompt reaches it by walking answers_id back through the holds and refusals that
 // answered one another until a wrong_number event. The walk ends, since an event can only answer an
@@ -138,7 +140,7 @@ SELECT
   CASE WHEN asked.prompt_kind = 'digit_repeat' THEN (
     SELECT COUNT(*) FROM events AS chain
     WHERE chain.kitchen_id = asked.kitchen_id AND chain.ref_id = COALESCE(asked.ref_id, asked.id)
-      AND chain.kind = 'held' AND chain.prompt_kind = 'digit_repeat'
+      AND ((chain.kind = 'held' AND chain.prompt_kind = 'digit_repeat') OR chain.kind = 'refusal')
   ) ELSE 0 END AS repeats,
   said_wrong.id AS target_id, COALESCE(said_wrong.root_id, said_wrong.id) AS target_root_id,
   said_wrong.rule_snapshot AS target_rule_snapshot, said_wrong.rules_version AS target_rules_version,

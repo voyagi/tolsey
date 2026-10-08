@@ -44,10 +44,3 @@ export function refusalDecision(facts: Facts, ctx: DecisionContext, links: Links
   };
   return decided(event, refusalReply(checkPoint), structured);
 }
-
-// A missing number is the domain's refusal, never a schema rejection: value stays optional in the
-// contract (REFU-01), so a numberless check reaches here and is refused before any rule is chosen.
-export function decideRefusal(facts: Facts, ctx: DecisionContext, links: Links): Decision | undefined {
-  if (facts.value !== undefined) return undefined;
-  return refusalDecision(facts, ctx, links);
-}
