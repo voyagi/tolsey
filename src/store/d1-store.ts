@@ -22,8 +22,8 @@ import {
 // nulls anyway; saying day_line IS NOT NULL lets the partial index events_day_line serve the next line
 // number, where otherwise every line of the day is read to find it.
 // The WHERE sits inside the derived table: on the outer SELECT, SQLite also pushes it down into the
-// derived table and checks it in both places. The line cap reads the kitchen's counter row by key, so
-// no guard walks the kitchen's lines, on a refused call either.
+// derived table and checks it in both places, reading every guard's rows twice. The line cap reads
+// the kitchen's counter row by key, so no guard walks the kitchen's lines, on a refused call either.
 const INSERT_EVENT = `
 INSERT INTO events (
   id, kitchen_id, kind, occurred_at, business_day, time_zone, day_line, screen_id, request_id,

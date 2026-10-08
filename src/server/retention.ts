@@ -44,12 +44,13 @@ export async function expireKitchens(
   if (kitchensRead === 0) return { kitchensRead, kitchensDeleted: 0, rowsCounted: 0 };
 
   const ids = JSON.stringify(expired.results.map((row) => row.id));
-  const [kitchens, events, lineCounts] = await db.batch([
+  const deleted = await db.batch([
     db.prepare(DELETE_EXPIRED_KITCHENS).bind(ids),
     db.prepare(DELETE_EXPIRED_EVENTS).bind(ids),
     db.prepare(DELETE_EXPIRED_LINE_COUNTS).bind(ids),
   ]);
-  const rowsDeleted = kitchens.meta.rows_written + events.meta.rows_written + lineCounts.meta.rows_written;
+  const [kitchens] = deleted;
+  const rowsDeleted = deleted.reduce((sum, result) => sum + result.meta.rows_written, 0);
   // A concurrent round (another mint's, or the hourly run's) took these kitchens between the read and
   // the batch: there is nothing to count.
   if (rowsDeleted === 0) return { kitchensRead, kitchensDeleted: 0, rowsCounted: 0 };
