@@ -167,7 +167,9 @@ describe('decideLogReading with a pending prompt', () => {
     const empty = prompt({ valueTenths: null });
     const resolved = resolvePrompt(empty, answer({ initials: 'MR' }), ASKED_AT);
     expect(resolved.kind === 'answer' && resolved.fill.value).toBeUndefined();
-    expect(decide(answer({ initials: 'MR' }), empty).result.structuredContent.outcome).toBe('refused');
+    const { event, result } = decide(answer({ initials: 'MR' }), empty);
+    expect(result.structuredContent.outcome).toBe('refused');
+    expect(event).toMatchObject({ kind: 'refusal', valueTenths: null });
   });
 
   it('asks which check again, still holding the number, when an answer to which check names none', () => {
