@@ -124,16 +124,17 @@ function isNumber(token: string | undefined): boolean {
 }
 
 // The words a figure is said in. They give no value here; they only let a range said in words
-// ("thirty eight or thirty nine") be told from a reading. They are never kept in a stored line, so a
-// number said word by word can never pass the refused line's two-figure limit.
+// ("thirty eight or thirty nine") be told from a reading. A stored line keeps only those the
+// vocabulary holds, each counted against the two-figure limit, so a number said word by word can
+// never pass it.
 const NUMBER_WORDS: ReadonlySet<string> = new Set([
   'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
   'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty', 'thirty',
   'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety', 'hundred',
 ]);
 
-// A figure said either way, in digits or in words. A decade in digits counts too, so a decade word
-// before it ("high 130s") hedges the way it does before a figure.
+// A figure said either way, in digits or in words. A decade in digits counts too: hedgesAt already
+// hedges one on its own, but a name holding one ("box 40s") must keep it only inside the name.
 function isFigure(token: string | undefined): boolean {
   return token !== undefined && (isNumber(token) || NUMBER_WORDS.has(token) || DECADE_FIGURE.test(token));
 }

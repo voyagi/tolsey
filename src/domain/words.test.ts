@@ -320,6 +320,16 @@ describe('rebuildWords on a refused line', () => {
     expect(rebuildWords('the reach-in 2 is 38 or 39', profile, undefined, walkIn)).toBe('the reach-in 2 is 38 or 39');
   });
 
+  it('keeps a digit decade a name holds only inside that name', () => {
+    const withDecade = KitchenProfileSchema.parse({
+      ...demoJson,
+      checkPoints: demoJson.checkPoints.map((point) => (point.id === 'walk_in' ? { ...point, aliases: [...point.aliases, 'box 40s'] } : point)),
+    });
+
+    expect(rebuildWords('walk-in 40s', withDecade, undefined, walkIn)).toBe('walk-in');
+    expect(rebuildWords('box 40s is fine', withDecade, undefined, walkIn)).toBe('box 40s is fine');
+  });
+
   // "one" and "two" name reach-ins only inside their names, and "zero" is a figure wherever it stands.
   it('drops number words a name holds when they stand outside it, and counts zero against the two figures', () => {
     expect(rebuildWords('walk-in one two one one two two one zero', profile, undefined, walkIn)).toBe('walk-in zero');
