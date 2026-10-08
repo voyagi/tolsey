@@ -309,6 +309,29 @@ describe('rebuildWords on a refused line', () => {
     expect(rebuildWords('1 2 1 1 2 2 1 2 1 2', profile, undefined, walkIn)).toBe('1 2');
     expect(rebuildWords('the reach-in 2 is 38 or 39', profile, undefined, walkIn)).toBe('the reach-in 2 is 38 or 39');
   });
+
+  // "one" and "two" name reach-ins only inside their names, and "zero" is a figure wherever it stands.
+  it('drops number words a name holds when they stand outside it, and counts zero against the two figures', () => {
+    expect(rebuildWords('walk-in one two one one two two one zero', profile, undefined, walkIn)).toBe('walk-in zero');
+    expect(rebuildWords('zero zero zero zero', profile, undefined, walkIn)).toBe('zero zero');
+    expect(rebuildWords('the reach-in one is fine', profile, undefined, walkIn)).toBe('the reach-in one is fine');
+  });
+});
+
+describe('rebuildWords on a line with a value', () => {
+  it('drops the digits and number words of a name when they stand outside it', () => {
+    expect(rebuildWords('walk-in 38 1 2 1 2', profile, 38, walkIn)).toBe('walk-in 38');
+    expect(rebuildWords('walk-in 38 one two one two', profile, 38, walkIn)).toBe('walk-in 38');
+  });
+
+  it('keeps a name whole, digit and all', () => {
+    expect(rebuildWords('reach-in 2 reads 38', profile, 38, walkIn)).toBe('reach-in 2 reads 38');
+    expect(rebuildWords('the reach-in one reads 38', profile, 38, walkIn)).toBe('the reach-in one reads 38');
+  });
+
+  it('keeps at most two figures beside the value', () => {
+    expect(rebuildWords('walk-in 38 zero zero zero zero', profile, 38, walkIn)).toBe('walk-in 38 zero zero');
+  });
 });
 
 describe('tokensOf', () => {

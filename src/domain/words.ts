@@ -25,12 +25,17 @@ function namePhrases(profile: KitchenProfile): string[] {
   return [...profile.checkPoints, ...profile.foods].flatMap((named) => [named.name, ...named.aliases]);
 }
 
+// A figure inside a name ("reach-in 2", "reach-in one") is no word of its own: it is kept only where
+// the name is said, so outside one it is never let through unlimited.
 function recognisedTokens(profile: KitchenProfile): ReadonlySet<string> {
   let tokens = recognisedByProfile.get(profile);
   if (!tokens) {
     const { verbs, articles, nouns, states, corrections, hedges } = profile.vocabulary;
     tokens = new Set([
-      ...namePhrases(profile).flatMap((phrase) => [phrase.toLowerCase(), ...tokensOf(phrase)]),
+      ...namePhrases(profile).flatMap((phrase) => [
+        phrase.toLowerCase(),
+        ...tokensOf(phrase).filter((token) => !isFigure(token)),
+      ]),
       ...verbs,
       ...articles,
       ...nouns,
@@ -264,11 +269,19 @@ export function namesAFigure(tokens: readonly string[], profile: KitchenProfile)
 const READING_FIGURE = /^-?\d{1,3}(\.\d)?$/;
 const MOST_FIGURES_QUOTED = 2;
 
+// A figure quoted as said: on a refused line any short run of digits, and on either line a recognised
+// number word such as "zero". Number words the vocabulary does not hold are never kept at all.
+function isQuotedFigure(token: string, known: ReadonlySet<string>, quotesDigits: boolean): boolean {
+  return (quotesDigits && READING_FIGURE.test(token)) || (NUMBER_WORDS.has(token) && known.has(token));
+}
+
 // A name is kept whole, digit and all ("reach-in 2"); every other figure counts against the two, even
-// one a name also holds, so a run of ones and twos is never stored whole either.
-function refusedWords(tokens: string[], profile: KitchenProfile, checkPoint: CheckPoint | undefined): string {
+// one a name also holds, so a run of ones and twos is never stored whole either. The value, when there
+// is one, is kept as stored and counts against nothing: it is the reading.
+function storedTokens(tokens: readonly string[], profile: KitchenProfile, value: number | undefined): string[] {
   const known = recognisedTokens(profile);
   const names = namesOf(profile).tokens;
+  const number = value === undefined ? undefined : formatValue(value);
   const kept: string[] = [];
   let figures = 0;
   let at = 0;
@@ -277,7 +290,9 @@ function refusedWords(tokens: string[], profile: KitchenProfile, checkPoint: Che
     const token = tokens[at];
     if (name) {
       kept.push(...name);
-    } else if (READING_FIGURE.test(token)) {
+    } else if (number !== undefined && Number(token) === value) {
+      kept.push(number);
+    } else if (isQuotedFigure(token, known, number === undefined)) {
       if (figures < MOST_FIGURES_QUOTED) kept.push(token);
       figures += 1;
     } else if (known.has(token)) {
@@ -285,8 +300,7 @@ function refusedWords(tokens: string[], profile: KitchenProfile, checkPoint: Che
     }
     at += name ? name.length : 1;
   }
-  if (kept.length > 0) return kept.join(' ');
-  return checkPoint === undefined ? '' : checkPoint.name.toLowerCase();
+  return kept;
 }
 
 // Only recognised tokens and the number itself persist, so no visitor free text or markup reaches
@@ -300,13 +314,10 @@ export function rebuildWords(
   value: number | undefined,
   checkPoint: CheckPoint | undefined,
 ): string {
-  const tokens = raw === undefined ? [] : tokensOf(raw);
-  if (value === undefined) return refusedWords(tokens, profile, checkPoint);
-  const known = recognisedTokens(profile);
+  const kept = storedTokens(raw === undefined ? [] : tokensOf(raw), profile, value);
+  const checkPointName = checkPoint?.name.toLowerCase();
+  if (value === undefined) return kept.length > 0 ? kept.join(' ') : (checkPointName ?? '');
   const number = formatValue(value);
-  const kept = tokens
-    .map((token) => (Number(token) === value ? number : token))
-    .filter((token) => token === number || known.has(token));
   if (kept.includes(number)) return kept.join(' ');
-  return checkPoint === undefined ? number : `${checkPoint.name.toLowerCase()} ${number}`;
+  return checkPointName === undefined ? number : `${checkPointName} ${number}`;
 }
