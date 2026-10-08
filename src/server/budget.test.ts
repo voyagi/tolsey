@@ -335,7 +335,8 @@ describe('the daily row budget, the kitchen caps and retention', () => {
 
       expect(plans[0]).toMatch(/SEARCH kitchens USING (COVERING )?INDEX/);
       expect(plans[1]).toMatch(/SEARCH events USING (COVERING )?INDEX/);
-      expect(plans[2]).toMatch(/SEARCH kitchen_lines USING (COVERING )?INDEX/);
+      // kitchen_lines is WITHOUT ROWID: its key is the table, so the search names no separate index.
+      expect(plans[2]).toMatch(/SEARCH kitchen_lines USING PRIMARY KEY/);
       expect(plans.join(' ')).not.toMatch(/SCAN (events|kitchens|kitchen_lines)\b/);
     });
 

@@ -84,7 +84,7 @@ the previous day's kitchens on top of it. A delete counts one row per kitchen, o
 one per line (local D1, pinned by "counts one row per deleted kitchen, its line counter and per deleted
 reading" in `src/server/budget.test.ts`), so that addition is at most about 8,000 rows: the 40,000 / 5
 kitchens a day's budget can mint, the costliest mix to delete. A kitchen with no lines has no counter
-row, and a kitchen's first line spends at least 10 rows of the budget (its reserve) and deletes as 2, so lines never make a
+row, and a kitchen's first line spends at least 9 rows of the budget (its reserve) and deletes as 2, so lines never make a
 mix costlier. The cap therefore assumes every other D1 database
 on the account writes fewer than about 52,000 rows a day, and past the account limit every tool call
 answers with the fixed server-fault sentence.
@@ -195,7 +195,7 @@ in `src/server/budget.test.ts`:
 | Write kind | Rows written |
 |------------|--------------|
 | `kitchen_create` | 5 |
-| `event_first_of_day` | 10 |
+| `event_first_of_day` | 9 |
 | `event` | 8 |
 | `event_superseding` | 9 |
 | `event_answering` | 9 |
@@ -206,10 +206,10 @@ plus the budget row's insert, the safe direction. `budget_add` is the retention 
 the budget row's insert as the first write of a date; later adds of the same date write one row.
 
 `event_first_of_day` is an event plus the first budget upsert of its UTC date and its kitchen's first
-line-counter upsert, and `event` a later event of the same date and kitchen; the difference of two is
-the budget row's insert against its update (one) and the counter row's insert, with its key's index
-row, against its update (one). Every measured event is a reading, which also writes the day-line index
-row.
+line-counter upsert, and `event` a later event of the same date and kitchen; the difference of one is
+the budget row's insert against its update. The counter table is `WITHOUT ROWID`, so its key is the
+table itself and the counter row's insert writes one row, as its update does. Every measured event is
+a reading, which also writes the day-line index row.
 
 The adapter cannot know before the batch runs whether the date's budget row or the kitchen's counter
 row exists or which partial indexes the event fills, so every event append reserves `expectedRowsFor(event)` from
@@ -218,7 +218,7 @@ supersedes a line, plus `event_answering - event` when it answers a prompt. A ma
 file measures every event kind (reading, refusal, held, wrong_number, receipt), with no partial index
 key, a `supersedes_id` only, an `answers_id` only and both, as the first event of a UTC date and as a
 later one, and holds the measured rows at or below the reserve in all 40 cells. The reserve runs high
-only by the budget and counter inserts on later events and by the day-line index row a held,
+only by the budget insert on later events and by the day-line index row a held,
 wrong_number or receipt event skips, which is the safe direction.
 
 Retention deletes count against the same daily allowance. A round adds the summed `meta.rows_written`
