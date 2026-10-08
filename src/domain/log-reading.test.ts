@@ -226,39 +226,56 @@ describe('the sign the words give a value', () => {
 describe('the sign the words give, against every value', () => {
   const contractTenths = fc.integer({ min: -4596, max: 10000 });
   const figure = fc.integer({ min: 1, max: 99 });
+  // Each pairs the words with the magnitude they say, so the value can be the one the cook read and
+  // every run must store it: a value drawn apart from the words would almost never match them.
   const saysBelowZero = fc.oneof(
-    figure.map((m) => `the freezer reads ${m} below`),
-    figure.map((m) => `the freezer is ${m} degrees below zero`),
-    figure.map((m) => `the freezer reads minus ${m}`),
-    figure.map((m) => `the freezer reads negative ${m}`),
-    figure.map((m) => `the freezer reads -${m}`),
-    fc.constantFrom('the freezer reads minus five', 'the freezer reads negative twelve'),
+    figure.map((m) => ({ words: `the freezer reads ${m} below`, magnitude: m })),
+    figure.map((m) => ({ words: `the freezer is ${m} degrees below zero`, magnitude: m })),
+    figure.map((m) => ({ words: `the freezer reads minus ${m}`, magnitude: m })),
+    figure.map((m) => ({ words: `the freezer reads negative ${m}`, magnitude: m })),
+    figure.map((m) => ({ words: `the freezer reads -${m}`, magnitude: m })),
+    fc.constantFrom(
+      { words: 'the freezer reads minus five', magnitude: 5 },
+      { words: 'the freezer reads negative twelve', magnitude: 12 },
+    ),
   );
   const saysAFigure = fc.oneof(
-    figure.map((m) => `the freezer reads ${m}`),
-    fc.constantFrom('the freezer reads zero', 'the freezer reads 0', 'the freezer reads minus 0', 'the freezer reads minus zero', 'the freezer reads 0 below', 'the freezer reads minus zero point five'),
+    figure.map((m) => ({ words: `the freezer reads ${m}`, magnitude: m })),
+    fc
+      .constantFrom('the freezer reads zero', 'the freezer reads 0', 'the freezer reads minus 0', 'the freezer reads minus zero', 'the freezer reads 0 below')
+      .map((words) => ({ words, magnitude: 0 })),
+  );
+  const notAReading = fc.oneof(
+    fc.tuple(fc.integer({ min: -4596, max: -1 }), saysAFigure.map(({ words }) => words)),
+    fc.tuple(contractTenths, fc.constant('the freezer reads minus zero point five')),
   );
 
   function storedTenths(tenths: number, words: string): number | null {
     return decided(walkIn({ check_point: 'freezer', value: tenths / 10, words })).event.valueTenths ?? null;
   }
 
-  it('never stores a value above zero beside words that say a reading below zero', () => {
+  it('stores the magnitude below zero beside words that say a reading below zero, whatever sign the value carries', () => {
     fc.assert(
-      fc.property(contractTenths, saysBelowZero, (tenths, words) => {
-        const stored = storedTenths(tenths, words);
-        if (stored !== null) expect(stored).toBeLessThan(0);
+      fc.property(saysBelowZero, fc.constantFrom(1, -1), ({ words, magnitude }, sign) => {
+        expect(storedTenths(sign * magnitude * 10, words)).toBe(-magnitude * 10);
       }),
       { numRuns: 500 },
     );
   });
 
-  it('never stores a value below zero beside plain words that name a figure, and stores any other as given', () => {
+  it('stores the figure plain words name as given', () => {
     fc.assert(
-      fc.property(contractTenths, saysAFigure, (tenths, words) => {
-        const stored = storedTenths(tenths, words);
-        if (tenths < 0) expect(stored).toBeNull();
-        else if (stored !== null) expect(stored).toBe(tenths);
+      fc.property(saysAFigure, ({ words, magnitude }) => {
+        expect(storedTenths(magnitude * 10, words)).toBe(magnitude * 10);
+      }),
+      { numRuns: 500 },
+    );
+  });
+
+  it('refuses a value below zero beside plain words that name a figure, and any value beside words whose sign could belong to either figure', () => {
+    fc.assert(
+      fc.property(notAReading, ([tenths, words]) => {
+        expect(storedTenths(tenths, words)).toBeNull();
       }),
       { numRuns: 500 },
     );
