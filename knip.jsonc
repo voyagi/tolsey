@@ -12,8 +12,6 @@
   "ignoreDependencies": [
     // The launch page's structured-data types arrive in phase 3.
     "schema-dts",
-    // The card build arrives in phase 2.
-    "vite-plugin-singlefile",
     // The cards register through it in phase 2; pinned now in lockstep with server and client.
     "@modelcontextprotocol/ext-apps",
     // knip reads "testRunner": "command" as a package, but the command runner ships inside
