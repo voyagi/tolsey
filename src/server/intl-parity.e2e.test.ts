@@ -1,9 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestHarness } from 'wrangler';
 import { businessDay, localParts } from '../domain/business-day';
 import { PROBE_DAY_START, PROBE_ZONE, Q4_INSTANTS } from '../test-support/q4-instants';
 
 const PROBE_CONFIG = './src/test-support/intl-probe.wrangler.jsonc';
+const PRODUCT_CONFIG = './wrangler.jsonc';
 
 interface ProbeAnswer {
   instant: number;
@@ -23,6 +25,13 @@ describe('Intl parity between workerd and Node', () => {
 
   afterAll(async () => {
     await harness?.close();
+  });
+
+  // The probe proves parity only for the date it runs under, so it must be the product's.
+  it('runs under the compatibility date the product Worker deploys with', () => {
+    const dateIn = (file: string) => /"compatibility_date"\s*:\s*"([^"]+)"/.exec(readFileSync(file, 'utf8'))?.[1];
+    expect(dateIn(PRODUCT_CONFIG)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(dateIn(PROBE_CONFIG)).toBe(dateIn(PRODUCT_CONFIG));
   });
 
   it('gives the same local parts and business day in workerd and Node for the eight Q4 instants', async () => {
