@@ -286,10 +286,9 @@ function valueFromWords(facts: Facts, ctx: DecisionContext): number | undefined 
 // refusal on the way to a correction's number never supersedes: only the line that logs does.
 function decideFacts(facts: Facts, ctx: DecisionContext, answering: Answering): Decision {
   const { links } = answering;
+  const value = answering.valueFromCall ? valueFromWords(facts, ctx) : facts.value;
   // A missing number is the domain's refusal, never a schema rejection: value stays optional in the
   // contract (REFU-01), so a numberless check is refused here before any rule is chosen.
-  if (facts.value === undefined) return refusedOrMissed(facts, ctx, answering);
-  const value = answering.valueFromCall ? valueFromWords(facts, ctx) : facts.value;
   if (value === undefined) return refusedOrMissed(facts, ctx, answering);
   const { checkPoint, initials } = facts;
   if (checkPoint === undefined) {
