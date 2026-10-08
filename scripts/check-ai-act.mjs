@@ -11,7 +11,8 @@
 // WHAT IT CHECKS in docs/ai-act.md:
 //   - one section heading per paragraph, all four of 50(1) 50(2) 50(3) 50(4)
 //   - each section carries a verdict on its heading line or on a Verdict: line, never in body
-//     prose: APPLIES, DOES NOT APPLY, or falls on <a named third party> (not empty, tbd, todo, ?)
+//     prose: APPLIES, DOES NOT APPLY, or falls on <a named third party> (not empty, tbd, todo, ?),
+//     exactly one of them, with APPLIES read only in capitals
 //   - every APPLIES section names at least one backticked repo path that EXISTS (the mechanism)
 //     and at least one backticked path that is a TEST file and exists (what pins it)
 //   - every backticked repo path anywhere in the file exists, whatever the verdict beside it: a
@@ -55,7 +56,8 @@ function verdictOf(section) {
   let notApply = false;
   let unnamedParty = false;
   for (const text of places) {
-    if (/\bAPPLIES\b/i.test(text)) applies = true;
+    // Verdicts are written in capitals, so a heading's topic ("what applies to ...") is never one.
+    if (/\bAPPLIES\b/.test(text)) applies = true;
     if (/\b(DOES NOT APPLY|NOT APPLICABLE)\b/i.test(text)) notApply = true;
     const fallsOn = /\bfalls on\b(.*)$/i.exec(text);
     if (fallsOn) {
@@ -102,6 +104,10 @@ function run(cwd, explicitPath, required) {
     }
     if (!applies && !notApply) {
       problems.push(`Article 50(${p}): no verdict found - the heading or a Verdict line must say APPLIES, DOES NOT APPLY, or falls on <the third party>`);
+      continue;
+    }
+    if (applies && notApply) {
+      problems.push(`Article 50(${p}): the verdict says both APPLIES and DOES NOT APPLY (or falls on a third party) - write one`);
       continue;
     }
     if (applies) {
@@ -188,7 +194,18 @@ function selftest() {
     check('APPLIES naming a path that does not exist fails', runCli(fixture(
       '# AI Act\n\n## Article 50(1), interaction: APPLIES\n\nSee `src/gone.ts` and `src/gone.test.ts`.\n\n' + OTHERS)), 1, /names no existing mechanism path/);
     check('a falls-on verdict needs no mechanism here', runCli(fixture(
-      '# AI Act\n\n## Article 50(1), interaction: DOES NOT APPLY\n\ntext\n\n' + OTHERS)), 0, /determined/);
+      '# AI Act\n\n## Article 50(1), interaction: falls on the host platform\n\ntext\n\n' + OTHERS)), 0, /determined/);
+    check('a heading whose topic says "applies" in lower case reads only its DOES NOT APPLY verdict', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: DOES NOT APPLY\n\ntext\n\n' +
+      '## Article 50(2), marking: falls on the speech vendor\n\ntext\n\n' +
+      '## Article 50(3), what applies to emotion recognition: DOES NOT APPLY\n\ntext\n\n' +
+      '## Article 50(4), deepfakes: DOES NOT APPLY\n\ntext\n')), 0, /determined: all four/);
+    check('a section that says both APPLIES and DOES NOT APPLY fails as contradictory', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: APPLIES\n\nVerdict: DOES NOT APPLY\n\n`src/domain/brief.ts`, `src/domain/brief.test.ts`\n\n' + OTHERS,
+      MECH)), 1, /Article 50\(1\): the verdict says both APPLIES and DOES NOT APPLY/);
+    check('APPLIES beside a falls-on verdict fails as contradictory', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: APPLIES\n\nVerdict: falls on the host platform\n\n`src/domain/brief.ts`, `src/domain/brief.test.ts`\n\n' + OTHERS,
+      MECH)), 1, /Article 50\(1\): the verdict says both APPLIES and DOES NOT APPLY/);
     check('an absent file with --require exits 1 naming the missing document', runCli(fixture(null), ['--require']),
       1, /MISSING: docs\/ai-act\.md is required here \(--require\)/);
     check('a present, determined file with --require exits 0', runCli(fixture(
