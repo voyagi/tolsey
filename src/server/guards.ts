@@ -1,10 +1,11 @@
-import { classifyInboundRequest, isLegacyRequest } from '@modelcontextprotocol/server';
+import { classifyInboundRequest, isLegacyRequest, SUPPORTED_PROTOCOL_VERSIONS } from '@modelcontextprotocol/server';
 
 const MAX_BODY_BYTES = 65536;
 
 export type ParsedBody = { kind: 'empty' } | { kind: 'json'; value: unknown } | { kind: 'invalid' };
 
-const SUPPORTED_VERSIONS = 'Unsupported protocol version. Supported: 2025-11-25, 2025-06-18, 2025-03-26';
+// The SDK's own list, the versions an initialize is answered at, so the refusal never drifts from it.
+const SUPPORTED_VERSIONS = `Unsupported protocol version. Supported: ${SUPPORTED_PROTOCOL_VERSIONS.join(', ')}`;
 
 // The SDK sets no body limit, and a Content-Length header can lie, so the stream itself is counted
 // and cancelled the moment it passes the cap.

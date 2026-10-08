@@ -1,4 +1,5 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import { SUPPORTED_PROTOCOL_VERSIONS } from '@modelcontextprotocol/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { dumpRecordTables, openTestD1, type TestD1 } from '../test-support/d1';
 import { byId, errorById, sendRaw, type RawResponse } from '../test-support/raw-mcp';
@@ -435,7 +436,20 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
       expect(seen[0]?.status).toBe(400);
       const refusal = JSON.parse(seen[0]?.body ?? '{}') as { error?: { code: number; message: string } };
       expect(refusal.error?.code).toBe(-32000);
-      expect(refusal.error?.message).toBe('Unsupported protocol version. Supported: 2025-11-25, 2025-06-18, 2025-03-26');
+      expect(refusal.error?.message).toBe(`Unsupported protocol version. Supported: ${SUPPORTED_PROTOCOL_VERSIONS.join(', ')}`);
+      expect(refusal.error?.message).toMatch(/Supported: 2025-11-25, /);
+    });
+
+    // The refusal below names the SDK's list, so each version on it must be one an initialize is
+    // answered at.
+    it.each([...SUPPORTED_PROTOCOL_VERSIONS])('answers an initialize asking %s at that version', async (version) => {
+      const body = JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: { protocolVersion: version, capabilities: {}, clientInfo: { name: 'raw-probe', version: '1.0.0' } },
+      });
+      expect(byId(await send('/mcp', { body }), 1)).toMatchObject({ protocolVersion: version });
     });
 
     it('connects a client in auto negotiation at 2025-11-25', async () => {
