@@ -116,7 +116,6 @@ const HEDGE: NumberWords = { kind: 'hedge' };
 const NUMBER_TOKEN = /^-?\d+(\.\d+)?$/;
 // A decade said in digits, at any width: "40s" at a cooler, "130s" around the hot-holding limit.
 const DECADE_FIGURE = /^\d+0s$/;
-const RANGE_FIGURE = /^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/;
 const ISH_FIGURE = /^(\d+(?:\.\d+)?)ish$/;
 
 function isNumber(token: string | undefined): boolean {
@@ -141,17 +140,24 @@ function isFigure(token: string | undefined): boolean {
 
 // tokensOf keeps a hyphen inside a token, since "walk-in" and "-5" need it, so a hedge written with
 // one ("mid-30s", "38-ish", "5-below") would hide inside a single token. For classifying only, a
-// digit range "38-40" reads as "38 to 40", "38ish" as "38 ish", and any other hyphenated token is
-// split at its hyphens; a negative number stays whole.
+// hyphenated token is split at its hyphens and each piece read on its own, so "38-40ish" still says
+// "40 ish"; a dash between two digit figures is a range wherever it stands ("38-40" reads "38 to
+// 40"), while number words joined by one ("thirty-eight") stay one number. "38ish" reads "38 ish",
+// and a negative number stays whole.
 function spokenParts(token: string): string[] {
   if (NUMBER_TOKEN.test(token)) return [token];
   // A dash standing alone between two figures, "38 - 40", is the same range as "38-40".
   if (/^-+$/.test(token)) return ['to'];
-  const range = RANGE_FIGURE.exec(token);
-  if (range) return [range[1], 'to', range[2]];
   const ish = ISH_FIGURE.exec(token);
   if (ish) return [ish[1], 'ish'];
-  return token.split('-').filter(Boolean);
+  const pieces = token.split('-').filter(Boolean);
+  if (pieces.length < 2) return pieces;
+  const parts: string[] = [];
+  for (const piece of pieces.map(spokenParts)) {
+    if (isNumber(parts.at(-1)) && isNumber(piece[0])) parts.push('to');
+    parts.push(...piece);
+  }
+  return parts;
 }
 
 // The unit said between a figure and "below", as in "5 degrees below zero".

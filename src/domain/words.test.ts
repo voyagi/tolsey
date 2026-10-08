@@ -62,6 +62,19 @@ describe('classifyNumberWords', () => {
     expect(classify(words)).toEqual({ kind: 'hedge' });
   });
 
+  // Each piece of a hyphenated token is read on its own, and a dash between two digit figures is a
+  // range wherever it stands in the token: otherwise "40ish" after the split hides as one word.
+  it.each(['38-40ish', '38ish-40', 'the walk-in reads 38-40-ish', '38-40-42', '38.25-40.75', '38-40.5'])(
+    'classifies the hyphenated "%s" as a hedge',
+    (words) => {
+      expect(classify(words)).toEqual({ kind: 'hedge' });
+    },
+  );
+
+  it.each(['thirty-eight', 'the walk-in reads 38', 'walk-in 38'])('classifies the hyphenated or plain "%s" as plain', (words) => {
+    expect(classify(words)).toEqual({ kind: 'plain' });
+  });
+
   // "below" after a number is a sign only when nothing but the zero word follows it; before a limit
   // it compares the reading with that limit, which is not a reading below zero.
   it.each(['the walk-in is 38, below 41', '38 below 41', 'freezer 2 below the limit', '38 degrees below 41'])(
