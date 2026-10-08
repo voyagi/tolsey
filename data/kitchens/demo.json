@@ -177,7 +177,7 @@
         "about", "around", "roughly", "approximately", "approx", "approximate", "nearly", "almost", "near", "maybe",
         "probably", "guess", "think", "like", "ish", "something", "same"
       ],
-      "decades": ["high", "mid", "low"],
+      "decades": ["high", "mid", "low", "upper", "lower"],
       "tens": ["teens", "twenties", "thirties", "forties", "fifties", "sixties", "seventies", "eighties", "nineties"],
       "ranges": ["or", "to", "through", "thru"],
       "phrases": [

@@ -206,7 +206,7 @@ describe('classifyNumberWords against transcript shapes', () => {
   });
 
   // A decade word before a figure places the reading somewhere in that decade, never at the figure.
-  it.each(['mid 35', 'high 40', 'low 38', 'the walk-in is in the mid thirty five'])('classifies "%s" as a hedge', (words) => {
+  it.each(['mid 35', 'high 40', 'low 38', 'the walk-in is in the mid thirty five', 'lower 40', 'the walk-in is upper 30'])('classifies "%s" as a hedge', (words) => {
     expect(classify(words)).toEqual({ kind: 'hedge' });
   });
 
