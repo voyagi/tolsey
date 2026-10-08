@@ -109,7 +109,8 @@ const PLAIN: NumberWords = { kind: 'plain' };
 const HEDGE: NumberWords = { kind: 'hedge' };
 
 const NUMBER_TOKEN = /^-?\d+(\.\d+)?$/;
-const DECADE_FIGURE = /^\d0s$/;
+// A decade said in digits, at any width: "40s" at a cooler, "130s" around the hot-holding limit.
+const DECADE_FIGURE = /^\d+0s$/;
 const RANGE_FIGURE = /^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/;
 const ISH_FIGURE = /^(\d+(?:\.\d+)?)ish$/;
 
@@ -126,9 +127,10 @@ const NUMBER_WORDS: ReadonlySet<string> = new Set([
   'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety', 'hundred',
 ]);
 
-// A figure said either way, in digits or in words.
+// A figure said either way, in digits or in words. A decade in digits counts too, so a decade word
+// before it ("high 130s") hedges the way it does before a figure.
 function isFigure(token: string | undefined): boolean {
-  return isNumber(token) || (token !== undefined && NUMBER_WORDS.has(token));
+  return token !== undefined && (isNumber(token) || NUMBER_WORDS.has(token) || DECADE_FIGURE.test(token));
 }
 
 // tokensOf keeps a hyphen inside a token, since "walk-in" and "-5" need it, so a hedge written with

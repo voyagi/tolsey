@@ -200,6 +200,17 @@ describe('classifyNumberWords against transcript shapes', () => {
     expect(classify(words)).toEqual({ kind: 'hedge' });
   });
 
+  // At hot holding the limit sits inside a three-digit decade: "the 130s" straddles 135.
+  it.each([
+    'the soup well is in the 130s',
+    'soup well high 130s',
+    'soup well mid-130s',
+    'carving station low 100s',
+    'the walk-in is in the teens',
+  ])('classifies "%s", a decade of any width, as a hedge', (words) => {
+    expect(classify(words)).toEqual({ kind: 'hedge' });
+  });
+
   it('classifies every decade word in the vocabulary before a figure as a hedge', () => {
     for (const word of profile.vocabulary.hedges.decades) {
       expect(classify(`${word} 41`), `${word} 41`).toEqual({ kind: 'hedge' });

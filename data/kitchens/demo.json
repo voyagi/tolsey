@@ -178,7 +178,7 @@
         "probably", "guess", "think", "like", "ish", "something", "same"
       ],
       "decades": ["high", "mid", "low"],
-      "tens": ["twenties", "thirties", "forties", "fifties", "sixties", "seventies", "eighties", "nineties"],
+      "tens": ["teens", "twenties", "thirties", "forties", "fifties", "sixties", "seventies", "eighties", "nineties"],
       "ranges": ["or", "to", "through", "thru"],
       "phrases": [
         "same as before", "same as last time", "as usual", "at most", "at least", "up to", "or so", "or lower",

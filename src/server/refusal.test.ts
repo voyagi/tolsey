@@ -142,6 +142,15 @@ describe('a check given without a number, through MCP', () => {
       expect(result.structuredContent?.outcome).toBe('refused');
       expect(ofKind(await lines(kitchenId), 'reading')).toHaveLength(0);
     });
+
+    // The 130s straddle the hot-holding limit of 135, so a decade must never pass as a hot reading.
+    it('refuses value 135 at the soup well said as "in the 130s" and asks for the number', async () => {
+      const kitchenId = await kitchen();
+      const result = await call(kitchenId, { check_point: 'soup_well', value: 135, words: 'in the 130s', initials: 'AB' });
+
+      expect(result.structuredContent).toMatchObject({ outcome: 'refused', prompt: { kind: 'number' } });
+      expect(ofKind(await lines(kitchenId), 'reading')).toHaveLength(0);
+    });
   });
 
   describe('a reading below zero (E21)', () => {
