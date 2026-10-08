@@ -22,7 +22,8 @@ import {
 // nulls anyway; saying day_line IS NOT NULL lets the partial index events_day_line serve the next line
 // number, where otherwise every line of the day is read to find it.
 // The WHERE sits inside the derived table: on the outer SELECT, SQLite also pushes it down into the
-// derived table and checks it in both places, so an insert that wrote walked the kitchen's lines twice.
+// derived table and checks it in both places. The line cap reads the kitchen's counter row by key, so
+// no guard walks the kitchen's lines, on a refused call either.
 const INSERT_EVENT = `
 INSERT INTO events (
   id, kitchen_id, kind, occurred_at, business_day, time_zone, day_line, screen_id, request_id,
@@ -53,7 +54,7 @@ FROM (
       )
   END AS n
   WHERE COALESCE((SELECT rows FROM budget WHERE utc_date = ?31), 0) + ?32 <= ?33
-    AND (SELECT COUNT(*) FROM events WHERE kitchen_id = ?2) < ?34
+    AND COALESCE((SELECT lines FROM kitchen_lines WHERE kitchen_id = ?2), 0) < ?34
     AND EXISTS (
       SELECT 1 FROM kitchens WHERE id = ?2 AND kind = 'scratch' AND created_at + ?35 > ?36
     )
@@ -64,6 +65,12 @@ RETURNING seq, day_line, result_json`;
 const COUNT_BUDGET = `
 INSERT INTO budget (utc_date, rows) SELECT ?1, ?2 WHERE changes() > 0
 ON CONFLICT (utc_date) DO UPDATE SET rows = rows + excluded.rows`;
+
+// Statement 3 of the append batch: the budget row changed only if the event landed, so the kitchen's
+// line counter moves with exactly the events that were stored.
+const COUNT_LINE = `
+INSERT INTO kitchen_lines (kitchen_id, lines) SELECT ?1, 1 WHERE changes() > 0
+ON CONFLICT (kitchen_id) DO UPDATE SET lines = lines + 1`;
 
 // One read serves both the unique-error path and the refused path: a stored event for the request id
 // decides first, because a retry must get its stored result even after the window, the cap or the
@@ -76,7 +83,7 @@ SELECT
   EXISTS (
     SELECT 1 FROM kitchens WHERE id = ?1 AND kind = 'scratch' AND created_at + ?3 > ?4
   ) AS kitchen_open,
-  (SELECT COUNT(*) FROM events WHERE kitchen_id = ?1) AS line_count
+  COALESCE((SELECT lines FROM kitchen_lines WHERE kitchen_id = ?1), 0) AS line_count
 FROM (SELECT 1) AS one
 LEFT JOIN events AS stored ON stored.kitchen_id = ?1 AND stored.request_id = ?2`;
 
@@ -348,10 +355,11 @@ export class D1Store implements Store {
         input.kitchenLineCap, input.writeWindowMs, input.now,
       );
     const count = this.db.prepare(COUNT_BUDGET).bind(input.utcDate, input.expectedRows);
+    const countLine = this.db.prepare(COUNT_LINE).bind(event.kitchenId);
 
     let results;
     try {
-      results = await this.db.batch<InsertedRow>([insert, count]);
+      results = await this.db.batch<InsertedRow>([insert, count, countLine]);
     } catch (error) {
       return this.afterUniqueError(error, input);
     }

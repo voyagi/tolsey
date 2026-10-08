@@ -56,6 +56,8 @@ export class MemoryStore implements Store {
   private readonly bySupersedes = new Map<string, StoredLine>();
   private readonly byAnswers = new Map<string, StoredLine>();
   private readonly budget = new Map<string, number>();
+  // D1Store's kitchen_lines: the cap reads a kept count, never a walk over the kitchen's lines.
+  private readonly lineCounts = new Map<string, number>();
   private lastSeq = 0;
 
   async createKitchen(input: CreateKitchenInput): Promise<CreateKitchenOutcome> {
@@ -158,8 +160,7 @@ export class MemoryStore implements Store {
   private refusalFor(input: AppendInput): RefusalReason | null {
     const kitchen = this.kitchens.get(input.event.kitchenId);
     if (!kitchen || kitchen.kind !== 'scratch' || kitchen.createdAt + input.writeWindowMs <= input.now) return 'kitchen_closed';
-    const lines = this.events.filter((line) => line.kitchenId === kitchen.id).length;
-    if (lines >= input.kitchenLineCap) return 'kitchen_full';
+    if ((this.lineCounts.get(kitchen.id) ?? 0) >= input.kitchenLineCap) return 'kitchen_full';
     return this.budgetHasRoom(input.utcDate, input.expectedRows, input.dailyRowCap) ? null : 'budget_full';
   }
 
@@ -180,6 +181,7 @@ export class MemoryStore implements Store {
     this.byRequest.set(requestKey(line.kitchenId, line.requestId), line);
     if (line.supersedesId !== null) this.bySupersedes.set(line.supersedesId, line);
     if (line.answersId !== null) this.byAnswers.set(line.answersId, line);
+    this.lineCounts.set(line.kitchenId, (this.lineCounts.get(line.kitchenId) ?? 0) + 1);
     this.spend(input.utcDate, input.expectedRows);
     return { status: 'appended', seq: line.seq, dayLine, resultJson };
   }

@@ -30,6 +30,11 @@ SELECT lower(hex(randomblob(16))), ?1, 'receipt', ?2, ?4, 'America/Chicago', 'se
   lower(hex(randomblob(16))), 'seed', 'seeded line', 'receipt', '{}', 'seed'
 FROM line`;
 
+// Seeded lines count against the line cap exactly as appended ones do.
+const COUNT_SEEDED_LINES = `
+INSERT INTO kitchen_lines (kitchen_id, lines) VALUES (?1, ?2)
+ON CONFLICT (kitchen_id) DO UPDATE SET lines = lines + excluded.lines`;
+
 export const HOUR_MS = 3_600_000;
 export const KITCHEN_CREATED_AT = Date.UTC(2026, 9, 20, 14, 0, 0);
 const BUSINESS_DAY = '2026-10-20';
@@ -120,7 +125,10 @@ export async function insertLines(
   businessDay = BUSINESS_DAY,
 ): Promise<void> {
   if (count === 0) return;
-  await db.prepare(INSERT_SEEDED_LINES).bind(kitchenId, occurredAt, count, businessDay).run();
+  await db.batch([
+    db.prepare(INSERT_SEEDED_LINES).bind(kitchenId, occurredAt, count, businessDay),
+    db.prepare(COUNT_SEEDED_LINES).bind(kitchenId, count),
+  ]);
 }
 
 export function appendInput(

@@ -56,9 +56,9 @@ full retention age would let such a retry answer "not found" instead.
 The sweep lives in `src/server/retention.ts`, outside the store adapter, and holds the only DELETE
 statements in the codebase. A round reads expired kitchens through the `kitchens_expiry` index, at most
 `sweepBatchLimit` of them on a mint and `cronSweepBatchLimit` on the hourly run, then deletes those
-kitchens and their lines with two statements over one bound JSON array of ids, so a round is at most
-four statements whatever its size. The hourly run repeats rounds up to `maxSweepRounds`, which keeps it
-under the free plan's 50 queries per Worker invocation while still clearing every kitchen the daily
+kitchens, their lines and their line counters with three statements over one bound JSON array of ids,
+so a round is at most five statements whatever its size. The hourly run repeats rounds up to
+`maxSweepRounds`, which keeps it within the free plan's 50 queries per Worker invocation while still clearing every kitchen the daily
 budget can mint. It stops early only on a round that reads less than a full page: a round that read a
 full page but deleted less lost part of it to a mint's round running at the same moment, and older
 kitchens can still be waiting behind it. A mint reads the budget first and is refused at once when the day is full, with no
@@ -80,32 +80,41 @@ pass that attacks the running service measures a mint flood against the deployed
 The free allowance belongs to the account, not to this database. Cloudflare's D1 pricing page says
 that once the account reaches its daily limits no query runs against D1 until the 00:00 UTC reset
 (read 2026-09-26). The cap refuses writes, never retention, so a day can also spend the deletion of
-the previous day's kitchens on top of it. A delete counts one row per kitchen and one per line (local
-D1, pinned by "counts one row per deleted kitchen and per deleted reading" in
-`src/server/budget.test.ts`), so that addition is at most about 8,000 rows: the 40,000 / 5 kitchens a
-day's budget can mint, the costliest mix to delete. The cap therefore assumes every other D1 database
+the previous day's kitchens on top of it. A delete counts one row per kitchen, one for its line counter and
+one per line (local D1, pinned by "counts one row per deleted kitchen, its line counter and per deleted
+reading" in `src/server/budget.test.ts`), so that addition is at most about 8,000 rows: the 40,000 / 5
+kitchens a day's budget can mint, the costliest mix to delete. A kitchen with no lines has no counter
+row, and a kitchen's first line spends at least 10 rows of the budget (its reserve) and deletes as 2, so lines never make a
+mix costlier. The cap therefore assumes every other D1 database
 on the account writes fewer than about 52,000 rows a day, and past the account limit every tool call
 answers with the fixed server-fault sentence.
 
-Reads are not budgeted. The line cap counts the kitchen's lines on every call, so a call reads rows in
-proportion to the lines its kitchen already holds. Measured on local D1 by counting `meta.rows_read`
-over one append (2026-09-27): an accepted reading reads 8 rows in an empty kitchen, 159 at 150 lines
-and 207 at 199; a call refused at the 200-line cap reads 408, the insert's count once and the
-follow-up's once. A call that names a pending prompt reads it first (2026-09-29): one row for most
-questions, but a digit repeat counts its chain over the kitchen's events, 202 rows at 198 lines, so
-such a call refused at the cap reads about 610. The next line number is served by the
-`events_day_line` index and adds no walk. The
-insert's guards sit inside its derived table: on the outer SELECT, SQLite also pushed them down into
-it and checked them twice, so an insert that wrote walked the lines twice (309 rows at 150 lines).
-Filling one kitchen to the cap reads about 21,600 rows, so the roughly 25 full kitchens a day's write
-budget allows read about half a million, inside the 5 million a day. Refused calls are capped by
-nothing: about 12,000 of them against one full kitchen spend the account's 5 million daily reads
-(about 8,200 when each names a digit-repeat prompt), and
-from then until 00:00 UTC no query runs against any D1 database on the account. The test "reads the
-kitchen lines once for an accepted reading" in `src/server/budget.test.ts` holds the accepted figure,
-the pass that attacks the running service decides a per-client or per-kitchen limit for the read flood
-together with the mint flood, and the read figures are measured again on remote D1 at the first
-deploy.
+Reads are not budgeted, so the line cap never walks the kitchen's lines. Each kitchen's line count is
+kept in its own row of `kitchen_lines` (migration 0003, which backfilled it from the lines already
+stored), read by key in the guarded insert and in the follow-up read. The append raises it in the same
+batch as the event, under the same `changes() > 0` guard as the budget, so it counts exactly the events
+stored, and retention deletes it with its kitchen. It is bookkeeping like `budget`, not the record, so
+the append-only triggers do not cover it. Counting the kitchen's events instead read every line on
+every call, refused ones included: 408 rows for a call refused at the 200-line cap (2026-09-27), and
+about 12,000 such calls against one full kitchen would have spent the account's 5 million daily reads.
+Measured on local D1 by counting `meta.rows_read` over one append (2026-10-08): an accepted reading
+reads 8 rows in an empty kitchen and 10 at 150 and at 199 lines, and a call refused at the cap reads 8.
+The next line number is served by the `events_day_line` index and adds no walk. The insert's guards
+sit inside its derived table: on the outer SELECT, SQLite also pushed them down into it and checked
+them twice. The tests "reads a handful of rows for an append refused at the line cap, however many
+lines the kitchen holds" in `src/store/d1-features.test.ts` and "reads a handful of rows for an
+accepted reading, however many lines the kitchen holds" in `src/server/budget.test.ts` hold both
+figures.
+
+Two reads still grow with the kitchen, each bounded by its 200-line cap. A call that names a
+digit-repeat prompt counts that prompt's chain over the kitchen's events (200 rows at 198 lines,
+2026-10-08), and "wrong number" counts the corrections along the newest reading's chain, about two
+walks of the kitchen (303 rows at 151 lines, 2026-09-30). A flood of such calls against one full
+kitchen reads roughly 200 to 400 rows a call, so about 12,500 to 25,000 of them spend the account's 5
+million daily reads, and from then until 00:00 UTC no query runs against any D1 database on the
+account. The pass that attacks the running service decides a per-client or per-kitchen limit for that
+read flood together with the mint flood before the public deploy, and the read figures are measured
+again on remote D1 at the first deploy.
 
 ## Events table
 
@@ -177,7 +186,7 @@ is appended, so a later change of the schedule never moves an old reading to ano
 
 ## Rows written per write
 
-Measured on local D1 through `getPlatformProxy` on this schema (migrations 0001 and 0002) by the test
+Measured on local D1 through `getPlatformProxy` on this schema (migrations 0001, 0002 and 0003) by the test
 "measures rows written per write kind equal to data/store/rows-per-write.json" in
 `src/store/d1-features.test.ts`, run with `npx vitest run --project store`, and, for `budget_add`, by
 "measures the rows the sweep budget add writes as the first write of a UTC date equal to budget_add"
@@ -186,34 +195,36 @@ in `src/server/budget.test.ts`:
 | Write kind | Rows written |
 |------------|--------------|
 | `kitchen_create` | 5 |
-| `event_first_of_day` | 8 |
-| `event` | 7 |
-| `event_superseding` | 8 |
-| `event_answering` | 8 |
+| `event_first_of_day` | 10 |
+| `event` | 8 |
+| `event_superseding` | 9 |
+| `event_answering` | 9 |
 | `budget_add` | 2 |
 
 `kitchen_create` is a mint as the first write of its UTC date: the kitchen row with its two index rows,
 plus the budget row's insert, the safe direction. `budget_add` is the retention sweep's own bookkeeping,
 the budget row's insert as the first write of a date; later adds of the same date write one row.
 
-`event_first_of_day` is an event plus the first budget upsert of its UTC date, and `event` a later
-event of the same date; the difference of one is the budget row's insert against its update. Every
-measured event is a reading, which also writes the day-line index row.
+`event_first_of_day` is an event plus the first budget upsert of its UTC date and its kitchen's first
+line-counter upsert, and `event` a later event of the same date and kitchen; the difference of two is
+the budget row's insert against its update (one) and the counter row's insert, with its key's index
+row, against its update (one). Every measured event is a reading, which also writes the day-line index
+row.
 
-The adapter cannot know before the batch runs whether the date's budget row exists or which partial
-indexes the event fills, so every event append reserves `expectedRowsFor(event)` from
+The adapter cannot know before the batch runs whether the date's budget row or the kitchen's counter
+row exists or which partial indexes the event fills, so every event append reserves `expectedRowsFor(event)` from
 `src/store/port.ts`: the `event_first_of_day` figure, plus `event_superseding - event` when the event
 supersedes a line, plus `event_answering - event` when it answers a prompt. A matrix test in the same
 file measures every event kind (reading, refusal, held, wrong_number, receipt), with no partial index
 key, a `supersedes_id` only, an `answers_id` only and both, as the first event of a UTC date and as a
 later one, and holds the measured rows at or below the reserve in all 40 cells. The reserve runs high
-only by the budget insert on later events of a date and by the day-line index row a held,
+only by the budget and counter inserts on later events and by the day-line index row a held,
 wrong_number or receipt event skips, which is the safe direction.
 
 Retention deletes count against the same daily allowance. A round adds the summed `meta.rows_written`
 of its delete batch, plus `budget_add`, with no cap check: retention is never refused. Unlike an
-insert, a delete counts one row per kitchen and one per line on local D1, with no index rows (the
-pinned test named in the write model). All numbers are measured again on remote D1 at the first deploy.
+insert, a delete counts one row per kitchen, one per line counter and one per line on local D1, with
+no index rows (the pinned test named in the write model). All numbers are measured again on remote D1 at the first deploy.
 
 ## Append-only guard
 

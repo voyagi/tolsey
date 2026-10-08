@@ -19,13 +19,21 @@ import { mintThroughRoute, openInProcessWorker, type InProcessWorker } from '../
 import { addToBudget } from './budget';
 import { DEMO_PROFILE } from './data';
 import { deletionBoundMs, handleKitchensRoute, writeWindowMs } from './kitchens';
-import { DELETE_EXPIRED_EVENTS, DELETE_EXPIRED_KITCHENS, expireKitchens, runScheduledSweep } from './retention';
+import {
+  DELETE_EXPIRED_EVENTS,
+  DELETE_EXPIRED_KITCHENS,
+  DELETE_EXPIRED_LINE_COUNTS,
+  expireKitchens,
+  runScheduledSweep,
+} from './retention';
 
 // 10:00 CDT on 2026-10-20; its UTC date is the budget row every write in these tests counts against.
 const T0 = Date.UTC(2026, 9, 20, 15, 0);
 const T0_DATE = '2026-10-20';
 const MINUTE_MS = 60_000;
 const D1_QUERIES_PER_INVOCATION = 50;
+// The expired read, the three deletes of its batch and the budget add.
+const STATEMENTS_PER_ROUND = 5;
 const DEMO_FULL = 'The demo is full for today. Try the replay.';
 const KITCHEN_FULL = 'This kitchen is full. Start a new kitchen to keep logging.';
 const KITCHEN_CLOSED = 'This kitchen has closed. Start a new kitchen to keep logging.';
@@ -137,11 +145,11 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       expect(await eventsOf(minted.id)).toBe(limits.kitchenLineCap);
     });
 
-    // Reads are not budgeted, so their cost per call is held here (ADR 0002, rows read). The guarded
-    // insert walks the kitchen's lines once for the line cap; with its guards on the outer SELECT it
-    // walked them twice when it wrote (309 rows at 150 lines on local D1), and the next line number
-    // comes from the day-line index, never from a walk over the day (458 before that).
-    it('reads the kitchen lines once for an accepted reading', async () => {
+    // Reads are not budgeted, so their cost per call is held here (ADR 0002, rows read). The line cap
+    // reads the kitchen's counter row, where counting its events walked every line (159 rows at 150
+    // lines on local D1), and the next line number comes from the day-line index, never from a walk
+    // over the day.
+    it('reads a handful of rows for an accepted reading, however many lines the kitchen holds', async () => {
       const kitchen = scratchKitchen();
       await worker.store.createKitchen(kitchenInput(kitchen, limits));
       const lines = 150;
@@ -151,7 +159,7 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       const outcome = await new D1Store(counted.db).append(appendInput(testEvent(kitchen.id), limits));
 
       expect(outcome.status).toBe('appended');
-      expect(counted.totals().rowsRead).toBeLessThan(1.5 * lines);
+      expect(counted.totals().rowsRead).toBeLessThanOrEqual(12);
     });
 
     // Every answer reads its pending prompt first. Only a digit repeat needs its chain counted, and
@@ -247,12 +255,13 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       expect(await budgetRows()).toBe(before + round.rowsCounted);
       expect(await kitchenExists(kitchenId)).toBe(false);
       expect(await eventsOf(kitchenId)).toBe(0);
+      expect(await count('SELECT COUNT(*) AS n FROM kitchen_lines WHERE kitchen_id = ?1', kitchenId)).toBe(0);
     });
 
-    // ADR 0002 derives retention's daily ceiling from this figure: one row per deleted kitchen and
-    // per deleted line, whatever indexes the line filled when it was written. Ten readings through
-    // the reference client took 6.1 s on a loaded machine, past the 5 s default.
-    it('counts one row per deleted kitchen and per deleted reading, plus budget_add', { timeout: 30_000 }, async () => {
+    // ADR 0002 derives retention's daily ceiling from this figure: one row per deleted kitchen, one for
+    // its line counter and one per deleted line, whatever indexes the line filled when it was written.
+    // Ten readings through the reference client took 6.1 s on a loaded machine, past the 5 s default.
+    it('counts one row per deleted kitchen, its line counter and per deleted reading, plus budget_add', { timeout: 30_000 }, async () => {
       const minted = await mintThroughRoute(worker.fetch, worker.baseUrl);
       const readings = 10;
       for (let index = 0; index < readings; index++) {
@@ -262,7 +271,7 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       const round = await expireKitchens(worker.db, T0 + 24 * HOUR_MS, limits, rowsPerWrite, limits.sweepBatchLimit);
 
       expect(round.kitchensDeleted).toBe(1);
-      expect(round.rowsCounted).toBe(1 + readings + rowsPerWrite.budget_add);
+      expect(round.rowsCounted).toBe(2 + readings + rowsPerWrite.budget_add);
     });
 
     it('runs one read and no write when nothing has expired', async () => {
@@ -300,33 +309,34 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       const round = await expireKitchens(stale.db, T0, limits, rowsPerWrite, limits.sweepBatchLimit);
 
       expect(round).toEqual({ kitchensRead: 1, kitchensDeleted: 0, rowsCounted: 0 });
-      expect(stale.statements.map((statement) => statement.via)).toEqual(['all', 'batch', 'batch']);
+      expect(stale.statements.map((statement) => statement.via)).toEqual(['all', 'batch', 'batch', 'batch']);
       expect(await budgetRows()).toBe(before);
     });
 
-    it.each([1, 25, 60])('runs at most four statements over %i expired kitchens', async (expired) => {
+    it.each([1, 25, 60])('runs at most five statements over %i expired kitchens', async (expired) => {
       await insertScratchKitchens(worker.db, Array.from({ length: expired }, (_, index) => T0 - 24 * HOUR_MS - index));
       const counted = countingD1(worker.db);
 
       const round = await expireKitchens(counted.db, T0, limits, rowsPerWrite, 60);
 
       expect(round.kitchensDeleted).toBe(expired);
-      expect(counted.statements.length).toBeLessThanOrEqual(4);
+      expect(counted.statements.length).toBeLessThanOrEqual(STATEMENTS_PER_ROUND);
     });
 
-    it('shows an index search, never a scan of events, in the query plans of both deletes', async () => {
+    it('shows an index search, never a scan of events, in the query plans of every delete', async () => {
       const plans = await Promise.all(
-        [DELETE_EXPIRED_KITCHENS, DELETE_EXPIRED_EVENTS].map(async (sql) => {
+        [DELETE_EXPIRED_KITCHENS, DELETE_EXPIRED_EVENTS, DELETE_EXPIRED_LINE_COUNTS].map(async (sql) => {
           const explain = 'EXPLAIN QUERY PLAN ' + sql;
           const rows = await worker.db.prepare(explain).bind('["a"]').all<{ detail: string }>();
           return rows.results.map((row) => row.detail).join(' / ');
         }),
       );
-      console.log(`query plans\nkitchens: ${plans[0]}\nevents: ${plans[1]}`);
+      console.log(`query plans\nkitchens: ${plans[0]}\nevents: ${plans[1]}\nkitchen_lines: ${plans[2]}`);
 
       expect(plans[0]).toMatch(/SEARCH kitchens USING (COVERING )?INDEX/);
       expect(plans[1]).toMatch(/SEARCH events USING (COVERING )?INDEX/);
-      expect(plans.join(' ')).not.toMatch(/SCAN (events|kitchens)\b/);
+      expect(plans[2]).toMatch(/SEARCH kitchen_lines USING (COVERING )?INDEX/);
+      expect(plans.join(' ')).not.toMatch(/SCAN (events|kitchens|kitchen_lines)\b/);
     });
 
     it('measures the rows the sweep budget add writes as the first write of a UTC date equal to budget_add', async () => {
@@ -386,7 +396,7 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       expect(response.status).toBe(201);
       for (const id of expired) expect(await kitchenExists(id)).toBe(false);
       expect(await kitchenExists(live)).toBe(true);
-      expect(counted.statements.length).toBeLessThanOrEqual(7);
+      expect(counted.statements.length).toBeLessThanOrEqual(8);
     });
 
     it('refuses a mint its own sweep pushed past the cap, counting that sweep and inserting no kitchen', async () => {
@@ -449,7 +459,7 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       expect(limits.maxSweepRounds * limits.cronSweepBatchLimit).toBeGreaterThanOrEqual(
         Math.floor(limits.dailyRowCap / rowsPerWrite.kitchen_create),
       );
-      expect(4 * limits.maxSweepRounds).toBeLessThanOrEqual(D1_QUERIES_PER_INVOCATION);
+      expect(STATEMENTS_PER_ROUND * limits.maxSweepRounds).toBeLessThanOrEqual(D1_QUERIES_PER_INVOCATION);
     });
   });
 

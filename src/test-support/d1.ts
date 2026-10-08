@@ -23,13 +23,14 @@ async function applyMigrations(db: D1Like): Promise<void> {
   }
 }
 
-// Every row of the three tables in a fixed order, serialized, so two dumps compare as strings.
+// Every row of the four tables in a fixed order, serialized, so two dumps compare as strings.
 export async function dumpRecordTables(db: D1Like): Promise<string> {
   const rows = async (query: string) => (await db.prepare(query).all()).results;
   return JSON.stringify({
     events: await rows('SELECT * FROM events ORDER BY seq'),
     kitchens: await rows('SELECT * FROM kitchens ORDER BY id'),
     budget: await rows('SELECT * FROM budget ORDER BY utc_date'),
+    kitchenLines: await rows('SELECT * FROM kitchen_lines ORDER BY kitchen_id'),
   });
 }
 

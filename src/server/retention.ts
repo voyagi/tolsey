@@ -20,11 +20,13 @@ const HOUR_MS = 3_600_000;
 const SELECT_EXPIRED = `
 SELECT id FROM kitchens WHERE kind = 'scratch' AND created_at <= ?1 ORDER BY created_at LIMIT ?2`;
 
-// The only DELETE statements in the codebase, both over one bound JSON array of ids, so a round is
-// two statements whatever its size (the free plan allows 50 queries per Worker invocation). The
-// kitchens go first: migration 0002 lets an events row go only once its kitchen row is gone.
+// The only DELETE statements in the codebase, all over one bound JSON array of ids, so a round's
+// delete batch is three statements whatever its size (the free plan allows 50 queries per Worker
+// invocation). The kitchens go first: migration 0002 lets an events row go only once its kitchen row
+// is gone. The line counter goes with them, so no row naming a deleted kitchen is left behind.
 export const DELETE_EXPIRED_KITCHENS = `DELETE FROM kitchens WHERE id IN (SELECT value FROM json_each(?1))`;
 export const DELETE_EXPIRED_EVENTS = `DELETE FROM events WHERE kitchen_id IN (SELECT value FROM json_each(?1))`;
+export const DELETE_EXPIRED_LINE_COUNTS = `DELETE FROM kitchen_lines WHERE kitchen_id IN (SELECT value FROM json_each(?1))`;
 
 // One bounded round. The budget add is a second call because no statement inside the batch can see
 // the batch's rows written; the budget is a counter, not the record, so a crash between the two calls
@@ -42,11 +44,12 @@ export async function expireKitchens(
   if (kitchensRead === 0) return { kitchensRead, kitchensDeleted: 0, rowsCounted: 0 };
 
   const ids = JSON.stringify(expired.results.map((row) => row.id));
-  const [kitchens, events] = await db.batch([
+  const [kitchens, events, lineCounts] = await db.batch([
     db.prepare(DELETE_EXPIRED_KITCHENS).bind(ids),
     db.prepare(DELETE_EXPIRED_EVENTS).bind(ids),
+    db.prepare(DELETE_EXPIRED_LINE_COUNTS).bind(ids),
   ]);
-  const rowsDeleted = kitchens.meta.rows_written + events.meta.rows_written;
+  const rowsDeleted = kitchens.meta.rows_written + events.meta.rows_written + lineCounts.meta.rows_written;
   // A concurrent round (another mint's, or the hourly run's) took these kitchens between the read and
   // the batch: there is nothing to count.
   if (rowsDeleted === 0) return { kitchensRead, kitchensDeleted: 0, rowsCounted: 0 };

@@ -1,9 +1,12 @@
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { unstable_splitSqlQuery } from 'wrangler';
 import { countingD1 } from '../test-support/counting-d1';
 import { openTestD1, type TestD1 } from '../test-support/d1';
 import {
   appendInput,
   HOUR_MS,
+  insertLines,
   KITCHEN_CREATED_AT,
   kitchenInput,
   readLimits,
@@ -62,6 +65,9 @@ class RowsMeter {
 const EVENT_KINDS: EventKind[] = ['reading', 'refusal', 'held', 'wrong_number', 'receipt'];
 const INDEX_SHAPES = ['none', 'supersedes', 'answers', 'both'] as const;
 const NO_ROWS = { changes: 0, rows_read: 0, rows_written: 0, last_row_id: 0 };
+// A few indexed lookups (the budget row, the kitchen, the line counter, the stored request), well
+// under a tenth of the 200-line cap.
+const HANDFUL_OF_ROWS = 12;
 
 // Local D1 always returns the follow-up read's one row, so only a stand-in can leave it empty: its
 // batch writes nothing and every read finds no row.
@@ -352,6 +358,65 @@ describe('what local D1 guarantees for the record', () => {
     expect(await countEvents(kitchenId)).toBe(limits.kitchenLineCap);
   }, 60_000);
 
+  // Reads are not budgeted, so a call refused at the cap must not walk the kitchen's lines: counting
+  // them in the insert and again in the follow-up read cost 408 rows at the 200-line cap.
+  it('reads a handful of rows for an append refused at the line cap, however many lines the kitchen holds', async () => {
+    const kitchenId = await freshKitchen();
+    await insertLines(d1.db, kitchenId, limits.kitchenLineCap, KITCHEN_CREATED_AT + 60_000);
+    const counting = countingD1(d1.db);
+
+    const outcome = await new D1Store(counting.db).append(appendInput(testEvent(kitchenId), limits));
+
+    expect(outcome).toEqual({ status: 'refused', reason: 'kitchen_full' });
+    expect(counting.totals().rowsRead).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
+  });
+
+  it('keeps the kitchen line counter equal to the lines it holds, counting only the writes that landed', async () => {
+    const kitchenId = await freshKitchen();
+    const first = await appendOne(kitchenId, { requestId: 'counted-1' });
+    await appendOne(kitchenId, { kind: 'receipt' });
+    await store.append(appendInput(testEvent(kitchenId, { requestId: 'counted-1' }), limits));
+    await store.append(appendInput(testEvent(kitchenId, { supersedesId: crypto.randomUUID() }), limits, { kitchenLineCap: 2 }));
+    await appendOne(kitchenId, { supersedesId: first.id });
+
+    const counter = await d1.db
+      .prepare('SELECT lines FROM kitchen_lines WHERE kitchen_id = ?1')
+      .bind(kitchenId)
+      .first<{ lines: number }>();
+    expect(counter?.lines).toBe(await countEvents(kitchenId));
+    expect(counter?.lines).toBe(3);
+  });
+
+  // A database migrated before 0003 already holds lines, so the migration counts them as it creates
+  // the table; a kitchen it missed would start again from zero under the cap.
+  it('backfills the line counter of every kitchen from the lines it already holds when 0003 applies', { timeout: 20_000 }, async () => {
+    const fresh = await openTestD1();
+    try {
+      const freshStore = new D1Store(fresh.db);
+      const kitchens = [scratchKitchen(), scratchKitchen()];
+      for (const kitchen of kitchens) await freshStore.createKitchen(kitchenInput(kitchen, limits));
+      await insertLines(fresh.db, kitchens[0].id, 3, KITCHEN_CREATED_AT + 60_000);
+      await insertLines(fresh.db, kitchens[1].id, 5, KITCHEN_CREATED_AT + 60_000);
+      await fresh.db.prepare('DELETE FROM kitchen_lines').run();
+
+      const backfill = unstable_splitSqlQuery(readFileSync('migrations/0003_kitchen_lines.sql', 'utf8')).filter((sql) =>
+        /^\s*INSERT\b/i.test(sql),
+      );
+      expect(backfill).toHaveLength(1);
+      await fresh.db.prepare(backfill[0]).run();
+
+      const counted = await fresh.db
+        .prepare('SELECT kitchen_id, lines FROM kitchen_lines ORDER BY lines')
+        .all<{ kitchen_id: string; lines: number }>();
+      expect(counted.results).toEqual([
+        { kitchen_id: kitchens[0].id, lines: 3 },
+        { kitchen_id: kitchens[1].id, lines: 5 },
+      ]);
+    } finally {
+      await fresh.dispose();
+    }
+  });
+
   it('rethrows a collision on the opaque event id as a server fault, never a conflict or a duplicate', async () => {
     const kitchenId = await freshKitchen();
     const first = await appendOne(kitchenId);
@@ -368,7 +433,7 @@ describe('what local D1 guarantees for the record', () => {
     const celsius = testEvent(kitchenId, { unit: 'C' as unknown as NewEvent['unit'] });
 
     await expect(new D1Store(counting.db).append(appendInput(celsius, limits))).rejects.toThrow(/CHECK constraint failed/);
-    expect(counting.statements.map((statement) => statement.via)).toEqual(['batch', 'batch']);
+    expect(counting.statements.map((statement) => statement.via)).toEqual(['batch', 'batch', 'batch']);
     expect(await countEvents(kitchenId)).toBe(0);
   });
 
