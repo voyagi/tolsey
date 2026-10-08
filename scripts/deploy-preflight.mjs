@@ -22,7 +22,7 @@
 //   - workers_dev and preview_urls are exactly false (absent is not false)
 //   - routes holds { pattern: tolsey.taranity.com, custom_domain: true }
 //   - triggers.crons holds the hourly "0 * * * *" retention schedule
-//   - package.json scripts.deploy runs the preflight, the remote migration apply, the
+//   - package.json scripts.deploy runs the build, the preflight, the remote migration apply, the
 //     applied-migrations check and wrangler deploy in that order, every step joined by &&
 //     (a ; or || lets the Worker deploy after a failed step)
 //
@@ -41,7 +41,10 @@ import { parseAllowlist } from '../src/server/allowlist.ts';
 const DEPLOYED_HOST = 'tolsey.taranity.com';
 const RETENTION_CRON = '0 * * * *';
 
+// The build comes first: the preflight judges dist/tolsey/wrangler.json and wrangler deploy ships that
+// dist, so without a fresh build both would act on whatever the last build left.
 const DEPLOY_STEPS = [
+  { name: 'npm run build', re: /^npm\s+run\s+build$/ },
   { name: 'node scripts/deploy-preflight.mjs', re: /^node\s+scripts\/deploy-preflight\.mjs$/ },
   { name: 'wrangler d1 migrations apply DB --remote', re: /^wrangler\s+d1\s+migrations\s+apply\s+DB\s+--remote$/ },
   { name: 'node scripts/check-remote-migrations.mjs', re: /^node\s+scripts\/check-remote-migrations\.mjs$/ },
@@ -274,6 +277,10 @@ function selftest() {
       runCli(fixture({ deploy: deployWith([STEPS[0], STEPS[1], STEPS[2], STEPS[4]], []) })), 1, /deploy script does not run node scripts\/check-remote-migrations\.mjs/);
     check('a deploy script running the check after wrangler deploy is refused',
       runCli(fixture({ deploy: deployWith([STEPS[0], STEPS[1], STEPS[2], STEPS[4], STEPS[3]], []) })), 1, /deploy script runs its steps out of order/);
+    check('a deploy script with no build is refused, since the preflight would judge whatever dist the last build left',
+      runCli(fixture({ deploy: deployWith([STEPS[1], STEPS[2], STEPS[3], STEPS[4]], []) })), 1, /deploy script does not run npm run build/);
+    check('a deploy script building after the preflight is refused',
+      runCli(fixture({ deploy: deployWith([STEPS[1], STEPS[0], STEPS[2], STEPS[3], STEPS[4]], []) })), 1, /deploy script runs its steps out of order/);
     check('a deploy script missing the preflight is refused',
       runCli(fixture({ deploy: deployWith([STEPS[0], STEPS[2], STEPS[3], STEPS[4]], []) })), 1, /deploy script does not run node scripts\/deploy-preflight\.mjs/);
     check('a deploy script applying migrations to the local database only is refused',
