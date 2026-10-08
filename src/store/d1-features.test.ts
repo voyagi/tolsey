@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { unstable_splitSqlQuery } from 'wrangler';
+import { writeWindowMs } from '../server/kitchens';
 import { countingD1 } from '../test-support/counting-d1';
 import { openTestD1, type TestD1 } from '../test-support/d1';
 import {
   appendInput,
-  HOUR_MS,
   insertLines,
   KITCHEN_CREATED_AT,
   kitchenInput,
@@ -221,12 +221,11 @@ describe('what local D1 guarantees for the record', () => {
 
   it('returns duplicate, never kitchen_closed, for a repeat inside the retry window after the write window closed', async () => {
     const kitchenId = await freshKitchen();
-    const writeWindowMs = limits.writeWindowHours * HOUR_MS;
-    const lateAt = KITCHEN_CREATED_AT + writeWindowMs - 30_000;
+    const lateAt = KITCHEN_CREATED_AT + writeWindowMs(limits) - 30_000;
     const first = testEvent(kitchenId, { requestId: 'late-1', occurredAt: lateAt });
     const appended = expectStatus(await store.append(appendInput(first, limits)), 'appended');
 
-    const repeatAt = KITCHEN_CREATED_AT + writeWindowMs + 30_000;
+    const repeatAt = KITCHEN_CREATED_AT + writeWindowMs(limits) + 30_000;
     const repeat = testEvent(kitchenId, { requestId: 'late-1', occurredAt: repeatAt });
     expect(await store.append(appendInput(repeat, limits))).toEqual({
       status: 'duplicate',

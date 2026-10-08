@@ -1,16 +1,8 @@
-import { readFileSync } from 'node:fs';
+import { ROWS_PER_WRITE, STORE_LIMITS, type StoreLimits } from '../server/data';
+import { writeWindowMs } from '../server/kitchens';
 import type { AppendInput, CreateKitchenInput, D1Like, KitchenRow, NewEvent, RowsPerWrite } from '../store/port';
 
-export interface StoreLimits {
-  dailyRowCap: number;
-  kitchenLineCap: number;
-  writeWindowHours: number;
-  retentionAgeHours: number;
-  retryWindowSeconds: number;
-  sweepBatchLimit: number;
-  cronSweepBatchLimit: number;
-  maxSweepRounds: number;
-}
+export type { StoreLimits };
 
 // One statement per seed, not one per row: a batch of hundreds of single inserts through the local
 // proxy takes seconds.
@@ -45,12 +37,13 @@ export const RESULT_TEMPLATE = JSON.stringify({
   structuredContent: { outcome: 'logged' },
 });
 
+// The Worker's own validated copies, so a test can never run against a limit the Worker would refuse.
 export function readLimits(): StoreLimits {
-  return JSON.parse(readFileSync('data/store/limits.json', 'utf8')) as StoreLimits;
+  return { ...STORE_LIMITS };
 }
 
 export function readRowsPerWrite(): RowsPerWrite {
-  return JSON.parse(readFileSync('data/store/rows-per-write.json', 'utf8')) as RowsPerWrite;
+  return { ...ROWS_PER_WRITE };
 }
 
 export function scratchKitchen(createdAt = KITCHEN_CREATED_AT): KitchenRow {
@@ -143,7 +136,7 @@ export function appendInput(
     utcDate: UTC_DATE,
     dailyRowCap: limits.dailyRowCap,
     kitchenLineCap: limits.kitchenLineCap,
-    writeWindowMs: limits.writeWindowHours * HOUR_MS,
+    writeWindowMs: writeWindowMs(limits),
     retryWindowMs: limits.retryWindowSeconds * 1000,
     now: event.occurredAt,
     ...overrides,

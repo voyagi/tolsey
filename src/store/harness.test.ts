@@ -6,7 +6,10 @@ import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import demoJson from '../../data/kitchens/demo.json';
+import { STORE_LIMITS } from '../server/data';
+import { writeWindowMs } from '../server/kitchens';
 import { openTestD1, type TestD1 } from '../test-support/d1';
+import { appendInput, readLimits, testEvent } from '../test-support/events';
 import { D1Store } from './d1-store';
 import type { NewEvent } from './port';
 
@@ -181,5 +184,17 @@ describe('the D1 test harness', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// The store tests build appends from the limits and the write window the Worker itself uses, so a
+// test can never pass against a window or a cap the Worker would not apply.
+describe('the store test support', () => {
+  it('reads the limits the Worker loads and validates', () => {
+    expect(readLimits()).toEqual(STORE_LIMITS);
+  });
+
+  it("builds an append under the Worker's own write window", () => {
+    expect(appendInput(testEvent('kitchen-1'), readLimits()).writeWindowMs).toBe(writeWindowMs(STORE_LIMITS));
   });
 });

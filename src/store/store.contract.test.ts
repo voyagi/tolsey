@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { writeWindowMs } from '../server/kitchens';
 import { openTestD1 } from '../test-support/d1';
 import {
   appendInput,
-  HOUR_MS,
   KITCHEN_CREATED_AT,
   kitchenInput,
   readLimits,
@@ -18,7 +18,7 @@ const limits = readLimits();
 const DAY = '2026-10-20';
 const AT = KITCHEN_CREATED_AT + 60_000;
 const RETRY_WINDOW_MS = limits.retryWindowSeconds * 1000;
-const WRITE_WINDOW_MS = limits.writeWindowHours * HOUR_MS;
+const WRITE_WINDOW_MS = writeWindowMs(limits);
 const PROMPT_EXPIRES_AT = AT + 120_000;
 
 interface OpenedStore {
