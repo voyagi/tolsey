@@ -1,6 +1,7 @@
 import {
   createMcpHandler,
   hostHeaderValidationResponse,
+  isJsonContentType,
   originValidationResponse,
 } from '@modelcontextprotocol/server';
 import { kitchenSettings } from '../domain/business-day';
@@ -90,30 +91,19 @@ async function drainBody(request: Request): Promise<void> {
 // The body is read once, under the cap; forward carries the same bytes, because the original
 // request's body is spent and the SDK must still be able to read or clone the one it gets.
 async function readBody(request: Request): Promise<ReadBody | 'too_large'> {
-  if (request.method !== 'POST') {
-    if (!request.body) return { forward: request, parsed: { kind: 'empty' } };
-    // Only a POST is served; whatever else carries a body is refused without it.
-    await drainBody(request);
-    return { forward: new Request(request.url, { method: request.method, headers: request.headers }), parsed: { kind: 'empty' } };
-  }
+  if (request.method !== 'POST') return { forward: request, parsed: { kind: 'empty' } };
   const bytes = await readCappedBody(request);
   if (bytes === 'too_large') return 'too_large';
   const forward = new Request(request.url, { method: request.method, headers: request.headers, body: bytes });
   return { forward, parsed: parseJsonBody(bytes) };
 }
 
-// Only JSON is read: a text/plain or form POST is one a page on any origin can send without a CORS
-// preflight, so it must never mint.
-function isJsonContentType(header: string | null): boolean {
-  return header?.split(';')[0]?.trim().toLowerCase() === 'application/json';
-}
-
-// The body is read to its end (or cancelled past the cap) before any refusal, so no answer leaves
-// a request body unread on the connection.
 async function serveApi(request: Request, pathname: string, store: Store, db: D1Like, clock: Clock): Promise<Response> {
   const body = await readBody(request);
   if (body === 'too_large') return jsonError(413, { error: 'body_too_large' });
   if (pathname !== '/api/kitchens') return jsonError(404, { error: 'not_found' });
+  // The Origin check is what turns away a cross-origin POST a page can send without a CORS
+  // preflight; this keeps the route to the one content type it reads.
   if (body.parsed.kind !== 'empty' && !isJsonContentType(request.headers.get('content-type'))) {
     return jsonError(415, { error: 'unsupported_media_type' });
   }
@@ -165,24 +155,19 @@ export function createWorker({ clock, storeFor = (env) => new D1Store(env.DB) }:
       const { pathname } = new URL(request.url);
       const family = familyOf(pathname);
       if (family === null) return env.ASSETS.fetch(request);
-      const allowlist = parseAllowlist(env.ALLOWED_HOSTNAMES);
-      if (!allowlist.ok) {
-        await drainBody(request);
-        return jsonError(503, { error: 'allowlist_unconfigured', message: allowlist.reason });
-      }
-      const rejected = hostOrOriginRejection(request, allowlist.hostnames);
-      if (rejected) {
-        await drainBody(request);
-        return rejected;
-      }
       try {
+        const allowlist = parseAllowlist(env.ALLOWED_HOSTNAMES);
+        if (!allowlist.ok) return jsonError(503, { error: 'allowlist_unconfigured', message: allowlist.reason });
+        const rejected = hostOrOriginRejection(request, allowlist.hostnames);
+        if (rejected) return rejected;
         const store = storeFor(env);
         return family === 'api'
           ? await serveApi(request, pathname, store, env.DB, clock)
           : await serveMcp(request, pathname, store, clock);
       } catch (error) {
-        await drainBody(request);
         return serverFault(family, error);
+      } finally {
+        await drainBody(request);
       }
     },
 
