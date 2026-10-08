@@ -162,10 +162,11 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       expect(counted.totals().rowsRead).toBeLessThanOrEqual(12);
     });
 
-    // Every answer reads its pending prompt first. Only a digit repeat needs its chain counted, and
-    // that count walks the kitchen's events; any other question is one indexed read (153 rows at 150
-    // lines before the count moved behind the digit-repeat branch).
-    it('reads one row for a pending question and walks the kitchen only for a digit repeat', async () => {
+    // Every answer reads its pending prompt first. Only a prompt on a digit-repeat chain (a hold, or a
+    // refusal stored on it) needs its chain counted, and that count walks the kitchen's events; any
+    // other question is one indexed read (153 rows at 150 lines before the count moved behind the
+    // chain branch).
+    it('reads one row for a pending question and walks the kitchen only for a prompt on a digit-repeat chain', async () => {
       const minted = await mintThroughRoute(worker.fetch, worker.baseUrl);
       const lines = 150;
       await insertLines(worker.db, minted.id, lines, T0);

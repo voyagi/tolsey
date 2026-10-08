@@ -106,8 +106,8 @@ lines the kitchen holds" in `src/store/d1-features.test.ts` and "reads a handful
 accepted reading, however many lines the kitchen holds" in `src/server/budget.test.ts` hold both
 figures.
 
-Two reads still grow with the kitchen, each bounded by its 200-line cap. A call that names a
-digit-repeat prompt counts that prompt's chain over the kitchen's events (200 rows at 198 lines,
+Two reads still grow with the kitchen, each bounded by its 200-line cap. A call that names a prompt
+on a digit-repeat chain, a hold or a refusal stored on it, counts that chain over the kitchen's events (200 rows at 198 lines,
 2026-10-08), and "wrong number" counts the corrections along the newest reading's chain, about two
 walks of the kitchen (303 rows at 151 lines, 2026-09-30). A flood of such calls against one full
 kitchen reads roughly 200 to 400 rows a call, so about 12,500 to 25,000 of them spend the account's 5
