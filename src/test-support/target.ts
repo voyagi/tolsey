@@ -50,7 +50,7 @@ export interface InProcessWorker {
 export const BUILT_CONFIG = './dist/tolsey/wrangler.json';
 const IN_PROCESS_BASE = 'http://localhost/';
 // The built config lists only the deployed host, so a local run binds the names it answers on.
-const LOCAL_HOSTNAMES = 'localhost,127.0.0.1';
+export const LOCAL_HOSTNAMES = 'localhost,127.0.0.1';
 
 // The built Worker in workerd, as it deploys except for the hostnames a local run answers on.
 export function builtWorkerHarness(): ReturnType<typeof createTestHarness> {
@@ -91,7 +91,7 @@ export async function openInProcessWorker(): Promise<InProcessWorker> {
   const worker = createWorker({ clock });
   const env: WorkerEnv = {
     ASSETS: { fetch: async () => new Response('asset', { status: 200 }) },
-    ALLOWED_HOSTNAMES: 'localhost,127.0.0.1',
+    ALLOWED_HOSTNAMES: LOCAL_HOSTNAMES,
     DB: d1.db,
   };
   // A Node Request built from a URL carries no Host header, and the SDK answers 403 without one.

@@ -3,10 +3,9 @@ import { SUPPORTED_PROTOCOL_VERSIONS } from '@modelcontextprotocol/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { dumpRecordTables, openTestD1, type TestD1 } from '../test-support/d1';
 import { byId, errorById, sendRaw, type RawResponse } from '../test-support/raw-mcp';
+import { LOCAL_HOSTNAMES } from '../test-support/target';
 import productionWorker, { createWorker, type WorkerEnv } from './worker';
 
-// The list a local run binds; the deployed config names only the deployed host.
-const LISTED = 'localhost,127.0.0.1';
 const DEPLOYED = 'tolsey.taranity.com';
 const JSON_AND_STREAM = 'application/json, text/event-stream';
 const BODY_CAP = 65_536;
@@ -76,7 +75,7 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
     if (host !== null) headers.host = host;
     if (options.origin !== undefined) headers.origin = options.origin;
     if (method === 'POST') headers['content-type'] = options.contentType ?? 'application/json';
-    const env = envWith('allowed' in options ? options.allowed : LISTED);
+    const env = envWith('allowed' in options ? options.allowed : LOCAL_HOSTNAMES);
     return sendRaw(
       { url: new URL(path, 'http://localhost'), fetch: (url, init) => worker.fetch(new Request(url, init), env) },
       { method, headers, ...(method === 'POST' ? { body: options.body ?? INITIALIZE } : {}) },
@@ -87,7 +86,7 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
     const request = new Request(url, init);
     const headers = new Headers(request.headers);
     headers.set('host', 'localhost');
-    return worker.fetch(new Request(request, { headers }), envWith(LISTED));
+    return worker.fetch(new Request(request, { headers }), envWith(LOCAL_HOSTNAMES));
   }
 
   async function connectClient(options: ConstructorParameters<typeof Client>[1]): Promise<Client> {
@@ -280,7 +279,7 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
         body: '{}',
       });
       const before = Date.now();
-      const response = await productionWorker.fetch(request, envWith(LISTED));
+      const response = await productionWorker.fetch(request, envWith(LOCAL_HOSTNAMES));
       const after = Date.now();
       expect(response.status).toBe(201);
       const { id } = (await response.json()) as { id: string };
@@ -335,7 +334,7 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
         headers: { host: 'localhost' },
         body: new Blob([JSON.stringify({ label: 'conformance' })]),
       });
-      const response = await worker.fetch(request, envWith(LISTED));
+      const response = await worker.fetch(request, envWith(LOCAL_HOSTNAMES));
       expect(response.status).toBe(415);
       expect(request.bodyUsed).toBe(true);
     });
@@ -429,14 +428,14 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
 
     it.each(['/mcp', '/api/kitchens'])('reads the body of a POST %s it refuses for a bad Origin', async (path) => {
       const request = requestWithBody(path, { origin: 'https://attacker.example' });
-      const response = await worker.fetch(request, envWith(LISTED));
+      const response = await worker.fetch(request, envWith(LOCAL_HOSTNAMES));
       expect(response.status).toBe(403);
       expect(request.bodyUsed).toBe(true);
     });
 
     it.each(['/mcp', '/api/kitchens'])('reads the body of a POST %s it refuses for a bad Host', async (path) => {
       const request = requestWithBody(path, { host: 'attacker.example' });
-      const response = await worker.fetch(request, envWith(LISTED));
+      const response = await worker.fetch(request, envWith(LOCAL_HOSTNAMES));
       expect(response.status).toBe(403);
       expect(request.bodyUsed).toBe(true);
     });
@@ -456,7 +455,7 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
         },
       });
       const request = requestWithBody(path);
-      const response = await faulty.fetch(request, envWith(LISTED));
+      const response = await faulty.fetch(request, envWith(LOCAL_HOSTNAMES));
       expect(response.status).toBe(500);
       expect(request.bodyUsed).toBe(true);
     });
@@ -466,7 +465,7 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
       ['DELETE', '/mcp'],
     ])('reads the body of a %s %s it refuses with 405', async (method, path) => {
       const request = requestWithBody(path, { method });
-      const response = await worker.fetch(request, envWith(LISTED));
+      const response = await worker.fetch(request, envWith(LOCAL_HOSTNAMES));
       expect(response.status).toBe(405);
       expect(request.bodyUsed).toBe(true);
     });
