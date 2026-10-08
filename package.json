@@ -47,7 +47,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.50.0",
-    "@modelcontextprotocol/client": "2.0.0",
+    "@modelcontextprotocol/client": "2.2.0",
     "@size-limit/file": "^13.1.0",
     "@stryker-mutator/core": "^10.0.0",
     "@types/node": "^24.0.0",
@@ -78,6 +78,7 @@
   "overrides": {
     "qs": "^6.16.0",
     "miniflare@5.20260911.0-alpha": {
+      "sharp": "0.35.5",
       "undici": "7.29.1"
     }
   }
