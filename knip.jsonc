@@ -3,7 +3,6 @@
   "entry": [
     // Gate harnesses and their mutant harnesses are run directly with node, never imported.
     "scripts/*.mjs",
-    "verify-ship.mjs",
     // The probe Worker is named only in intl-probe.wrangler.jsonc, which the Intl parity e2e test starts.
     "src/test-support/intl-probe.worker.ts"
   ],
