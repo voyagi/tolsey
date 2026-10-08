@@ -156,6 +156,15 @@ describe('classifyNumberWords', () => {
     expect(classifyNumberWords(tokensOf('the walk-in reads 38'), withPhrase)).toEqual({ kind: 'plain' });
     expect(classifyNumberWords(tokensOf(`the walk-in reads 38 ${phrase}`), withPhrase)).toEqual({ kind: 'hedge' });
   });
+
+  it('matches a hedge phrase as whole words, never inside a longer word: "here" is not in "there"', () => {
+    const { hedges } = demoJson.vocabulary;
+    const withHere = KitchenProfileSchema.parse({
+      ...demoJson,
+      vocabulary: { ...demoJson.vocabulary, hedges: { ...hedges, phrases: [...hedges.phrases, 'here'] } },
+    });
+    expect(classifyNumberWords(tokensOf('the walk-in reads 38 there'), withHere)).toEqual({ kind: 'plain' });
+  });
 });
 
 // Written to break the classifier: the shapes a host's transcript can take that the cases above do
