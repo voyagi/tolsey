@@ -12,14 +12,17 @@ export interface TestD1 {
 const MIGRATIONS_DIR = 'migrations';
 
 // db.exec on a whole migration file fails on its comment lines, and a split on semicolons breaks
-// trigger bodies, so each file goes through wrangler's own splitter and lands as one batch.
+// trigger bodies, so each file goes through wrangler's own splitter.
+export function migrationStatements(file: string): string[] {
+  return unstable_splitSqlQuery(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'));
+}
+
 async function applyMigrations(db: D1Like): Promise<void> {
   const files = readdirSync(MIGRATIONS_DIR)
     .filter((name) => name.endsWith('.sql'))
     .sort();
   for (const file of files) {
-    const statements = unstable_splitSqlQuery(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'));
-    await db.batch(statements.map((statement) => db.prepare(statement)));
+    await db.batch(migrationStatements(file).map((statement) => db.prepare(statement)));
   }
 }
 

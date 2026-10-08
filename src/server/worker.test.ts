@@ -13,12 +13,15 @@ const UNKNOWN_KITCHEN = '0123456789abcdef0123456789abcdef';
 const BYTE_ORDER_MARK = String.fromCharCode(0xfeff);
 const UNICODE_HOST = `b${String.fromCharCode(0xfc)}cher.example`;
 
-const INITIALIZE = JSON.stringify({
-  jsonrpc: '2.0',
-  id: 1,
-  method: 'initialize',
-  params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'raw-probe', version: '1.0.0' } },
-});
+function initializeBody(version: string): string {
+  return JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'initialize',
+    params: { protocolVersion: version, capabilities: {}, clientInfo: { name: 'raw-probe', version: '1.0.0' } },
+  });
+}
+
 const TOOLS_LIST = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
 
 interface RawOptions {
@@ -78,7 +81,7 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
     const env = envWith('allowed' in options ? options.allowed : LOCAL_HOSTNAMES);
     return sendRaw(
       { url: new URL(path, 'http://localhost'), fetch: (url, init) => worker.fetch(new Request(url, init), env) },
-      { method, headers, ...(method === 'POST' ? { body: options.body ?? INITIALIZE } : {}) },
+      { method, headers, ...(method === 'POST' ? { body: options.body ?? initializeBody('2025-11-25') } : {}) },
     );
   }
 
@@ -426,47 +429,39 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
       return new Request(new URL(path, 'http://localhost'), { method: init.method ?? 'POST', headers, body: TOOLS_LIST });
     }
 
-    it.each(['/mcp', '/api/kitchens'])('reads the body of a POST %s it refuses for a bad Origin', async (path) => {
-      const request = requestWithBody(path, { origin: 'https://attacker.example' });
-      const response = await worker.fetch(request, envWith(LOCAL_HOSTNAMES));
-      expect(response.status).toBe(403);
-      expect(request.bodyUsed).toBe(true);
+    const faulty = createWorker({
+      clock: { now: () => 0 },
+      storeFor: () => {
+        throw new Error('no store');
+      },
     });
 
-    it.each(['/mcp', '/api/kitchens'])('reads the body of a POST %s it refuses for a bad Host', async (path) => {
-      const request = requestWithBody(path, { host: 'attacker.example' });
-      const response = await worker.fetch(request, envWith(LOCAL_HOSTNAMES));
-      expect(response.status).toBe(403);
-      expect(request.bodyUsed).toBe(true);
-    });
+    interface Refusal {
+      method: string;
+      path: string;
+      refusal: string;
+      status: number;
+      host?: string;
+      origin?: string;
+      allowed?: string;
+      fault?: boolean;
+    }
 
-    it.each(['/mcp', '/api/kitchens'])('reads the body of a POST %s it refuses for a bad ALLOWED_HOSTNAMES', async (path) => {
-      const request = requestWithBody(path);
-      const response = await worker.fetch(request, envWith('localhost:8787'));
-      expect(response.status).toBe(503);
-      expect(request.bodyUsed).toBe(true);
-    });
+    const REFUSALS: Refusal[] = [
+      ...['/mcp', '/api/kitchens'].flatMap((path): Refusal[] => [
+        { method: 'POST', path, refusal: 'it refuses for a bad Origin', status: 403, origin: 'https://attacker.example' },
+        { method: 'POST', path, refusal: 'it refuses for a bad Host', status: 403, host: 'attacker.example' },
+        { method: 'POST', path, refusal: 'it refuses for a bad ALLOWED_HOSTNAMES', status: 503, allowed: 'localhost:8787' },
+        { method: 'POST', path, refusal: 'answered with a fault raised before the read', status: 500, fault: true },
+      ]),
+      { method: 'PUT', path: '/api/kitchens', refusal: 'it refuses with 405', status: 405 },
+      { method: 'DELETE', path: '/mcp', refusal: 'it refuses with 405', status: 405 },
+    ];
 
-    it.each(['/mcp', '/api/kitchens'])('reads the body of a POST %s answered with a fault raised before the read', async (path) => {
-      const faulty = createWorker({
-        clock: { now: () => 0 },
-        storeFor: () => {
-          throw new Error('no store');
-        },
-      });
-      const request = requestWithBody(path);
-      const response = await faulty.fetch(request, envWith(LOCAL_HOSTNAMES));
-      expect(response.status).toBe(500);
-      expect(request.bodyUsed).toBe(true);
-    });
-
-    it.each([
-      ['PUT', '/api/kitchens'],
-      ['DELETE', '/mcp'],
-    ])('reads the body of a %s %s it refuses with 405', async (method, path) => {
-      const request = requestWithBody(path, { method });
-      const response = await worker.fetch(request, envWith(LOCAL_HOSTNAMES));
-      expect(response.status).toBe(405);
+    it.each(REFUSALS)('reads the body of a $method $path $refusal', async ({ method, path, status, host, origin, allowed, fault }) => {
+      const request = requestWithBody(path, { method, host, origin });
+      const response = await (fault ? faulty : worker).fetch(request, envWith(allowed ?? LOCAL_HOSTNAMES));
+      expect(response.status).toBe(status);
       expect(request.bodyUsed).toBe(true);
     });
   });
@@ -496,13 +491,7 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
     // The refusal below names the SDK's list, so each version on it must be one an initialize is
     // answered at.
     it.each([...SUPPORTED_PROTOCOL_VERSIONS])('answers an initialize asking %s at that version', async (version) => {
-      const body = JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'initialize',
-        params: { protocolVersion: version, capabilities: {}, clientInfo: { name: 'raw-probe', version: '1.0.0' } },
-      });
-      expect(byId(await send('/mcp', { body }), 1)).toMatchObject({ protocolVersion: version });
+      expect(byId(await send('/mcp', { body: initializeBody(version) }), 1)).toMatchObject({ protocolVersion: version });
     });
 
     it('connects a client in auto negotiation at 2025-11-25', async () => {

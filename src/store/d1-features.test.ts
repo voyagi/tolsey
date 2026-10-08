@@ -1,9 +1,7 @@
-import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { unstable_splitSqlQuery } from 'wrangler';
 import { writeWindowMs } from '../server/kitchens';
-import { countingD1 } from '../test-support/counting-d1';
-import { openTestD1, type TestD1 } from '../test-support/d1';
+import { countingD1, HANDFUL_OF_ROWS } from '../test-support/counting-d1';
+import { migrationStatements, openTestD1, type TestD1 } from '../test-support/d1';
 import {
   appendInput,
   insertLines,
@@ -65,9 +63,6 @@ class RowsMeter {
 const EVENT_KINDS: EventKind[] = ['reading', 'refusal', 'held', 'wrong_number', 'receipt'];
 const INDEX_SHAPES = ['none', 'supersedes', 'answers', 'both'] as const;
 const NO_ROWS = { changes: 0, rows_read: 0, rows_written: 0, last_row_id: 0 };
-// A few indexed lookups (the budget row, the kitchen, the line counter, the stored request), well
-// under a tenth of the 200-line cap.
-const HANDFUL_OF_ROWS = 12;
 
 // Local D1 always returns the follow-up read's one row, so only a stand-in can leave it empty: its
 // batch writes nothing and every read finds no row.
@@ -398,9 +393,7 @@ describe('what local D1 guarantees for the record', () => {
       await insertLines(fresh.db, kitchens[1].id, 5, KITCHEN_CREATED_AT + 60_000);
       await fresh.db.prepare('DELETE FROM kitchen_lines').run();
 
-      const backfill = unstable_splitSqlQuery(readFileSync('migrations/0003_kitchen_lines.sql', 'utf8')).filter((sql) =>
-        /^\s*INSERT\b/i.test(sql),
-      );
+      const backfill = migrationStatements('0003_kitchen_lines.sql').filter((sql) => /^\s*INSERT\b/i.test(sql));
       expect(backfill).toHaveLength(1);
       await fresh.db.prepare(backfill[0]).run();
 

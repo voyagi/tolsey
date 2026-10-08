@@ -21,6 +21,10 @@ type AnswerAll = (query: string) => Record<string, unknown>[] | undefined;
 
 const ANSWERED_META = { changes: 0, rows_written: 0, rows_read: 0, last_row_id: 0 };
 
+// A few indexed lookups (the budget row, the kitchen, the line counter, the stored request), well
+// under a tenth of the 200-line cap.
+export const HANDFUL_OF_ROWS = 12;
+
 // Every statement the code under test runs is recorded with its query, and every result's rows read
 // and written are summed. first() is served through all() so its meta is seen too. A result with no
 // meta.rows_read fails loudly: counting it as zero would pass a test that measured nothing.

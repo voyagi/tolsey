@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { D1Store } from '../store/d1-store';
 import type { D1Like } from '../store/port';
-import { countingD1, type CountingD1 } from '../test-support/counting-d1';
+import { countingD1, HANDFUL_OF_ROWS, type CountingD1 } from '../test-support/counting-d1';
 import {
   appendInput,
   HOUR_MS,
@@ -34,6 +34,8 @@ const MINUTE_MS = 60_000;
 const D1_QUERIES_PER_INVOCATION = 50;
 // The expired read, the three deletes of its batch and the budget add.
 const STATEMENTS_PER_ROUND = 5;
+// Around its sweep round a mint runs the budget read and its kitchen insert's batch of two.
+const MINT_STATEMENTS_BESIDE_ROUND = 3;
 const DEMO_FULL = 'The demo is full for today. Try the replay.';
 const KITCHEN_FULL = 'This kitchen is full. Start a new kitchen to keep logging.';
 const KITCHEN_CLOSED = 'This kitchen has closed. Start a new kitchen to keep logging.';
@@ -159,7 +161,7 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       const outcome = await new D1Store(counted.db).append(appendInput(testEvent(kitchen.id), limits));
 
       expect(outcome.status).toBe('appended');
-      expect(counted.totals().rowsRead).toBeLessThanOrEqual(12);
+      expect(counted.totals().rowsRead).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
     });
 
     // Every answer reads its pending prompt first. Only a prompt on a digit-repeat chain (a hold, or a
@@ -424,7 +426,7 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       expect(response.status).toBe(201);
       for (const id of expired) expect(await kitchenExists(id)).toBe(false);
       expect(await kitchenExists(live)).toBe(true);
-      expect(counted.statements.length).toBeLessThanOrEqual(8);
+      expect(counted.statements.length).toBeLessThanOrEqual(MINT_STATEMENTS_BESIDE_ROUND + STATEMENTS_PER_ROUND);
     });
 
     it('refuses a mint its own sweep pushed past the cap, counting that sweep and inserting no kitchen', async () => {

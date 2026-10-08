@@ -39,32 +39,26 @@ describe('the built Worker in workerd', () => {
     expect(built.vars?.ALLOWED_HOSTNAMES).toBe('tolsey.taranity.com');
   });
 
+  const KITCHENS_BODY = JSON.stringify({ label: 'conformance' });
+  const BAD_ORIGIN = { origin: 'https://attacker.example' };
+  const STREAMING = { accept: 'application/json, text/event-stream' };
+
   // Local wrangler dev answered the request after a refusal that left its body unread with a 500,
   // "Network connection lost".
   it.each([
-    ['/mcp', JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })],
-    ['/api/kitchens', JSON.stringify({ label: 'conformance' })],
-  ])('answers the next request normally after refusing a bad-Origin POST %s with 403', async (path, body) => {
-    const refused = await fetch(new URL(path, url), {
+    {
+      refused: 'a bad-Origin POST /mcp with 403',
       method: 'POST',
-      headers: { 'content-type': 'application/json', origin: 'https://attacker.example' },
-      body,
-    });
-    expect(refused.status).toBe(403);
-    await refused.body?.cancel();
-    const next = await mintThroughRoute(fetch, url);
-    expect(next.id).toMatch(/^[0-9a-f]{32}$/);
-  });
-
-  it.each([
-    ['PUT', '/api/kitchens', 405],
-    ['DELETE', '/mcp', 405],
-  ])('answers the next request normally after refusing a %s %s that carries a body', async (method, path, status) => {
-    const refused = await fetch(new URL(path, url), {
-      method,
-      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
-      body: JSON.stringify({ label: 'conformance' }),
-    });
+      path: '/mcp',
+      headers: BAD_ORIGIN,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+      status: 403,
+    },
+    { refused: 'a bad-Origin POST /api/kitchens with 403', method: 'POST', path: '/api/kitchens', headers: BAD_ORIGIN, body: KITCHENS_BODY, status: 403 },
+    { refused: 'a PUT /api/kitchens that carries a body', method: 'PUT', path: '/api/kitchens', headers: STREAMING, body: KITCHENS_BODY, status: 405 },
+    { refused: 'a DELETE /mcp that carries a body', method: 'DELETE', path: '/mcp', headers: STREAMING, body: KITCHENS_BODY, status: 405 },
+  ])('answers the next request normally after refusing $refused', async ({ method, path, headers, body, status }) => {
+    const refused = await fetch(new URL(path, url), { method, headers: { 'content-type': 'application/json', ...headers }, body });
     expect(refused.status).toBe(status);
     await refused.body?.cancel();
     const next = await mintThroughRoute(fetch, url);
