@@ -190,11 +190,25 @@ describe('the sign the words give a value', () => {
     expect(inWords.outcome).not.toBe('refused');
   });
 
-  // A zero that opens a number said in words ("minus zero point five") is not the whole number, so
-  // the sign still belongs to the value.
-  it('stores the value 0.5 beside "minus zero point five" as -0.5', () => {
-    const { event } = decided(walkIn({ check_point: 'freezer', value: 0.5, words: 'the freezer reads minus zero point five' }));
-    expect(event.valueTenths).toBe(-5);
+  // A zero word with another figure after it leaves the sign belonging to either, as "minus 0, 5
+  // minutes ago" does. Read as a sign on the value, "minus zero, five minutes ago" beside 5 would
+  // store -5 for a freezer that may read 5 and fail.
+  it.each([
+    ['the freezer reads minus zero, five minutes ago', 5],
+    ['the freezer reads minus zero five', 5],
+    ['the freezer reads minus zero point five', -0.5],
+  ])('refuses the value beside "%s", whose sign could belong to either figure', (words, value) => {
+    const { event, result } = decided(walkIn({ check_point: 'freezer', value, words }));
+    expect(result.structuredContent.outcome).toBe('refused');
+    expect(event).toMatchObject({ kind: 'refusal', valueTenths: null, promptKind: 'number' });
+  });
+
+  it.each([
+    ['the freezer reads minus five, two minutes ago', -50],
+    ['the freezer reads minus zero', 50],
+  ])('stores the value 5 beside "%s" as %d tenths', (words, tenths) => {
+    const { event } = decided(walkIn({ check_point: 'freezer', value: 5, words }));
+    expect(event).toMatchObject({ kind: 'reading', valueTenths: tenths });
   });
 
   // Read as a plain zero, these words would store 0.5 for a freezer the cook said was below zero.
@@ -218,11 +232,11 @@ describe('the sign the words give, against every value', () => {
     figure.map((m) => `the freezer reads minus ${m}`),
     figure.map((m) => `the freezer reads negative ${m}`),
     figure.map((m) => `the freezer reads -${m}`),
-    fc.constantFrom('the freezer reads minus five', 'the freezer reads negative twelve', 'the freezer reads minus zero point five'),
+    fc.constantFrom('the freezer reads minus five', 'the freezer reads negative twelve'),
   );
   const saysAFigure = fc.oneof(
     figure.map((m) => `the freezer reads ${m}`),
-    fc.constantFrom('the freezer reads zero', 'the freezer reads 0', 'the freezer reads minus 0', 'the freezer reads minus zero', 'the freezer reads 0 below'),
+    fc.constantFrom('the freezer reads zero', 'the freezer reads 0', 'the freezer reads minus 0', 'the freezer reads minus zero', 'the freezer reads 0 below', 'the freezer reads minus zero point five'),
   );
 
   function storedTenths(tenths: number, words: string): number | null {

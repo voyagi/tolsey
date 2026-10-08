@@ -101,13 +101,14 @@ describe('classifyNumberWords', () => {
     expect(classify('minus zero, walk-in 38')).toEqual({ kind: 'hedge' });
   });
 
-  it('reads a zero word opening a number said in words as below zero, of the magnitude the value gives', () => {
-    expect(classify('the freezer reads minus zero point five')).toEqual({ kind: 'negative', magnitude: undefined });
-  });
-
-  // A zero in digits after a sign, with more figures after it, does not say which figure the sign
-  // belongs to, the way "minus uh 5" does not.
-  it.each(['the freezer reads minus 0 point 5', 'the freezer reads -0 point 5'])('classifies "%s" as a hedge', (words) => {
+  // A zero after a sign, in digits or in words, with more figures after it, does not say which figure
+  // the sign belongs to, the way "minus uh 5" does not.
+  it.each([
+    'the freezer reads minus 0 point 5',
+    'the freezer reads -0 point 5',
+    'the freezer reads minus zero point five',
+    'the freezer reads minus zero, five minutes ago',
+  ])('classifies "%s" as a hedge', (words) => {
     expect(classify(words)).toEqual({ kind: 'hedge' });
   });
 

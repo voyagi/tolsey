@@ -213,7 +213,8 @@ function signedFigure(tokens: readonly string[], at: number): NumberWords | unde
 // the words at all ("minus five") still says the reading is below zero, of a magnitude the words do
 // not give. A sign word apart from the one figure said ("minus, uh, 5") could belong to anything, so
 // the words are not a reading. Zero takes no sign, so "minus zero" is a plain zero, as "minus 0" is,
-// unless more of the number follows it in words ("minus zero point five").
+// and with any figure after it ("minus zero point five", "minus zero, five minutes ago") the sign
+// could belong to either, so the words are a hedge, as "minus 0 point 5" is.
 function signedOf(tokens: readonly string[], hedges: Hedges): NumberWords | undefined {
   const signBelow = tokens.findIndex((_, at) => isSignBelow(tokens, at, hedges));
   if (signBelow >= 0) return below(figureBefore(tokens, signBelow));
@@ -225,8 +226,8 @@ function signedOf(tokens: readonly string[], hedges: Hedges): NumberWords | unde
   const figure = tokens[sign + 1];
   if (isNumber(figure)) return signedFigure(tokens, sign + 1);
   if (tokens.some(isNumber)) return HEDGE;
-  const wholeZero = figure === hedges.zero && !tokens.slice(sign + 2).some(isFigure);
-  return wholeZero ? undefined : { kind: 'negative', magnitude: undefined };
+  if (figure === hedges.zero) return tokens.slice(sign + 2).some(isFigure) ? HEDGE : undefined;
+  return { kind: 'negative', magnitude: undefined };
 }
 
 // Names are taken out first, so only what the cook said about the check is judged.
