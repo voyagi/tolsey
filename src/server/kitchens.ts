@@ -3,7 +3,7 @@ import { utcIso } from '../domain/instant';
 import type { D1Like, KitchenLabel, RowsPerWrite, Store } from '../store/port';
 import { readBudgetRows, utcDate } from './budget';
 import type { StoreLimits } from './data';
-import { jsonError, type ParsedBody } from './guards';
+import { jsonError, logFault, type ParsedBody } from './guards';
 import type { Clock } from './mcp';
 import { expireKitchens } from './retention';
 
@@ -85,7 +85,12 @@ export async function mintKitchen(deps: KitchensDeps, label: KitchenLabel | null
   const expectedRows = deps.rowsPerWrite.kitchen_create;
   if ((await readBudgetRows(deps.db, date)) + expectedRows > deps.limits.dailyRowCap) return 'budget_full';
 
-  await expireKitchens(deps.db, createdAt, deps.limits, deps.rowsPerWrite, deps.limits.sweepBatchLimit);
+  // Best effort: the hourly run deletes whatever a failed round leaves, so its fault never fails the mint.
+  try {
+    await expireKitchens(deps.db, createdAt, deps.limits, deps.rowsPerWrite, deps.limits.sweepBatchLimit);
+  } catch (error) {
+    logFault('[retention]', error);
+  }
   const id = newKitchenId();
   const outcome = await deps.store.createKitchen({
     kitchen: { id, kind: 'scratch', label, ...deps.settings, createdAt },

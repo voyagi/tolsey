@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { D1Store } from '../store/d1-store';
 import type { D1Like } from '../store/port';
 import { countingD1, type CountingD1 } from '../test-support/counting-d1';
@@ -361,6 +361,32 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       expect(counted.totals().rowsRead).toBeLessThanOrEqual(2);
       expect(counted.totals().rowsWritten).toBe(0);
       expect(await scratchKitchens()).toBe(1);
+    });
+
+    // The sweep on a mint is best effort: the hourly run deletes what it leaves, so its fault must not
+    // turn the visitor's mint into a 500.
+    it('mints a kitchen when its sweep round fails, logging the fault by name and code only', async () => {
+      await expiredKitchenWithLines(2);
+      const sweepFails: D1Like = {
+        prepare: (query) => {
+          if (query.includes('SELECT id FROM kitchens')) {
+            throw Object.assign(new Error('D1_ERROR: the cook said AB 38'), { code: 'SQLITE_BUSY' });
+          }
+          return worker.db.prepare(query);
+        },
+        batch: (statements) => worker.db.batch(statements),
+      };
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const response = await mintDirectly(sweepFails);
+
+        expect(response.status).toBe(201);
+        expect(logged).toHaveBeenCalledWith('[retention]', { name: 'Error', code: 'SQLITE_BUSY' });
+        expect(JSON.stringify(logged.mock.calls)).not.toContain('the cook said');
+      } finally {
+        logged.mockRestore();
+      }
+      expect(await scratchKitchens()).toBe(2);
     });
 
     it('mints a kitchen in the zone and day start of the profile it copies, never a second default', async () => {
