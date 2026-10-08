@@ -10,9 +10,9 @@
 //
 // WHAT IT CHECKS in docs/ai-act.md:
 //   - one section heading per paragraph, all four of 50(1) 50(2) 50(3) 50(4)
-//   - each section carries a verdict on its heading line or on a Verdict: line, never in body
-//     prose: APPLIES, DOES NOT APPLY, or falls on <a named third party> (not empty, tbd, todo, ?),
-//     exactly one of them, with APPLIES read only in capitals
+//   - each section carries a verdict after its heading's last colon or on a Verdict: line, never
+//     in the heading's topic or in body prose: APPLIES, DOES NOT APPLY, or falls on <a named third
+//     party> (not empty, tbd, todo, ?), exactly one of them
 //   - every APPLIES section names at least one backticked repo path that EXISTS (the mechanism)
 //     and at least one backticked path that is a TEST file and exists (what pins it)
 //   - every backticked repo path anywhere in the file exists, whatever the verdict beside it: a
@@ -46,18 +46,20 @@ function isRepoPath(token) {
   return /^[\w.-]+(\/[\w.-]+)+$/.test(token) && /\.\w+$/.test(token) && !token.split('/').includes('..');
 }
 
-// A verdict is read only where one is written: the heading line and a Verdict line. A phrase in the
-// body prose ("this DOES NOT APPLY to us, we think") is never a verdict.
+// A verdict is read only where one is written: after the heading's last colon and on a Verdict line.
+// A phrase in the heading's topic ("marking, which falls on providers") or in the body prose ("this
+// DOES NOT APPLY to us, we think") is never a verdict.
 function verdictOf(section) {
-  const places = [section.split('\n', 1)[0]];
+  const heading = section.split('\n', 1)[0];
+  const colon = heading.lastIndexOf(':');
+  const places = colon === -1 ? [] : [heading.slice(colon + 1)];
   const line = VERDICT_LINE_RE.exec(section);
   if (line) places.push(line[1]);
   let applies = false;
   let notApply = false;
   let unnamedParty = false;
   for (const text of places) {
-    // Verdicts are written in capitals, so a heading's topic ("what applies to ...") is never one.
-    if (/\bAPPLIES\b/.test(text)) applies = true;
+    if (/\bAPPLIES\b/i.test(text)) applies = true;
     if (/\b(DOES NOT APPLY|NOT APPLICABLE)\b/i.test(text)) notApply = true;
     const fallsOn = /\bfalls on\b(.*)$/i.exec(text);
     if (fallsOn) {
@@ -200,6 +202,15 @@ function selftest() {
       '## Article 50(2), marking: falls on the speech vendor\n\ntext\n\n' +
       '## Article 50(3), what applies to emotion recognition: DOES NOT APPLY\n\ntext\n\n' +
       '## Article 50(4), deepfakes: DOES NOT APPLY\n\ntext\n')), 0, /determined: all four/);
+    check('a heading whose topic says "falls on" reads only the APPLIES after its last colon', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: DOES NOT APPLY\n\ntext\n\n' +
+      '## Article 50(2), marking, which falls on providers: APPLIES\n\nThe marking is `src/domain/brief.ts`, pinned by `src/domain/brief.test.ts`.\n\n' +
+      '## Article 50(3), emotion recognition: DOES NOT APPLY\n\ntext\n\n' +
+      '## Article 50(4), deepfakes: DOES NOT APPLY\n\ntext\n',
+      MECH)), 0, /determined: all four/);
+    check('a heading with two verdicts after its colon fails as contradictory', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: APPLIES, DOES NOT APPLY\n\n`src/domain/brief.ts`, `src/domain/brief.test.ts`\n\n' + OTHERS,
+      MECH)), 1, /Article 50\(1\): the verdict says both APPLIES and DOES NOT APPLY/);
     check('a section that says both APPLIES and DOES NOT APPLY fails as contradictory', runCli(fixture(
       '# AI Act\n\n## Article 50(1), interaction: APPLIES\n\nVerdict: DOES NOT APPLY\n\n`src/domain/brief.ts`, `src/domain/brief.test.ts`\n\n' + OTHERS,
       MECH)), 1, /Article 50\(1\): the verdict says both APPLIES and DOES NOT APPLY/);
