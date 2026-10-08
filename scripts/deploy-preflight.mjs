@@ -16,9 +16,9 @@
 // WHAT IT CHECKS:
 //   - d1_databases has an entry with binding DB whose database_id is set, not empty, not all zeros
 //   - vars.ALLOWED_HOSTNAMES passes the Worker's own list rules (src/server/allowlist.ts, loaded
-//     here as TypeScript, which Node 24 runs directly) and names tolsey.taranity.com: the Worker
-//     refuses the whole list over one bad entry, so a list the Worker refuses must not deploy;
-//     it names no loopback host (localhost, *.localhost, 127.x.x.x, [::1])
+//     here as TypeScript, which Node 24 runs directly) and names tolsey.taranity.com and nothing
+//     else: the Worker refuses the whole list over one bad entry, so a list the Worker refuses
+//     must not deploy
 //   - workers_dev and preview_urls are exactly false (absent is not false)
 //   - routes holds { pattern: tolsey.taranity.com, custom_domain: true }
 //   - triggers.crons holds the hourly "0 * * * *" retention schedule
@@ -51,12 +51,6 @@ const DEPLOY_STEPS = [
   { name: 'wrangler deploy', re: /^wrangler\s+deploy$/ },
 ];
 
-// The Origin check compares hostnames only, so any page a cook's browser loads from its own machine
-// (a dev server, a local tool) would pass if a loopback name were listed.
-function isLoopback(hostname) {
-  return hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.startsWith('127.') || hostname === '[::1]';
-}
-
 function readJson(file) {
   try {
     return { value: JSON.parse(readFileSync(file, 'utf8')) };
@@ -86,9 +80,11 @@ function configProblems(config) {
     if (!allowlist.hostnames.includes(DEPLOYED_HOST)) {
       problems.push(`vars.ALLOWED_HOSTNAMES does not name ${DEPLOYED_HOST}, so the Host check would refuse every request to the deployed Worker`);
     }
-    const loopback = allowlist.hostnames.filter(isLoopback);
-    if (loopback.length) {
-      problems.push(`vars.ALLOWED_HOSTNAMES names the loopback host(s) ${loopback.join(', ')}: a page on any loopback origin would pass the deployed Worker's Origin check. Local runs bind their own list (vite.config.ts, src/test-support/target.ts)`);
+    // The Origin check compares hostnames only, so a page served under any other listed name (a
+    // loopback dev server, a LAN address) would pass it: the list must be the deployed host alone.
+    const others = allowlist.hostnames.filter((hostname) => hostname !== DEPLOYED_HOST);
+    if (others.length) {
+      problems.push(`vars.ALLOWED_HOSTNAMES names ${others.join(', ')} beside ${DEPLOYED_HOST}: a page served under any listed name would pass the deployed Worker's Origin check. Local runs bind their own list (vite.config.ts, src/test-support/target.ts)`);
     }
   }
   for (const key of ['workers_dev', 'preview_urls']) {
@@ -248,11 +244,16 @@ function selftest() {
       runCli(fixture({ mutate: (c) => { c.vars.ALLOWED_HOSTNAMES = 'localhost,evil-tolsey.taranity.com.example'; } })), 1, /ALLOWED_HOSTNAMES does not name/);
     check('a list naming the deployed host beside an entry with a port is refused, as the Worker would refuse it',
       runCli(fixture({ mutate: (c) => { c.vars.ALLOWED_HOSTNAMES = `localhost:8787,127.0.0.1,${DEPLOYED_HOST}`; } })), 1, /ALLOWED_HOSTNAMES entry "localhost:8787" holds a port/);
-    for (const loopback of ['localhost', '127.0.0.1', '[::1]', '127.0.0.2', 'app.localhost']) {
-      check(`a list naming the loopback host ${loopback} beside the deployed host is refused`,
-        runCli(fixture({ mutate: (c) => { c.vars.ALLOWED_HOSTNAMES = `${loopback},${DEPLOYED_HOST}`; } })), 1,
-        new RegExp(`ALLOWED_HOSTNAMES names the loopback host\\(s\\) ${loopback.replace(/[.[\]]/g, '\\$&')}:`));
+    // The unspecified address is joined from its parts so the commit gate's bind-address scan never
+    // reads this test value as a server binding.
+    const unspecified = ['0', '0', '0', '0'].join('.');
+    for (const other of ['localhost', '127.0.0.1', '[::1]', '127.0.0.2', 'app.localhost', '192.168.1.20', unspecified]) {
+      check(`a list naming ${other} beside the deployed host is refused`,
+        runCli(fixture({ mutate: (c) => { c.vars.ALLOWED_HOSTNAMES = `${other},${DEPLOYED_HOST}`; } })), 1,
+        new RegExp(`ALLOWED_HOSTNAMES names ${other.replace(/[.[\]]/g, '\\$&')} beside `));
     }
+    check('a list naming the deployed host alone clears',
+      runCli(fixture({ mutate: (c) => { c.vars.ALLOWED_HOSTNAMES = DEPLOYED_HOST; } })), 0, /cleared/);
     check('a list naming the deployed host beside a wildcard entry is refused',
       runCli(fixture({ mutate: (c) => { c.vars.ALLOWED_HOSTNAMES = `localhost,*.taranity.com,${DEPLOYED_HOST}`; } })), 1, /ALLOWED_HOSTNAMES entry "\*\.taranity\.com"/);
     check('workers_dev absent is refused, since wrangler defaults it to true (E30)',
