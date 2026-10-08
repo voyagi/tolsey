@@ -124,8 +124,8 @@ ORDER BY line.check_point_id`;
 // a receipt included, which is how "Log it by hand" closes the prompt it answers. The repeat count
 // takes every miss on the chain: a hold for a different number, and a refusal for none, the only
 // refusal that names a ref_id. It walks this kitchen's events, since ref_id has no index of its own,
-// so it runs only for a digit repeat: SQLite evaluates only the CASE branch it takes (202 rows read at
-// 198 lines otherwise).
+// so it runs only for a prompt on a chain, a digit repeat or such a refusal: SQLite evaluates only the
+// CASE branch it takes (202 rows read at 198 lines otherwise).
 // The supersede target is the line a "wrong number" said wrong. A wrong_number event names it in
 // ref_id; any other prompt reaches it by walking answers_id back through the holds and refusals that
 // answered one another until a wrong_number event. The walk ends, since an event can only answer an
@@ -137,7 +137,7 @@ SELECT
   asked.measured AS measured, asked.value_tenths AS value_tenths, asked.initials AS initials,
   asked.screen_id AS screen_id, asked.expires_at AS expires_at, asked.ref_id AS ref_id,
   EXISTS (SELECT 1 FROM events AS answer WHERE answer.answers_id = asked.id) AS answered,
-  CASE WHEN asked.prompt_kind = 'digit_repeat' THEN (
+  CASE WHEN asked.prompt_kind = 'digit_repeat' OR (asked.prompt_kind = 'number' AND asked.ref_id IS NOT NULL) THEN (
     SELECT COUNT(*) FROM events AS chain
     WHERE chain.kitchen_id = asked.kitchen_id AND chain.ref_id = COALESCE(asked.ref_id, asked.id)
       AND ((chain.kind = 'held' AND chain.prompt_kind = 'digit_repeat') OR chain.kind = 'refusal')

@@ -189,25 +189,48 @@ function readingDecision(
   return decided(event, spokenReadback(structured), structured);
 }
 
+// A digit-repeat chain: its first hold, which every later hold or refusal on it names in ref_id, and
+// the misses stored on it so far, so a numberless answer in between never restarts the count.
+interface Chain {
+  head: string;
+  misses: number;
+}
+
 interface Answering {
   links: Links;
   valueFromCall: boolean;
   repeat?: PendingPrompt;
-  // The first hold of the digit-repeat chain this answer continues. A refusal or a new hold stored on
-  // the way names it in ref_id, so a numberless answer in between never restarts the count of misses.
-  chain?: string;
+  chain?: Chain;
   // Set when the prompt answered belongs to a chain that started from "wrong number".
   supersede: SupersedeTarget | null;
 }
 
 const FRESH: Answering = { links: NO_LINKS, valueFromCall: true, supersede: null };
 
-// A reading with no row is kept unjudged, and nothing unjudged can be misjudged, so only a reading
-// with a row can be held; a confirmed digit repeat is judged without asking again.
-function onChain(links: Links, chain: string | undefined): Links {
-  return chain === undefined ? links : { ...links, refId: chain };
+function onChain(answering: Answering): Links {
+  const { links, chain } = answering;
+  return chain === undefined ? links : { ...links, refId: chain.head };
 }
 
+function endsChain(chain: Chain | undefined): boolean {
+  return chain !== undefined && chain.misses + 1 >= MISSES_BEFORE_LOG_BY_HAND;
+}
+
+// The receipt answers the prompt, which closes it through the answers_id index so it can never be
+// answered afterwards, and asks nothing, so the check stays open until a number is logged.
+function logByHand(facts: Facts, ctx: DecisionContext, answering: Answering): Decision {
+  return receiptDecision(facts, ctx, { outcome: 'refused', text: LOG_BY_HAND_REPLY }, onChain(answering));
+}
+
+// Every hold and every refusal stored on a chain is a miss, whichever prompt on it was answered, so
+// the third miss ends the chain wherever it falls.
+function heldOrByHand(facts: ReadingFacts, ctx: DecisionContext, answering: Answering): Decision {
+  if (endsChain(answering.chain)) return logByHand(facts, ctx, answering);
+  return heldDecision(facts, ctx, onChain(answering), 'digit_repeat', digitRepeatReply(facts.checkPoint));
+}
+
+// A reading with no row is kept unjudged, and nothing unjudged can be misjudged, so only a reading
+// with a row can be held; a confirmed digit repeat is judged without asking again.
 function judgedOrHeld(facts: ReadingFacts, ctx: DecisionContext, answering: Answering, confirmed: boolean): Decision {
   const { checkPoint } = facts;
   const { links, supersede } = answering;
@@ -216,37 +239,16 @@ function judgedOrHeld(facts: ReadingFacts, ctx: DecisionContext, answering: Answ
   const row = supersede === null ? selectRule(checkPoint, measured, ctx.profile, ctx.rules) : ruleOfTarget(supersede);
   const band = ctx.profile.coarseBands[checkPoint.kind];
   if (row !== undefined && !confirmed && needsDigitRepeat(tenthsOf(facts.value), row, band)) {
-    return heldDecision(measuredFacts, ctx, onChain(links, answering.chain), 'digit_repeat', digitRepeatReply(checkPoint));
+    return heldOrByHand(measuredFacts, ctx, answering);
   }
   return readingDecision(measuredFacts, ctx, links, row, supersede);
 }
 
-// The receipt answers the prompt, which closes it through the answers_id index so it can never be
-// answered afterwards, and asks nothing, so the check stays open until a number is logged.
-function logByHand(facts: Facts, ctx: DecisionContext, prompt: PendingPrompt): Decision {
-  const links = { answersId: prompt.id, refId: prompt.refId ?? prompt.id };
-  return receiptDecision(facts, ctx, { outcome: 'refused', text: LOG_BY_HAND_REPLY }, links);
-}
-
-function endsChain(prompt: PendingPrompt): boolean {
-  return prompt.repeats + 1 >= MISSES_BEFORE_LOG_BY_HAND;
-}
-
-// A digit repeat prompt holds one number, the last one said. A different number answers it with a
-// new hold on the same chain, whose first hold every later link names in ref_id, so the misses are
-// counted along the chain, and the third ends it.
-function nextRepeat(facts: ReadingFacts, ctx: DecisionContext, prompt: PendingPrompt): Decision {
-  if (endsChain(prompt)) return logByHand(facts, ctx, prompt);
-  const links = { answersId: prompt.id, refId: prompt.refId ?? prompt.id };
-  return heldDecision(facts, ctx, links, 'digit_repeat', digitRepeatReply(facts.checkPoint));
-}
-
 // A call with no number is refused, and on a digit-repeat chain that refusal is a miss like a
-// different number: it stays on the chain's count, and the third miss ends the chain.
+// different number.
 function refusedOrMissed(facts: Facts, ctx: DecisionContext, answering: Answering): Decision {
-  const { repeat } = answering;
-  if (repeat !== undefined && endsChain(repeat)) return logByHand(facts, ctx, repeat);
-  return refusalDecision(facts, ctx, onChain(answering.links, answering.chain));
+  if (endsChain(answering.chain)) return logByHand(facts, ctx, answering);
+  return refusalDecision(facts, ctx, onChain(answering));
 }
 
 // -0 equals 0, so this returns the literal 0 for both.
@@ -300,7 +302,7 @@ function decideFacts(facts: Facts, ctx: DecisionContext, answering: Answering): 
   // number this call gives once its words are read, so "5 below" beside the value 5 repeats a held -5.
   // A yes or a call with no value never gets here, since a call with no number is refused above.
   const confirms = repeat !== undefined && tenthsOf(value) === repeat.valueTenths;
-  if (repeat !== undefined && !confirms) return nextRepeat(reading, ctx, repeat);
+  if (repeat !== undefined && !confirms) return heldOrByHand(reading, ctx, answering);
   return judgedOrHeld(reading, ctx, answering, confirms);
 }
 
@@ -320,9 +322,9 @@ type Answer = Extract<PromptResolution, { kind: 'answer' }>;
 
 // A digit-repeat hold heads its chain or names its head; a number question names one only when it is
 // the refusal of a numberless answer on such a chain. No other question is on one.
-function chainOf(prompt: PendingPrompt): string | undefined {
-  if (prompt.promptKind === 'digit_repeat') return prompt.refId ?? prompt.id;
-  return prompt.promptKind === 'number' ? (prompt.refId ?? undefined) : undefined;
+function chainOf(prompt: PendingPrompt): Chain | undefined {
+  const onOne = prompt.promptKind === 'digit_repeat' || (prompt.promptKind === 'number' && prompt.refId !== null);
+  return onOne ? { head: prompt.refId ?? prompt.id, misses: prompt.repeats } : undefined;
 }
 
 function decideAnswer(input: LogReadingInput, ctx: DecisionContext, answer: Answer): Decision {

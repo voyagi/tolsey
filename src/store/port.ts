@@ -83,8 +83,8 @@ export interface SupersedeTarget {
 }
 
 // An event that asked a question, as the call answering it needs it. repeats counts the misses so
-// far on a digit-repeat chain: every digit_repeat hold after the chain's first, this one included,
-// and every refusal of a numberless answer on it (0 for the first hold and for every other kind).
+// far on a digit-repeat chain: every digit_repeat hold after the chain's first, and every refusal of
+// a numberless answer on it, this prompt included (0 for the first hold and for any prompt off a chain).
 // supersedes is set when the chain this prompt belongs to started from a "wrong number".
 export interface PendingPrompt {
   id: string;

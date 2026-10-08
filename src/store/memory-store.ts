@@ -35,6 +35,10 @@ function copy(line: StoredLine): StoredLine {
   return { ...line };
 }
 
+function onChain(asked: StoredLine): boolean {
+  return asked.promptKind === 'digit_repeat' || (asked.promptKind === 'number' && asked.refId !== null);
+}
+
 function withRecordCode(resultTemplate: string, businessDay: string, dayLine: number): string {
   const result = JSON.parse(resultTemplate) as { structuredContent: Record<string, unknown> };
   result.structuredContent.recordCode = recordCode(businessDay, dayLine);
@@ -120,7 +124,7 @@ export class MemoryStore implements Store {
       expiresAt: asked.expiresAt,
       refId: asked.refId,
       answered: this.byAnswers.has(asked.id),
-      repeats: asked.promptKind === 'digit_repeat' ? this.repeatsOf(asked) : 0,
+      repeats: onChain(asked) ? this.repeatsOf(asked) : 0,
       supersedes: this.supersedeTargetOf(asked),
     };
   }

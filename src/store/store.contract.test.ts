@@ -339,6 +339,20 @@ describe.each(LEGS)('the store contract on $name', (leg) => {
       expect((await store.pendingPrompt(kitchenId, second.id))?.repeats).toBe(1);
     });
 
+    it('counts the misses along a chain for a refusal stored on it', async () => {
+      const kitchenId = await kitchen();
+      const first = prompt(kitchenId, { promptKind: 'digit_repeat', valueTenths: 150 });
+      await appended(first);
+      const refusal = (answersId: string) =>
+        testEvent(kitchenId, { kind: 'refusal', valueTenths: null, promptKind: 'number', expiresAt: PROMPT_EXPIRES_AT, answersId, refId: first.id });
+      const once = refusal(first.id);
+      await appended(once);
+      const twice = refusal(once.id);
+      await appended(twice);
+
+      expect((await store.pendingPrompt(kitchenId, twice.id))?.repeats).toBe(2);
+    });
+
     // A first hold names no chain head in ref_id, so its misses are counted against its own id: never
     // against every hold that names none, which would count itself and the first hold of any other chain.
     it("counts no misses on a chain's first digit-repeat hold, whatever holds other chains have opened", async () => {
