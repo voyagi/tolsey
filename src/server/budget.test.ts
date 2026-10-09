@@ -458,6 +458,13 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       expect(await scratchKitchens()).toBe(1);
     });
 
+    it('ends a run at the first page that comes back short of a full round', async () => {
+      const small: StoreLimits = { ...limits, cronSweepBatchLimit: 2, maxSweepRounds: 3 };
+      await insertScratchKitchens(worker.db, [T0 - 24 * HOUR_MS]);
+
+      expect(await runScheduledSweep(worker.db, T0, small, rowsPerWrite)).toEqual({ rounds: 1, kitchensDeleted: 1 });
+    });
+
     it('runs rounds of cronSweepBatchLimit until maxSweepRounds, then leaves the rest to the next run', async () => {
       const small: StoreLimits = { ...limits, cronSweepBatchLimit: 2, maxSweepRounds: 3 };
       await insertScratchKitchens(worker.db, Array.from({ length: 10 }, (_, index) => T0 - 24 * HOUR_MS - index));

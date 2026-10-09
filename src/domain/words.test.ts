@@ -261,6 +261,17 @@ describe('classifyNumberWords against transcript shapes', () => {
     expect(classify('the reach-in two is fine')).toEqual({ kind: 'hedge' });
   });
 
+  // A token of dashes alone is a range however many dashes it holds; a dash on one side of a word is
+  // no range, and the word keeps its meaning.
+  it.each([
+    ['38 -- 40', 'a doubled dash standing alone'],
+    ['high--40', 'a doubled dash inside a token'],
+    ['high- 40', 'a dash closing a decade word'],
+    ['38 -ish', 'a dash opening an approximation'],
+  ])('classifies "%s" (%s) as a hedge', (words) => {
+    expect(classify(words)).toEqual({ kind: 'hedge' });
+  });
+
   // Every limit and approximation word, before or after a figure, is a hedge; "below" after a figure
   // is the one exception, the sign.
   it('classifies every limit and approximation word in the vocabulary as a hedge on either side of a figure', () => {
@@ -271,6 +282,19 @@ describe('classifyNumberWords against transcript shapes', () => {
       expect(classify(`41 ${word}`), `41 ${word}`).toEqual({ kind: 'hedge' });
     }
     expect(classify(`${hedges.below} 41`)).toEqual({ kind: 'hedge' });
+  });
+
+  // A host writing the call can put a limit or a guess as a symbol. Read as plain, "<41" would log 41.
+  it.each(['<41', 'walk-in < 41', '>135', '~38', '\u224838', '38+', '\u226441', '\u2265135'])(
+    'classifies the symbol beside the figure in "%s" as a hedge',
+    (words) => {
+      expect(classify(words)).toEqual({ kind: 'hedge' });
+    },
+  );
+
+  // Markup is no limit: its brackets stand beside no figure.
+  it('classifies a reading wrapped in markup as plain', () => {
+    expect(classify('<b>the walk-in</b> reads 38')).toEqual({ kind: 'plain' });
   });
 });
 
@@ -349,6 +373,14 @@ describe('rebuildWords on a refused line', () => {
     expect(rebuildWords('zero zero zero zero', profile, undefined, walkIn)).toBe('zero zero');
     expect(rebuildWords('the reach-in one is fine', profile, undefined, walkIn)).toBe('the reach-in one is fine');
   });
+
+  it('quotes a figure with one decimal place as said', () => {
+    expect(rebuildWords('under 38.5', profile, undefined, walkIn)).toBe('under 38.5');
+  });
+
+  it('stores no words for a refused call that names no check and says nothing recognised', () => {
+    expect(rebuildWords('<b>hello</b>', profile, undefined, undefined)).toBe('');
+  });
 });
 
 describe('rebuildWords on a line with a value', () => {
@@ -365,6 +397,32 @@ describe('rebuildWords on a line with a value', () => {
   it('keeps at most two figures beside the value', () => {
     expect(rebuildWords('walk-in 38 zero zero zero zero', profile, 38, walkIn)).toBe('walk-in 38 zero zero');
   });
+
+  it('stores the number alone when the words never name it and no check point is known', () => {
+    expect(rebuildWords('minus five', profile, -5, undefined)).toBe('-5');
+  });
+});
+
+describe('names a profile holds', () => {
+  function withWalkInAliases(aliases: string[]) {
+    return KitchenProfileSchema.parse({
+      ...demoJson,
+      checkPoints: demoJson.checkPoints.map((point) => (point.id === 'walk_in' ? { ...point, aliases: [...point.aliases, ...aliases] } : point)),
+    });
+  }
+
+  // An alias of punctuation alone holds no words, and a name of no words would match at every place
+  // and never be stepped past.
+  it('reads the words around an alias that holds no words', () => {
+    const withMark = withWalkInAliases(['!']);
+    expect(classifyNumberWords(tokensOf('the walk-in reads 38'), withMark)).toEqual({ kind: 'plain' });
+    expect(rebuildWords('the walk-in reads 38', withMark, 38, walkIn)).toBe('the walk-in reads 38');
+  });
+
+  // Found first, the shorter name would leave the rest of the longer one outside any name.
+  it('takes the longest name said, so the digit of "box 2" stays inside it', () => {
+    expect(rebuildWords('box 2 reads 38', withWalkInAliases(['box', 'box 2']), 38, walkIn)).toBe('box 2 reads 38');
+  });
 });
 
 describe('tokensOf', () => {
@@ -375,6 +433,10 @@ describe('tokensOf', () => {
 
   it('trims every dot at the end of a token and keeps the decimal point inside it', () => {
     expect(tokensOf('the walk-in reads 38.5...')).toEqual(['the', 'walk-in', 'reads', '38.5']);
+  });
+
+  it('trims every dot at the start of a token, so a figure after a pause is still a figure', () => {
+    expect(tokensOf('the walk-in reads ...38')).toEqual(['the', 'walk-in', 'reads', '38']);
   });
 });
 

@@ -4,8 +4,8 @@ import demoJson from '../../data/kitchens/demo.json';
 import rulesJson from '../../data/rules/food-code-2022.json';
 import { LogReadingInputSchema, LogReadingOutputSchema, type LogReadingInput } from '../contract/log-reading';
 import { kitchenSettings } from './business-day';
-import { alreadyAnswered, decideLogReading, spokenReadback, type DecisionContext } from './log-reading';
-import { KitchenProfileSchema, RuleTableSchema } from './rule';
+import { alreadyAnswered, decideLogReading, selectRule, spokenReadback, type DecisionContext } from './log-reading';
+import { KitchenProfileSchema, RuleTableSchema, type CheckPoint } from './rule';
 
 const table = RuleTableSchema.parse(rulesJson);
 const profile = KitchenProfileSchema.parse(demoJson);
@@ -87,6 +87,65 @@ describe('the rule a reading is judged against', () => {
   it('judges a food probed in the walk-in by cold holding, citing 3-501.16(A)(2)', () => {
     const { rule } = spokenPair(walkIn({ measured: 'chicken_soup' })).structuredContent;
     expect(rule).toMatchObject({ id: 'cold_holding', section: '3-501.16(A)(2)', sourceKind: 'food_code' });
+  });
+});
+
+// Written to break the selection: each case is a profile shape the demo kitchen does not hold today,
+// where a slip would judge a reading by a row that never applied to it.
+describe('selectRule', () => {
+  function checkPoint(id: string): CheckPoint {
+    const found = profile.checkPoints.find((point) => point.id === id);
+    if (!found) throw new Error(`the demo profile has no check point ${id}`);
+    return found;
+  }
+
+  it.each(['cooling', 'reheat'])('keeps a %s reading unjudged even when its check point names a temperature row', (id) => {
+    expect(selectRule({ ...checkPoint(id), airRule: 'unit_air_cold' }, 'air', profile, ctx.rules)).toBeUndefined();
+  });
+
+  it('judges a food that is no roast by the food rule at a check point that also holds a roast rule', () => {
+    expect(selectRule(checkPoint('carving_station'), 'chicken_soup', profile, ctx.rules)?.id).toBe('hot_holding');
+    expect(selectRule(checkPoint('carving_station'), 'prime_rib', profile, ctx.rules)?.id).toBe('hot_holding_roast');
+  });
+
+  // A default measured id is checked against no food list at load, so it can name a food that is not there.
+  it('judges a measured id naming no food by the food rule, never failing on the missing food', () => {
+    expect(selectRule(checkPoint('carving_station'), 'brisket', profile, ctx.rules)?.id).toBe('hot_holding');
+  });
+
+  it('leaves a reading that names nothing measured unjudged, even where a food rule exists', () => {
+    expect(selectRule(checkPoint('walk_in'), undefined, profile, ctx.rules)).toBeUndefined();
+  });
+
+  it('leaves a reading unjudged when its rule id names a row with no single-reading limit', () => {
+    const intervalAsAir = { ...checkPoint('walk_in'), airRule: 'cold_holding_check_interval' };
+    expect(selectRule(intervalAsAir, 'air', profile, ctx.rules)).toBeUndefined();
+  });
+});
+
+describe('the initials a call gives', () => {
+  it.each(['', '  '])('asks who is logging when the initials are %j, never refusing them as off the roster', (initials) => {
+    expect(decideLogReading(walkIn({ initials }), ctx)).toMatchObject({
+      status: 'decided',
+      result: { structuredContent: { outcome: 'held', prompt: { kind: 'who_is_logging' } } },
+    });
+  });
+
+  // A dotless i upper-cases to I, so a roster holding MI would otherwise take "mı" as its own entry.
+  it('refuses initials holding a letter outside A to Z, never upper-casing it into a roster entry', () => {
+    const withMi: DecisionContext = { ...ctx, profile: KitchenProfileSchema.parse({ ...demoJson, roster: [...demoJson.roster, 'MI'] }) };
+    expect(decideLogReading(walkIn({ initials: 'mı' }), withMi)).toEqual({ status: 'rejected', code: 'initials_not_on_roster' });
+    expect(decideLogReading(walkIn({ initials: 'mi' }), withMi)).toMatchObject({ status: 'decided', event: { initials: 'MI' } });
+  });
+});
+
+describe('a held reading', () => {
+  it('stores the measured the call gave, and the check point default only when it gave none', () => {
+    const given = decided(walkIn({ initials: undefined, measured: 'chicken_soup' }));
+    const defaulted = decided(walkIn({ initials: undefined, measured: undefined }));
+    expect(given.result.structuredContent.outcome).toBe('held');
+    expect(given.event.measured).toBe('chicken_soup');
+    expect(defaulted.event.measured).toBe('air');
   });
 });
 
@@ -220,6 +279,26 @@ describe('the sign the words give a value', () => {
       expect(event).toMatchObject({ kind: 'refusal', valueTenths: null });
     },
   );
+
+  it('keeps a reading said below zero whose magnitude is exactly the lowest the contract accepts', () => {
+    const { event, result } = decided(walkIn({ check_point: 'freezer', value: 459.6, words: 'the freezer reads minus 459.6' }));
+    expect(result.structuredContent.outcome).not.toBe('refused');
+    expect(event.valueTenths).toBe(-4596);
+  });
+
+  // A number word names a figure the way digits do, so a value below zero beside any of them is a
+  // number the cook did not say.
+  it('refuses a value below zero beside plain words that name a figure in any number word', () => {
+    const numberWords = [
+      'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen',
+      'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty', 'thirty', 'forty', 'fifty', 'sixty',
+      'seventy', 'eighty', 'ninety', 'hundred',
+    ];
+    for (const word of numberWords) {
+      const { result } = decided(walkIn({ check_point: 'freezer', value: -5, words: `the freezer reads ${word}` }));
+      expect(result.structuredContent.outcome, word).toBe('refused');
+    }
+  });
 });
 
 // Written to break the sign rules: every value the contract accepts, beside words that give a sign.

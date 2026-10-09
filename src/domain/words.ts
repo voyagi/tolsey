@@ -90,13 +90,21 @@ function withoutNames(parts: readonly string[], names: Phrases): string[] {
 // the range "38-40" and a minus sign before 5 is "-5".
 const DASHES = /[\u2010-\u2015\u2212]/g;
 
+// A limit or a guess a host writes as a symbol ("<41", "~38", "38+"). Each stands as a token of its
+// own, so it is read beside the figure it limits instead of vanishing as punctuation.
+const HEDGE_SYMBOLS = '<>~+\u2248\u2264\u2265';
+const HEDGE_SYMBOL: ReadonlySet<string> = new Set(HEDGE_SYMBOLS);
+const HEDGE_SYMBOL_ANYWHERE = new RegExp(`[${HEDGE_SYMBOLS}]`, 'g');
+const TOKEN_SEPARATOR = new RegExp(`[^a-z0-9.${HEDGE_SYMBOLS}-]+`);
+
 // An apostrophe joins its word rather than splitting it, so "it's" stays one token.
 export function tokensOf(text: string): string[] {
   return text
     .toLowerCase()
     .replace(/['’]/g, '')
     .replace(DASHES, '-')
-    .split(/[^a-z0-9.-]+/)
+    .replace(HEDGE_SYMBOL_ANYWHERE, ' $& ')
+    .split(TOKEN_SEPARATOR)
     .map((token) => token.replace(/^\.+|\.+$/g, ''))
     .filter(Boolean);
 }
@@ -183,6 +191,8 @@ function isSignBelow(tokens: readonly string[], index: number, hedges: Hedges): 
 function hedgesAt(tokens: readonly string[], index: number, hedges: Hedges): boolean {
   const token = tokens[index];
   if (hedges.approximations.includes(token) || hedges.tens.includes(token) || DECADE_FIGURE.test(token)) return true;
+  // Markup brackets stand beside words, never a figure, so only a symbol touching one hedges.
+  if (HEDGE_SYMBOL.has(token)) return isFigure(tokens[index - 1]) || isFigure(tokens[index + 1]);
   if (hedges.limits.includes(token)) return !isSignBelow(tokens, index, hedges);
   if (hedges.ranges.includes(token)) return isFigure(tokens[index - 1]) && isFigure(tokens[index + 1]);
   if (hedges.decades.includes(token)) return isFigure(tokens[index + 1]);

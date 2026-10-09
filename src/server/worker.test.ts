@@ -1,6 +1,6 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { SUPPORTED_PROTOCOL_VERSIONS } from '@modelcontextprotocol/server';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { dumpRecordTables, openTestD1, type TestD1 } from '../test-support/d1';
 import { byId, errorById, sendRaw, type RawResponse } from '../test-support/raw-mcp';
 import { LOCAL_HOSTNAMES } from '../test-support/target';
@@ -258,6 +258,7 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
       const response = await send(`/mcp/k/${UNKNOWN_KITCHEN}`, { method: 'GET' });
       expect(response.status).toBe(404);
       expect(response.contentType).toMatch(/^application\/json/);
+      expect(jsonBody(response)).toEqual({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Not found' } });
     });
 
     // The answer must not differ, so the shape of a path tells a prober nothing about which ids exist.
@@ -318,6 +319,35 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
       expect(jsonBody(response)).toEqual({ error: 'invalid_body' });
     });
 
+    // JSON that is no object holds no label to read, so it is refused like a body that is not JSON.
+    it.each(['[]', 'null', '5', '"conformance"'])('answers the kitchens body %s with 400 invalid_body and mints nothing', async (body) => {
+      const before = await dumpRecordTables(d1.db);
+      const response = await send('/api/kitchens', { body });
+      expect(response.status).toBe(400);
+      expect(jsonBody(response)).toEqual({ error: 'invalid_body' });
+      expect(await dumpRecordTables(d1.db)).toBe(before);
+    });
+
+    it('answers a kitchens request that is no POST with 405, naming POST as the method allowed', async () => {
+      const request = new Request('http://localhost/api/kitchens', { method: 'GET', headers: { host: 'localhost' } });
+      const response = await worker.fetch(request, envWith(LOCAL_HOSTNAMES));
+      expect(response.status).toBe(405);
+      expect(response.headers.get('allow')).toBe('POST');
+      expect(response.headers.get('cache-control')).toBe('no-store');
+    });
+
+    // The answer names the new kitchen's own path, so no cache along the way may keep it.
+    it('marks a minted kitchen never to be cached', async () => {
+      const request = new Request('http://localhost/api/kitchens', {
+        method: 'POST',
+        headers: { host: 'localhost', 'content-type': 'application/json' },
+        body: '{}',
+      });
+      const response = await worker.fetch(request, envWith(LOCAL_HOSTNAMES));
+      expect(response.status).toBe(201);
+      expect(response.headers.get('cache-control')).toBe('no-store');
+    });
+
     // A text/plain POST is one a page on another origin can send with no CORS preflight.
     it.each(['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data; boundary=x'])(
       'answers a kitchens body sent as %s with 415 and mints nothing',
@@ -363,6 +393,7 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
       const response = await send('/mcp', { body });
       expect(response.status).toBe(413);
       expect(response.contentType).toMatch(/^application\/json/);
+      expect(jsonBody(response)).toEqual({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Request body over 64 KiB' } });
     });
 
     it('mints from a kitchens body of exactly 64 KiB', async () => {
@@ -463,6 +494,41 @@ describe('the Worker in front of the MCP handler and the kitchens route', () => 
       const response = await (fault ? faulty : worker).fetch(request, envWith(allowed ?? LOCAL_HOSTNAMES));
       expect(response.status).toBe(status);
       expect(request.bodyUsed).toBe(true);
+    });
+
+    // A body read in full leaves nothing to drain, so a normal answer logs no fault.
+    it('logs no fault for a request whose body was read in full', async () => {
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const response = await send('/mcp', { body: TOOLS_LIST });
+        expect(response.status).toBe(200);
+        expect(logged).not.toHaveBeenCalled();
+      } finally {
+        logged.mockRestore();
+      }
+    });
+
+    it('logs a body that fails while it is drained by name and code only, and still answers', async () => {
+      const failing = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.error(Object.assign(new Error('the cook said AB 38'), { code: 'ECONNRESET' }));
+        },
+      });
+      const request = new Request('http://localhost/api/kitchens', {
+        method: 'PUT',
+        headers: { host: 'localhost', 'content-type': 'application/json' },
+        body: failing,
+        duplex: 'half',
+      });
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const response = await worker.fetch(request, envWith(LOCAL_HOSTNAMES));
+        expect(response.status).toBe(405);
+        expect(logged).toHaveBeenCalledWith('[worker]', { name: 'Error', code: 'ECONNRESET' });
+        expect(JSON.stringify(logged.mock.calls)).not.toContain('the cook said');
+      } finally {
+        logged.mockRestore();
+      }
     });
   });
 
