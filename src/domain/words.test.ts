@@ -292,9 +292,14 @@ describe('classifyNumberWords against transcript shapes', () => {
     },
   );
 
-  // Markup is no limit: its brackets stand beside no figure.
+  // Markup around a word is no limit: its brackets stand beside no figure.
   it('classifies a reading wrapped in markup as plain', () => {
     expect(classify('<b>the walk-in</b> reads 38')).toEqual({ kind: 'plain' });
+  });
+
+  // A bracket touching a figure cannot be told from a limit, so markup round the figure refuses.
+  it('classifies markup wrapped round the figure itself as a hedge', () => {
+    expect(classify('the walk-in reads <b>38</b>')).toEqual({ kind: 'hedge' });
   });
 });
 

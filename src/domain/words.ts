@@ -191,7 +191,8 @@ function isSignBelow(tokens: readonly string[], index: number, hedges: Hedges): 
 function hedgesAt(tokens: readonly string[], index: number, hedges: Hedges): boolean {
   const token = tokens[index];
   if (hedges.approximations.includes(token) || hedges.tens.includes(token) || DECADE_FIGURE.test(token)) return true;
-  // Markup brackets stand beside words, never a figure, so only a symbol touching one hedges.
+  // A symbol hedges only where it touches a figure: markup brackets around words pass, while a bracket
+  // touching a figure ("<b>38</b>") cannot be told from a limit and refuses, the safe direction.
   if (HEDGE_SYMBOL.has(token)) return isFigure(tokens[index - 1]) || isFigure(tokens[index + 1]);
   if (hedges.limits.includes(token)) return !isSignBelow(tokens, index, hedges);
   if (hedges.ranges.includes(token)) return isFigure(tokens[index - 1]) && isFigure(tokens[index + 1]);

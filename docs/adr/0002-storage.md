@@ -79,15 +79,18 @@ pass that attacks the running service measures a mint flood against the deployed
 
 The free allowance belongs to the account, not to this database. Cloudflare's D1 pricing page says
 that once the account reaches its daily limits no query runs against D1 until the 00:00 UTC reset
-(read 2026-09-26). The cap refuses writes, never retention, so a day can also spend the deletion of
-the previous day's kitchens on top of it. A delete counts one row per kitchen, one for its line counter and
-one per line (local D1, pinned by "counts one row per deleted kitchen, its line counter and per deleted
-reading" in `src/server/budget.test.ts`), so that addition is at most about 8,000 rows: the 40,000 / 5
-kitchens a day's budget can mint, the costliest mix to delete. A kitchen with no lines has no counter
-row, and a kitchen's first line spends at least 9 rows of the budget (its reserve) and deletes as 2, so lines never make a
-mix costlier. The cap therefore assumes every other D1 database
-on the account writes fewer than about 52,000 rows a day, and past the account limit every tool call
-answers with the fixed server-fault sentence.
+(read 2026-09-26). The cap refuses writes, never retention, so a day can also spend deletions on top
+of it. A delete counts one row per kitchen, one for its line counter and one per line (local D1, pinned
+by "counts one row per deleted kitchen, its line counter and per deleted reading" in
+`src/server/budget.test.ts`). The costliest mix to delete is kitchens holding one line each: the mint
+reserves 5 rows and the line at least 9, and the kitchen, its counter and its line delete as 3, which
+is 3 rows deleted for every 14 spent, more than an empty kitchen's 1 for 5 and more than any kitchen
+with more lines. One day's budget mints about 2,857 such kitchens, which delete as about 8,600 rows.
+The retention age is 22 hours 45 minutes, so the hourly runs of one UTC day delete what was minted from
+00:15 of the previous day to 00:15 of that day, which reaches into two budget days: a day can spend
+up to about 17,100 rows of deletion on top of its cap, plus a budget row per round. The cap therefore
+assumes every other D1 database on the account writes fewer than about 42,000 rows a day, and past
+the account limit every tool call answers with the fixed server-fault sentence.
 
 Reads are not budgeted, so the line cap never walks the kitchen's lines. Each kitchen's line count is
 kept in its own row of `kitchen_lines` (migration 0003, which backfilled it from the lines already

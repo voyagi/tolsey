@@ -1,4 +1,5 @@
 import { recordCode } from '../domain/business-day';
+import { onRepeatChain } from '../domain/prompts';
 import {
   classifyRepeat,
   type AppendInput,
@@ -33,10 +34,6 @@ function requestKey(kitchenId: string, requestId: string): string {
 
 function copy(line: StoredLine): StoredLine {
   return { ...line };
-}
-
-function onChain(asked: StoredLine): boolean {
-  return asked.promptKind === 'digit_repeat' || (asked.promptKind === 'number' && asked.refId !== null);
 }
 
 function withRecordCode(resultTemplate: string, businessDay: string, dayLine: number): string {
@@ -122,7 +119,7 @@ export class MemoryStore implements Store {
       expiresAt: asked.expiresAt,
       refId: asked.refId,
       answered: this.byAnswers.has(asked.id),
-      repeats: onChain(asked) ? this.repeatsOf(asked) : 0,
+      repeats: onRepeatChain(asked) ? this.repeatsOf(asked) : 0,
       supersedes: this.supersedeTargetOf(asked),
     };
   }

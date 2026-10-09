@@ -19,7 +19,7 @@ import {
   type Links,
   type PromptKind,
 } from './decision';
-import { resolvePrompt, type PromptResolution } from './prompts';
+import { onRepeatChain, resolvePrompt, type PromptResolution } from './prompts';
 import { digitRepeatReply, LOG_BY_HAND_REPLY, WHO_IS_LOGGING_REPLY, whichCheckReply } from './questions';
 import { receiptDecision } from './receipt';
 import { refusalDecision } from './refusal';
@@ -319,11 +319,9 @@ function callFacts(input: LogReadingInput, ctx: DecisionContext, initials: strin
 
 type Answer = Extract<PromptResolution, { kind: 'answer' }>;
 
-// A digit-repeat hold heads its chain or names its head; a number question names one only when it is
-// the refusal of a numberless answer on such a chain. No other question is on one.
+// The chain a prompt is on, named by its head; no other question is on one.
 function chainOf(prompt: PendingPrompt): Chain | undefined {
-  const onOne = prompt.promptKind === 'digit_repeat' || (prompt.promptKind === 'number' && prompt.refId !== null);
-  return onOne ? { head: prompt.refId ?? prompt.id, misses: prompt.repeats } : undefined;
+  return onRepeatChain(prompt) ? { head: prompt.refId ?? prompt.id, misses: prompt.repeats } : undefined;
 }
 
 function decideAnswer(input: LogReadingInput, ctx: DecisionContext, answer: Answer): Decision {

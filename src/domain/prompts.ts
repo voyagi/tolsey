@@ -46,6 +46,13 @@ export function asksForNumber(kind: string): boolean {
   return isKnownKind(kind) && ANSWERED_BY_NUMBER[kind];
 }
 
+// A digit-repeat hold heads its chain or names its head; a number question is on one only when it is
+// the refusal of a numberless answer on such a chain, which names the head in ref_id. The in-memory
+// store counts a chain's misses by this rule too, and the store contract test holds D1's query to it.
+export function onRepeatChain(prompt: { promptKind: string | null; refId: string | null }): boolean {
+  return prompt.promptKind === 'digit_repeat' || (prompt.promptKind === 'number' && prompt.refId !== null);
+}
+
 function heldValue(prompt: PendingPrompt): number | undefined {
   return prompt.valueTenths === null ? undefined : prompt.valueTenths / TENTHS_PER_DEGREE;
 }
