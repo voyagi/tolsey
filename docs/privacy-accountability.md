@@ -16,7 +16,9 @@ of invented initials.
 
 Every purpose rests on GDPR Article 6(1)(f), legitimate interests, named per row. No purpose asks for
 consent, and nothing is processed to make a decision about a person: a verdict judges a temperature
-against its rule.
+against its rule. Weighed against a visitor's own interests, each use is light: there are no
+accounts, the initials are invented, the words are rebuilt from recognised tokens, and everything a
+visitor writes is deleted within 24 hours.
 
 | What | Why | Legal basis | Where | How long | How it is deleted |
 | --- | --- | --- | --- | --- | --- |
