@@ -32,10 +32,7 @@ function recognisedTokens(profile: KitchenProfile): ReadonlySet<string> {
   if (!tokens) {
     const { verbs, articles, nouns, states, corrections, hedges } = profile.vocabulary;
     tokens = new Set([
-      ...namePhrases(profile).flatMap((phrase) => [
-        phrase.toLowerCase(),
-        ...tokensOf(phrase).filter((token) => !isFigure(token)),
-      ]),
+      ...namePhrases(profile).flatMap((phrase) => tokensOf(phrase).filter((token) => !isFigure(token))),
       ...verbs,
       ...articles,
       ...nouns,
