@@ -94,7 +94,10 @@ the account limit every tool call answers with the fixed server-fault sentence.
 
 Reads are not budgeted, so the line cap never walks the kitchen's lines. Each kitchen's line count is
 kept in its own row of `kitchen_lines` (migration 0003, which backfilled it from the lines already
-stored), read by key in the guarded insert and in the follow-up read. The append raises it in the same
+stored), read by key in the guarded insert and in the follow-up read. The backfill is exact only
+because 0003 reaches the remote database with the first deploy, which applies every migration before
+any Worker has served it; a later migration that seeds bookkeeping while an older Worker still appends
+would miss those appends and needs a recount after the new Worker is live. The append raises it in the same
 batch as the event, under the same `changes() > 0` guard as the budget, so it counts exactly the events
 stored, and retention deletes it with its kitchen. It is bookkeeping like `budget`, not the record, so
 the append-only triggers do not cover it. Counting the kitchen's events instead read every line on
