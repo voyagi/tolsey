@@ -28,7 +28,7 @@ import {
 import { utcDate } from './budget';
 import type { StoreLimits } from './data';
 import { logFault } from './guards';
-import { writeWindowMs } from './kitchens';
+import { DEMO_FULL, writeWindowMs } from './kitchens';
 
 export interface Clock {
   now(): number;
@@ -69,10 +69,12 @@ const REJECTION_TEXT: Record<Rejection, string> = {
     "Those initials are not on this kitchen's roster. Who is logging? Call again with the whole reading and their initials.",
 };
 
-const REFUSAL_TEXT: Record<RefusalReason, string> = {
-  kitchen_closed: 'This kitchen has closed. Start a new kitchen to keep logging.',
-  kitchen_full: 'This kitchen is full. Start a new kitchen to keep logging.',
-  budget_full: 'The demo is full for today. Try the replay.',
+// The store's budget_full is answered under demo_full, the code POST /api/kitchens gives for the same
+// spent day, so a host meets one public code for it whichever route it called.
+const REFUSALS: Record<RefusalReason, { text: string; code: string }> = {
+  kitchen_closed: { text: 'This kitchen has closed. Start a new kitchen to keep logging.', code: 'kitchen_closed' },
+  kitchen_full: { text: 'This kitchen is full. Start a new kitchen to keep logging.', code: 'kitchen_full' },
+  budget_full: { text: DEMO_FULL, code: 'demo_full' },
 };
 
 // The text is what the host's model reads; the machine code rides in _meta for code.
@@ -110,7 +112,7 @@ function resultFor(outcome: AppendOutcome): CallToolResult {
     case 'expired':
       return errorResult(expiredText(outcome.resultJson), 'request_id_expired');
     case 'refused':
-      return errorResult(REFUSAL_TEXT[outcome.reason], outcome.reason);
+      return errorResult(REFUSALS[outcome.reason].text, REFUSALS[outcome.reason].code);
     case 'conflict': {
       const error = new Error(`an event tripped the ${outcome.constraint} index outside its own path`);
       error.name = 'UnexpectedConflict';

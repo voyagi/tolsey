@@ -325,7 +325,7 @@ describe('retry-safe writes over MCP', () => {
 
   // Fold recheck finding 2: a refusal stores nothing, so its repeat is a new attempt, which logs once
   // the budget has room again and is a retry of that line from then on.
-  it('logs a budget_full call repeated after UTC midnight once, then returns that line to a further repeat', async () => {
+  it('logs a demo_full call repeated after UTC midnight once, then returns that line to a further repeat', async () => {
     // Its own UTC date, since the full budget would refuse every other case's mint.
     const lateEvening = Date.parse('2026-10-22T23:00:00Z');
     const kitchenId = await kitchen(lateEvening);
@@ -336,7 +336,7 @@ describe('retry-safe writes over MCP', () => {
     const logged = await say(kitchenId, call, Date.parse('2026-10-23T00:00:01.000Z'));
     const repeat = await say(kitchenId, call, Date.parse('2026-10-23T00:00:02.000Z'));
 
-    expect(refused._meta).toEqual({ error: 'budget_full' });
+    expect(refused._meta).toEqual({ error: 'demo_full' });
     expect(logged.structuredContent?.outcome).toBe('in_range');
     expect(JSON.stringify(repeat)).toBe(JSON.stringify(logged));
     expect(await events(kitchenId)).toHaveLength(1);

@@ -672,7 +672,7 @@ describe('two numbers for one correction that both read the prompt before either
     expect(result).toMatchObject({
       isError: true,
       content: [{ type: 'text', text: 'The demo is full for today. Try the replay.' }],
-      _meta: { error: 'budget_full' },
+      _meta: { error: 'demo_full' },
     });
     expect(JSON.stringify(result)).not.toMatch(/already corrected/);
     expect(appended.map((input) => input.event.kind)).toEqual(['reading', 'receipt']);

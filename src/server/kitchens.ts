@@ -34,7 +34,9 @@ const SWEEP_INTERVAL_MS = HOUR_MS;
 // promised for a run that starts within this allowance of it (ADR 0002, write model).
 const SWEEP_LATE_START_MS = 15 * 60_000;
 const LABELS: ReadonlySet<string> = new Set<KitchenLabel>(['capture', 'conformance']);
-const DEMO_FULL = 'The demo is full for today. Try the replay.';
+// The one sentence for a day whose row budget is spent, said by a refused mint and by a refused tool
+// call alike, both under the public code demo_full.
+export const DEMO_FULL = 'The demo is full for today. Try the replay.';
 
 type LabelChoice = { ok: true; label: KitchenLabel | null } | { ok: false; error: 'invalid_body' | 'invalid_label' };
 

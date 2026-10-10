@@ -19,7 +19,7 @@ import { callLogReading, walkInArguments, type ToolResult } from '../test-suppor
 import { mintThroughRoute, openInProcessWorker, type InProcessWorker } from '../test-support/target';
 import { addToBudget } from './budget';
 import { DEMO_PROFILE } from './data';
-import { deletionBoundMs, handleKitchensRoute, writeWindowMs } from './kitchens';
+import { DEMO_FULL, deletionBoundMs, handleKitchensRoute, writeWindowMs } from './kitchens';
 import {
   DELETE_EXPIRED_EVENTS,
   DELETE_EXPIRED_KITCHENS,
@@ -45,7 +45,6 @@ const LONG_RUN = 150;
 // measured at about two rows per link (16 rows with the event at the last link, 18 past the bound,
 // 2026-10-10). A few more than a handful, and fixed by the bound whatever the kitchen holds.
 const WALK_ROWS = 2 + 2 * SUPERSEDE_WALK_LINKS;
-const DEMO_FULL = 'The demo is full for today. Try the replay.';
 const KITCHEN_FULL = 'This kitchen is full. Start a new kitchen to keep logging.';
 const KITCHEN_CLOSED = 'This kitchen has closed. Start a new kitchen to keep logging.';
 
@@ -171,6 +170,8 @@ describe('the daily row budget, the kitchen caps and retention', () => {
 
       expect(result.isError).toBe(true);
       expect(result.content).toEqual([{ type: 'text', text: DEMO_FULL }]);
+      // The same public code POST /api/kitchens gives at the cap, never the store's internal reason.
+      expect(result).toMatchObject({ _meta: { error: 'demo_full' } });
       expect(await eventsOf(minted.id)).toBe(0);
       expect(await budgetRows()).toBe(limits.dailyRowCap - (rowsPerWrite.event_first_of_day - 1));
     });
