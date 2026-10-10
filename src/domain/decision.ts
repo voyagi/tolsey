@@ -70,7 +70,11 @@ const VERDICT_WORDS: Record<Outcome, string> = {
 
 export function checkPointFor(profile: KitchenProfile, id: string | null): CheckPoint {
   const point = profile.checkPoints.find((candidate) => candidate.id === id);
-  if (!point) throw new Error('check point missing from the kitchen profile');
+  if (!point) {
+    const error = new Error('check point missing from the kitchen profile');
+    error.name = 'UnknownCheckPoint';
+    throw error;
+  }
   return point;
 }
 

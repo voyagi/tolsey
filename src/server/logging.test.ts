@@ -1,6 +1,7 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import type { D1Like, KitchenRow, Store } from '../store/port';
+import { D1Store } from '../store/d1-store';
+import type { D1Like, KitchenRow, ScreenEvent, Store } from '../store/port';
 import { openTestD1, type TestD1 } from '../test-support/d1';
 import { errorById, sendRaw } from '../test-support/raw-mcp';
 import { createWorker, type WorkerEnv } from './worker';
@@ -10,6 +11,7 @@ const WORDS = 'the walk-in reads 38 behind the fish crate';
 const INITIALS = 'KL';
 const FIXED_SENTENCE = 'Tolsey could not log that. Try again.';
 const CONSOLE_METHODS = ['error', 'warn', 'log', 'info', 'debug'] as const;
+const NO_ROWS = { changes: 0, rows_read: 0, rows_written: 0, last_row_id: 0 };
 
 const SCRATCH: KitchenRow = {
   id: KITCHEN_ID,
@@ -240,6 +242,68 @@ describe('what a fault leaves in the logs and the reply', () => {
     await expect(run).rejects.toThrow(/^the retention sweep failed$/);
     expectNameAndCodeOnly('[retention]');
     expect(errorCalls()).toContainEqual(['[retention]', { name: 'Error', code: 'STORE_DOWN' }]);
+    expect(logged()).not.toContain('failed on');
+  });
+
+  // A deliberate throw is named, so the log tells it apart from any other Error with no message read.
+  it('logs the empty follow-up read after a refused append by its own name', async () => {
+    const empty: D1Like = {
+      prepare: () => {
+        const statement = {
+          bind: () => statement,
+          first: async () => null,
+          all: async () => ({ results: [], meta: NO_ROWS }),
+          run: async () => ({ results: [], meta: NO_ROWS }),
+        };
+        return statement;
+      },
+      batch: async (statements) => statements.map(() => ({ results: [], meta: NO_ROWS })),
+    };
+    const { fetchWith } = workerFor(storeWith({ append: (input) => new D1Store(empty).append(input) }));
+    const result = await callWalkIn(fetchWith);
+
+    expect(result.content).toEqual([{ type: 'text', text: FIXED_SENTENCE }]);
+    expect(errorCalls()).toContainEqual(['[log_reading]', { name: 'MissingFollowUpRow', code: undefined }]);
+  });
+
+  it('logs a check point missing from the kitchen profile by its own name, never the id', async () => {
+    const vanished: ScreenEvent = {
+      id: 'line-1',
+      kind: 'reading',
+      occurredAt: Date.UTC(2026, 9, 20, 14, 59),
+      checkPointId: 'retired_cooler_by_KL',
+      measured: 'air',
+      valueTenths: 380,
+      promptKind: null,
+      expiresAt: null,
+      answered: false,
+      corrections: 0,
+    };
+    const { fetchWith } = workerFor(storeWith({ latestByScreen: async () => vanished }));
+    const result = await callWalkIn(fetchWith, 'wrong number');
+
+    expect(result.content).toEqual([{ type: 'text', text: FIXED_SENTENCE }]);
+    expect(errorCalls()).toContainEqual(['[log_reading]', { name: 'UnknownCheckPoint', code: undefined }]);
+    expect(logged()).not.toContain('retired_cooler');
+  });
+
+  // The mint's own sweep round is best effort and the hourly run is not, so each logs under its own
+  // prefix and a failed mint round never reads as a failed hourly run.
+  it('logs a failed sweep round on a mint under its own prefix, name and code only, and still mints', async () => {
+    const sweepFails: D1Like = {
+      prepare: (query) => {
+        if (query.includes('SELECT id FROM kitchens')) throw carryingWords('the mint sweep');
+        return d1.db.prepare(query);
+      },
+      batch: (statements) => d1.db.batch(statements),
+    };
+    const worker = createWorker({ clock: { now: () => Date.UTC(2026, 9, 20, 15, 0) } });
+    const env: WorkerEnv = { ASSETS: { fetch: async () => new Response('asset') }, ALLOWED_HOSTNAMES: 'localhost', DB: sweepFails };
+    const response = await worker.fetch(new Request('http://localhost/api/kitchens', { method: 'POST', headers: { host: 'localhost' } }), env);
+
+    expect(response.status).toBe(201);
+    expect(errorCalls()).toContainEqual(['[mint-sweep]', { name: 'Error', code: 'STORE_DOWN' }]);
+    expect(errorCalls().map((args) => args[0])).not.toContain('[retention]');
     expect(logged()).not.toContain('failed on');
   });
 

@@ -88,10 +88,11 @@ export async function mintKitchen(deps: KitchensDeps, label: KitchenLabel | null
   if ((await readBudgetRows(deps.db, date)) + expectedRows > deps.limits.dailyRowCap) return 'budget_full';
 
   // Best effort: the hourly run deletes whatever a failed round leaves, so its fault never fails the mint.
+  // It logs under its own prefix, so a failed mint round never reads as a failed hourly run.
   try {
     await expireKitchens(deps.db, createdAt, deps.limits, deps.rowsPerWrite, deps.limits.sweepBatchLimit);
   } catch (error) {
-    logFault('[retention]', error);
+    logFault('[mint-sweep]', error);
   }
   const id = newKitchenId();
   const outcome = await deps.store.createKitchen({

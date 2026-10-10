@@ -455,7 +455,11 @@ export class D1Store implements Store {
       .prepare(FOLLOW_UP)
       .bind(input.event.kitchenId, input.event.requestId, input.writeWindowMs, input.now)
       .first<FollowUpRow>();
-    if (!row) throw new Error('the append follow-up read returned no row');
+    if (!row) {
+      const error = new Error('the append follow-up read returned no row');
+      error.name = 'MissingFollowUpRow';
+      throw error;
+    }
     return row;
   }
 

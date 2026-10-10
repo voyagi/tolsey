@@ -519,7 +519,7 @@ describe('the daily row budget, the kitchen caps and retention', () => {
         const response = await mintDirectly(sweepFails);
 
         expect(response.status).toBe(201);
-        expect(logged).toHaveBeenCalledWith('[retention]', { name: 'Error', code: 'SQLITE_BUSY' });
+        expect(logged).toHaveBeenCalledWith('[mint-sweep]', { name: 'Error', code: 'SQLITE_BUSY' });
         expect(JSON.stringify(logged.mock.calls)).not.toContain('the cook said');
       } finally {
         logged.mockRestore();

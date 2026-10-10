@@ -49,7 +49,8 @@ hours (PRIV-03), and the mint reports the same bound to the visitor as `expiresA
 (`deletionBoundMs` in `src/server/kitchens.ts`). A run that fails is not retried: Cloudflare records
 it as failed in the Cron Trigger's past events, the Worker logs `[retention]` with the error's name
 and code, and the kitchens it left are deleted by the next hourly run or the next mint's sweep, so
-each failed run can stretch that bound by an hour. Writes close one retry window early so that a retry of the last accepted
+each failed run can stretch that bound by an hour. A mint's own round that fails logs `[mint-sweep]`
+the same way, and the mint goes ahead. Writes close one retry window early so that a retry of the last accepted
 write still finds its kitchen and gets its stored result before the sweep may take it; closing at the
 full retention age would let such a retry answer "not found" instead.
 
