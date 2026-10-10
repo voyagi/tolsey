@@ -22,6 +22,27 @@ SELECT lower(hex(randomblob(16))), ?1, 'receipt', ?2, ?4, 'America/Chicago', 'se
   lower(hex(randomblob(16))), 'seed', 'seeded line', 'receipt', '{}', 'seed'
 FROM line`;
 
+// Whole events written in one statement, in array order, so seq follows the array. They take no day
+// line, which no read under test needs, and the line counter is raised by the same number.
+const INSERT_SEEDED_EVENTS = `
+INSERT INTO events (
+  id, kitchen_id, kind, occurred_at, business_day, time_zone, screen_id, request_id, origin,
+  check_point_id, measured, initials, words, value_tenths, unit, outcome, verdict, rule_id,
+  rule_snapshot, rules_version, supersedes_id, root_id, ref_id, answers_id, prompt_kind, expires_at,
+  result_json, args_hash
+)
+SELECT
+  json_extract(value, '$.id'), json_extract(value, '$.kitchenId'), json_extract(value, '$.kind'),
+  json_extract(value, '$.occurredAt'), json_extract(value, '$.businessDay'), json_extract(value, '$.timeZone'),
+  json_extract(value, '$.screenId'), json_extract(value, '$.requestId'), json_extract(value, '$.origin'),
+  json_extract(value, '$.checkPointId'), json_extract(value, '$.measured'), json_extract(value, '$.initials'),
+  json_extract(value, '$.words'), json_extract(value, '$.valueTenths'), json_extract(value, '$.unit'),
+  json_extract(value, '$.outcome'), json_extract(value, '$.verdict'), json_extract(value, '$.ruleId'),
+  json_extract(value, '$.ruleSnapshot'), json_extract(value, '$.rulesVersion'), json_extract(value, '$.supersedesId'),
+  json_extract(value, '$.rootId'), json_extract(value, '$.refId'), json_extract(value, '$.answersId'),
+  json_extract(value, '$.promptKind'), json_extract(value, '$.expiresAt'), '{}', json_extract(value, '$.argsHash')
+FROM json_each(?1)`;
+
 // Seeded lines count against the line cap exactly as appended ones do.
 const COUNT_SEEDED_LINES = `
 INSERT INTO kitchen_lines (kitchen_id, lines) VALUES (?1, ?2)
@@ -121,6 +142,18 @@ export async function insertLines(
   await db.batch([
     db.prepare(INSERT_SEEDED_LINES).bind(kitchenId, occurredAt, count, businessDay),
     db.prepare(COUNT_SEEDED_LINES).bind(kitchenId, count),
+  ]);
+}
+
+// Events of any shape straight into the table, for read tests that need a kitchen of a chosen shape
+// without one append per event.
+export async function insertEvents(db: D1Like, events: NewEvent[]): Promise<void> {
+  if (events.length === 0) return;
+  const kitchenId = events[0].kitchenId;
+  if (events.some((event) => event.kitchenId !== kitchenId)) throw new Error('insertEvents seeds one kitchen at a time');
+  await db.batch([
+    db.prepare(INSERT_SEEDED_EVENTS).bind(JSON.stringify(events)),
+    db.prepare(COUNT_SEEDED_LINES).bind(kitchenId, events.length),
   ]);
 }
 

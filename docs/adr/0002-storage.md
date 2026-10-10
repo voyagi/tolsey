@@ -82,15 +82,16 @@ that once the account reaches its daily limits no query runs against D1 until th
 (read 2026-09-26). The cap refuses writes, never retention, so a day can also spend deletions on top
 of it. A delete counts one row per kitchen, one for its line counter and one per line (local D1, pinned
 by "counts one row per deleted kitchen, its line counter and per deleted reading" in
-`src/server/budget.test.ts`). The costliest mix to delete is kitchens holding one line each: the mint
-reserves 5 rows and the line at least 9, and the kitchen, its counter and its line delete as 3, which
-is 3 rows deleted for every 14 spent, more than an empty kitchen's 1 for 5 and more than any kitchen
-with more lines. One day's budget mints about 2,857 such kitchens, which delete as about 8,600 rows.
-The retention age is 22 hours 45 minutes, so the hourly runs of one UTC day delete what was minted from
-00:15 of the previous day to 00:15 of that day, which reaches into two budget days: a day can spend
-up to about 17,100 rows of deletion on top of its cap, plus a budget row per round. The cap therefore
-assumes every other D1 database on the account writes fewer than about 42,000 rows a day, and past
-the account limit every tool call answers with the fixed server-fault sentence.
+`src/server/budget.test.ts`). The costliest mixes to delete are kitchens holding one line each and
+empty kitchens: the mint reserves 5 rows and the line at least 10, and the kitchen, its counter and its
+line delete as 3, which is 3 rows deleted for every 15 spent, the same rate as an empty kitchen's 1 for
+5 and more than any kitchen with more lines. One day's budget mints about 2,667 such kitchens, or 8,000
+empty ones, which delete as 8,000 rows either way. The retention age is 22 hours 45 minutes, so the
+hourly runs of one UTC day delete what was minted from 00:15 of the previous day to 00:15 of that day,
+which reaches into two budget days: a day can spend up to about 16,000 rows of deletion on top of its
+cap, plus a budget row per round. The cap therefore assumes every other D1 database on the account
+writes fewer than about 43,000 rows a day, and past the account limit every tool call answers with the
+fixed server-fault sentence.
 
 Reads are not budgeted, so the line cap never walks the kitchen's lines. Each kitchen's line count is
 kept in its own row of `kitchen_lines` (migration 0003, which backfilled it from the lines already
@@ -112,15 +113,37 @@ lines the kitchen holds" in `src/store/d1-features.test.ts` and "reads a handful
 accepted reading, however many lines the kitchen holds" in `src/server/budget.test.ts` hold both
 figures.
 
-Two reads still grow with the kitchen, each bounded by its 200-line cap. A call that names a prompt
-on a digit-repeat chain, a hold or a refusal stored on it, counts that chain over the kitchen's events (200 rows at 198 lines,
-2026-10-08), and "wrong number" counts the corrections along the newest reading's chain, about two
-walks of the kitchen (303 rows at 151 lines, 2026-09-30). A flood of such calls against one full
-kitchen reads roughly 200 to 400 rows a call, so about 12,500 to 25,000 of them spend the account's 5
-million daily reads, and from then until 00:00 UTC no query runs against any D1 database on the
-account. The pass that attacks the running service decides a per-client or per-kitchen limit for that
-read flood together with the mint flood before the public deploy, and the read figures are measured
-again on remote D1 at the first deploy.
+Every other read a call makes is a handful of rows too, whatever the kitchen holds (local D1,
+`meta.rows_read`, 2026-10-10, held by the "reads a handful" and "reads a bounded handful" tests in
+`src/server/budget.test.ts`). Migration 0004 adds the three indexes this takes: `events_screen` on
+`(kitchen_id, screen_id, seq)` over every kind but receipts, `events_ref` on `(ref_id, kind)` and
+`events_root` on `root_id`. "Wrong number" seeks the screen's newest event through `events_screen` and
+reads 2 rows with 199 readings on the screen beside a busier kitchen, and 2 when every event on the
+screen is older than the window. It used to count the corrections of every candidate before it picked
+the newest, a read that grew with the square of the screen's readings: 40 rows at 10 readings, 2,600 at
+50 and 39,999 at 199. Now the newest event the screen wrote, receipts left out, is picked first and the
+window is applied to it after, so a call stored later with a clock behind an earlier one is the newest
+even when it falls outside the window, and then leaves nothing to correct. A reading's corrections are
+counted through `events_root` and `events_ref`. An answer counts its digit-repeat chain's misses with
+one count of holds and one of refusals through `events_ref`, so the receipts naming the chain's head
+are never read: 5 rows for a head 150 receipts name and 9 for a refusal on its chain, where the count
+walked the kitchen before (153 rows at 150 lines). The walk back to the wrong_number event that started
+a correction follows at most 8 links (`SUPERSEDE_WALK_LINKS` in `src/store/d1-store.ts`), at about two
+rows a link: 16 rows with the event at the last link, and 18 for the last prompt of a 150-link chain of
+numberless answers, which before the bound walked all 150. A chain longer than 8 links means a host
+answered "what is the number" with no number more than a handful of times, and past the bound the
+number finally given is logged as a fresh line, while the wrong_number event still marks the line it
+said wrong.
+
+A tool call therefore reads at most about 30 rows: 1 for the kitchen, 0 or 1 for its request id, up to
+18 for the prompt it answers or 2 to 3 for the screen's newest event, and about 10 for the append. At
+the 100,000 Workers requests a day the account allows, that is at most about 3 million rows read, under
+D1's 5 million. An answer that loses a race to a concurrent answer of the same prompt reads the prompt
+twice more and appends again, about 67 rows, and the winner it lost to is a request of its own, so a day
+made only of such pairs still averages under 50 rows a request, below 5 million. No read flood can
+then stop the account's queries before its requests run out. The mint flood stays bounded by the write
+budget, with the replay as its fallback, so no per-client limit is needed. The read figures are
+measured again on remote D1 at the first deploy.
 
 ## Events table
 
@@ -192,7 +215,7 @@ is appended, so a later change of the schedule never moves an old reading to ano
 
 ## Rows written per write
 
-Measured on local D1 through `getPlatformProxy` on this schema (migrations 0001, 0002 and 0003) by the test
+Measured on local D1 through `getPlatformProxy` on this schema (migrations 0001 to 0004, 2026-10-10) by the test
 "measures rows written per write kind equal to data/store/rows-per-write.json" in
 `src/store/d1-features.test.ts`, run with `npx vitest run --project store`, and, for `budget_add`, by
 "measures the rows the sweep budget add writes as the first write of a UTC date equal to budget_add"
@@ -201,10 +224,11 @@ in `src/server/budget.test.ts`:
 | Write kind | Rows written |
 |------------|--------------|
 | `kitchen_create` | 5 |
-| `event_first_of_day` | 9 |
-| `event` | 8 |
-| `event_superseding` | 9 |
-| `event_answering` | 9 |
+| `event_first_of_day` | 10 |
+| `event` | 9 |
+| `event_superseding` | 11 |
+| `event_answering` | 10 |
+| `event_referencing` | 10 |
 | `budget_add` | 2 |
 
 `kitchen_create` is a mint as the first write of its UTC date: the kitchen row with its two index rows,
@@ -215,17 +239,25 @@ the budget row's insert as the first write of a date; later adds of the same dat
 line-counter upsert, and `event` a later event of the same date and kitchen; the difference of one is
 the budget row's insert against its update. The counter table is `WITHOUT ROWID`, so its key is the
 table itself and the counter row's insert writes one row, as its update does. Every measured event is
-a reading, which also writes the day-line index row.
+a reading, which also writes the day-line index row and the `events_screen` row. The superseding one
+names its chain's root as well, as the domain writes a correcting line, so `event_superseding` covers
+both `events_supersedes` and `events_root`, and the referencing one carries a `ref_id`, which fills
+`events_ref`.
 
 The adapter cannot know before the batch runs whether the date's budget row or the kitchen's counter
 row exists or which partial indexes the event fills, so every event append reserves `expectedRowsFor(event)` from
 `src/store/port.ts`: the `event_first_of_day` figure, plus `event_superseding - event` when the event
-supersedes a line, plus `event_answering - event` when it answers a prompt. A matrix test in the same
+supersedes a line, plus `event_answering - event` when it answers a prompt, plus
+`event_referencing - event` when it names a line or a prompt in `ref_id`. A matrix test in the same
 file measures every event kind (reading, refusal, held, wrong_number, receipt), with no partial index
 key, a `supersedes_id` only, an `answers_id` only and both, as the first event of a UTC date and as a
-later one, and holds the measured rows at or below the reserve in all 40 cells. The reserve runs high
-only by the budget insert on later events and by the day-line index row a held,
-wrong_number or receipt event skips, which is the safe direction.
+later one, and holds the measured rows at or below the reserve in all 40 cells. A second test does the
+same for every shape of event the domain stores, with the links it stores them with: a reading, an
+answer, a correcting reading, a wrong_number marker, a hold and a refusal on a digit-repeat chain, a
+receipt naming a prompt and a receipt ending a chain. The reserve runs high
+only by the budget insert on later events, by the day-line index row a held,
+wrong_number or receipt event skips and by the `events_screen` row a receipt skips, which is the safe
+direction.
 
 Retention deletes count against the same daily allowance. A round adds the summed `meta.rows_written`
 of its delete batch, plus `budget_add`, with no cap check: retention is never refused. Unlike an

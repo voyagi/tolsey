@@ -28,6 +28,7 @@ const RowsPerWriteSchema = z
     event: z.number().int().positive(),
     event_superseding: z.number().int().positive(),
     event_answering: z.number().int().positive(),
+    event_referencing: z.number().int().positive(),
     budget_add: z.number().int().positive(),
   })
   .strict();

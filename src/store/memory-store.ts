@@ -1,5 +1,6 @@
 import { recordCode } from '../domain/business-day';
 import { onRepeatChain } from '../domain/prompts';
+import { SUPERSEDE_WALK_LINKS } from './d1-store';
 import {
   classifyRepeat,
   type AppendInput,
@@ -124,11 +125,11 @@ export class MemoryStore implements Store {
     };
   }
 
+  // D1Store's rule: the newest event the screen wrote, receipts left out, is picked first and the window
+  // applied to it after.
   async latestByScreen(kitchenId: string, screenId: string, sinceMs: number): Promise<ScreenEvent | null> {
-    const newest = this.events
-      .filter((line) => line.kitchenId === kitchenId && line.screenId === screenId && line.occurredAt >= sinceMs && line.kind !== 'receipt')
-      .at(-1);
-    if (!newest) return null;
+    const newest = this.events.filter((line) => line.kitchenId === kitchenId && line.screenId === screenId && line.kind !== 'receipt').at(-1);
+    if (!newest || newest.occurredAt < sinceMs) return null;
     return {
       id: newest.id,
       kind: newest.kind as ScreenEvent['kind'],
@@ -196,13 +197,14 @@ export class MemoryStore implements Store {
   }
 
   // The same walk as D1Store's: a wrong_number event names the line in ref_id; any other prompt that
-  // answers something follows answers_id back until a wrong_number event, or until the chain ends.
+  // answers something follows answers_id back until a wrong_number event, until the chain ends, or
+  // until it has followed SUPERSEDE_WALK_LINKS links.
   private supersedeTargetOf(asked: StoredLine): SupersedeTarget | null {
     let link: StoredLine | undefined = asked;
     if (asked.kind !== 'wrong_number') {
       link = asked.answersId === null ? undefined : this.inKitchen(asked.answersId, asked.kitchenId);
-      while (link && link.kind !== 'wrong_number') {
-        link = link.answersId === null ? undefined : this.inKitchen(link.answersId, asked.kitchenId);
+      for (let links = 1; link && link.kind !== 'wrong_number'; links++) {
+        link = link.answersId === null || links >= SUPERSEDE_WALK_LINKS ? undefined : this.inKitchen(link.answersId, asked.kitchenId);
       }
     }
     const target = link?.refId ? this.inKitchen(link.refId, asked.kitchenId) : undefined;

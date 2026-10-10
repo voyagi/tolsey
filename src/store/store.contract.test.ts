@@ -10,7 +10,7 @@ import {
   scratchKitchen,
   testEvent,
 } from '../test-support/events';
-import { D1Store } from './d1-store';
+import { D1Store, SUPERSEDE_WALK_LINKS } from './d1-store';
 import { MemoryStore } from './memory-store';
 import type { AppendInput, AppendOutcome, NewEvent, Store } from './port';
 
@@ -414,6 +414,28 @@ describe.each(LEGS)('the store contract on $name', (leg) => {
 
       expect((await store.pendingPrompt(kitchenId, said.id))?.supersedes).toMatchObject({ lineId: second.id, rootId: root.id });
     });
+
+    // A numberless answer to a correction's question is a refusal answering it, with no limit on how
+    // many follow, so the walk back to the wrong_number event follows SUPERSEDE_WALK_LINKS links at most.
+    it.each([
+      ['finds the line said wrong at the last link the walk follows', SUPERSEDE_WALK_LINKS, true],
+      ['finds no line one link past the walk bound', SUPERSEDE_WALK_LINKS + 1, false],
+    ])('%s', async (_label, links, found) => {
+      const kitchenId = await kitchen();
+      const line = testEvent(kitchenId);
+      await appended(line);
+      let last = prompt(kitchenId, { kind: 'wrong_number', promptKind: 'number_after_wrong', refId: line.id, valueTenths: null });
+      await appended(last);
+      for (let link = 0; link < links; link++) {
+        last = testEvent(kitchenId, { kind: 'refusal', valueTenths: null, promptKind: 'number', expiresAt: PROMPT_EXPIRES_AT, answersId: last.id });
+        await appended(last);
+      }
+
+      const supersedes = (await store.pendingPrompt(kitchenId, last.id))?.supersedes;
+
+      if (found) expect(supersedes).toMatchObject({ lineId: line.id, rootId: line.id, superseded: false });
+      else expect(supersedes).toBeNull();
+    });
   });
 
   describe("a screen's newest event", () => {
@@ -467,6 +489,18 @@ describe.each(LEGS)('the store contract on $name', (leg) => {
       await appended(testEvent(kitchenId, { screenId: 'wall-c', supersedesId: first.id, rootId: first.id, answersId: one.id, occurredAt: AT + 2000 }));
 
       expect(await store.latestByScreen(kitchenId, 'wall-c', AT)).toMatchObject({ kind: 'reading', corrections: 1 });
+    });
+
+    // The newest event the screen wrote is picked first and the window applied to it after, so a call
+    // stored later with a clock behind an earlier one is still the newest, inside the window or not.
+    it('applies the window to the newest event the screen wrote, never to an older one inside it', async () => {
+      const kitchenId = await kitchen();
+      await appended(testEvent(kitchenId, { screenId: 'wall-i', occurredAt: AT + 5000 }));
+      const later = testEvent(kitchenId, { screenId: 'wall-i', occurredAt: AT });
+      await appended(later);
+
+      expect(await store.latestByScreen(kitchenId, 'wall-i', AT + 1000)).toBeNull();
+      expect(await store.latestByScreen(kitchenId, 'wall-i', AT)).toMatchObject({ id: later.id, kind: 'reading' });
     });
   });
 

@@ -123,15 +123,22 @@ ORDER BY line.check_point_id`;
 // foreign id is a fresh call rather than a fault. Any event carrying the id as answers_id answers it,
 // a receipt included, which is how "Log it by hand" closes the prompt it answers. The repeat count
 // takes every miss on the chain: a hold for a different number, and a refusal for none, the only
-// refusal that names a ref_id. It walks this kitchen's events, since ref_id has no index of its own,
-// so it runs only for a prompt on a chain, a digit repeat or such a refusal: SQLite evaluates only the
-// CASE branch it takes (202 rows read at 198 lines otherwise).
+// refusal that names a ref_id. It is two counts, one per kind, each an equality on ref_id and kind, so
+// it seeks the chain's holds and refusals through events_ref and never reads the receipts that name
+// the chain's head when "wrong number" asks its question again. It runs only for a prompt on a chain, a
+// digit repeat or such a refusal: SQLite evaluates only the CASE branch it takes.
 // The supersede target is the line a "wrong number" said wrong. A wrong_number event names it in
 // ref_id; any other prompt reaches it by walking answers_id back through the holds and refusals that
-// answered one another until a wrong_number event. The walk ends, since an event can only answer an
-// event already stored, and it runs only for a prompt that answers something: a prompt that answers
-// nothing did not start from a correction, and stays one indexed read.
-const PENDING_PROMPT = `
+// answered one another until a wrong_number event, one id seek per link and SUPERSEDE_WALK_LINKS links
+// at most. It runs only for a prompt that answers something: a prompt that answers nothing did not
+// start from a correction, and stays one indexed read.
+// A numberless answer to a correction's question stores a refusal answering it, and nothing limits how
+// many follow, so the walk is bounded. A chain longer than the bound means a host answered "what is the
+// number" with no number more than a handful of times. Past it, the number finally given is logged as
+// a fresh line, while the wrong_number event still marks the line it said wrong.
+export const SUPERSEDE_WALK_LINKS = 8;
+
+export const PENDING_PROMPT = `
 SELECT
   asked.id AS id, asked.prompt_kind AS prompt_kind, asked.check_point_id AS check_point_id,
   asked.measured AS measured, asked.value_tenths AS value_tenths, asked.initials AS initials,
@@ -139,8 +146,12 @@ SELECT
   EXISTS (SELECT 1 FROM events AS answer WHERE answer.answers_id = asked.id) AS answered,
   CASE WHEN asked.prompt_kind = 'digit_repeat' OR (asked.prompt_kind = 'number' AND asked.ref_id IS NOT NULL) THEN (
     SELECT COUNT(*) FROM events AS chain
-    WHERE chain.kitchen_id = asked.kitchen_id AND chain.ref_id = COALESCE(asked.ref_id, asked.id)
-      AND ((chain.kind = 'held' AND chain.prompt_kind = 'digit_repeat') OR chain.kind = 'refusal')
+    WHERE chain.ref_id = COALESCE(asked.ref_id, asked.id) AND chain.kind = 'held'
+      AND chain.prompt_kind = 'digit_repeat' AND chain.kitchen_id = asked.kitchen_id
+  ) + (
+    SELECT COUNT(*) FROM events AS chain
+    WHERE chain.ref_id = COALESCE(asked.ref_id, asked.id) AND chain.kind = 'refusal'
+      AND chain.kitchen_id = asked.kitchen_id
   ) ELSE 0 END AS repeats,
   said_wrong.id AS target_id, COALESCE(said_wrong.root_id, said_wrong.id) AS target_root_id,
   said_wrong.rule_snapshot AS target_rule_snapshot, said_wrong.rules_version AS target_rules_version,
@@ -152,13 +163,13 @@ LEFT JOIN events AS said_wrong ON said_wrong.kitchen_id = asked.kitchen_id AND s
   CASE
     WHEN asked.kind = 'wrong_number' THEN asked.ref_id
     WHEN asked.answers_id IS NOT NULL THEN (
-      WITH RECURSIVE back (kind, answers_id, ref_id) AS (
-        SELECT kind, answers_id, ref_id FROM events
+      WITH RECURSIVE back (kind, answers_id, ref_id, links) AS (
+        SELECT kind, answers_id, ref_id, 1 FROM events
         WHERE kitchen_id = asked.kitchen_id AND id = asked.answers_id
         UNION ALL
-        SELECT prev.kind, prev.answers_id, prev.ref_id
+        SELECT prev.kind, prev.answers_id, prev.ref_id, back.links + 1
         FROM back JOIN events AS prev ON prev.id = back.answers_id AND prev.kitchen_id = asked.kitchen_id
-        WHERE back.kind <> 'wrong_number'
+        WHERE back.kind <> 'wrong_number' AND back.links < ?3
       )
       SELECT ref_id FROM back WHERE kind = 'wrong_number'
     )
@@ -167,29 +178,44 @@ LEFT JOIN events AS said_wrong ON said_wrong.kitchen_id = asked.kitchen_id AND s
 WHERE asked.kitchen_id = ?1 AND asked.id = ?2
   AND asked.prompt_kind IS NOT NULL AND asked.expires_at IS NOT NULL`;
 
+// The newest event the screen wrote, receipts left out, is picked first through events_screen, whose
+// partial index the literal kind <> 'receipt' term lets SQLite use, and the window is applied to that
+// one row after. MATERIALIZED keeps the pick a single seek before anything else runs. So a call stored
+// later with a clock behind an earlier one is the newest, and leaves nothing to correct when it falls
+// outside the window.
 // A reading's corrections are the lines of its chain a wrong_number event said wrong, the chain being
-// every line whose root is the reading's root. Lines, not events: two "wrong number" calls racing on
-// one line store two questions about it, and it was still said wrong once. Counted only for a reading,
-// the one kind a correction can target.
-const LATEST_BY_SCREEN = `
+// the reading's root, which names no root itself, and every line naming that root in root_id: only a
+// correcting line carries one. Each line counts once, when any wrong_number event names it. Lines, not
+// events: two "wrong number" calls racing on one line store two questions about it, and it was still
+// said wrong once. Counted only for a reading, the one kind a correction can target. The chain's lines
+// are read through events_root by name: left to choose, SQLite took the kitchen's events_day prefix
+// for the kitchen_id term and walked the kitchen (201 rows at 199 readings on local D1).
+export const LATEST_BY_SCREEN = `
+WITH newest AS MATERIALIZED (
+  SELECT * FROM events
+  WHERE kitchen_id = ?1 AND screen_id = ?2 AND kind <> 'receipt'
+  ORDER BY seq DESC
+  LIMIT 1
+)
 SELECT
   newest.id AS id, newest.kind AS kind, newest.occurred_at AS occurred_at,
   newest.check_point_id AS check_point_id, newest.measured AS measured,
   newest.value_tenths AS value_tenths, newest.prompt_kind AS prompt_kind, newest.expires_at AS expires_at,
   EXISTS (SELECT 1 FROM events AS answer WHERE answer.answers_id = newest.id) AS answered,
-  CASE WHEN newest.kind = 'reading' THEN (
-    SELECT COUNT(DISTINCT fix.ref_id) FROM events AS fix
-    WHERE fix.kitchen_id = newest.kitchen_id AND fix.kind = 'wrong_number' AND fix.ref_id IN (
-      SELECT link.id FROM events AS link
-      WHERE link.kitchen_id = newest.kitchen_id
-        AND COALESCE(link.root_id, link.id) = COALESCE(newest.root_id, newest.id)
-    )
+  CASE WHEN newest.kind = 'reading' THEN EXISTS (
+    SELECT 1 FROM events AS fix
+    WHERE fix.ref_id = COALESCE(newest.root_id, newest.id) AND fix.kind = 'wrong_number'
+      AND fix.kitchen_id = newest.kitchen_id
+  ) + (
+    SELECT COUNT(*) FROM events AS link INDEXED BY events_root
+    WHERE link.root_id = COALESCE(newest.root_id, newest.id) AND link.kitchen_id = newest.kitchen_id
+      AND EXISTS (
+        SELECT 1 FROM events AS fix
+        WHERE fix.ref_id = link.id AND fix.kind = 'wrong_number' AND fix.kitchen_id = newest.kitchen_id
+      )
   ) ELSE 0 END AS corrections
-FROM events AS newest
-WHERE newest.kitchen_id = ?1 AND newest.screen_id = ?2 AND newest.occurred_at >= ?3
-  AND newest.kind <> 'receipt'
-ORDER BY newest.seq DESC
-LIMIT 1`;
+FROM newest
+WHERE newest.occurred_at >= ?3`;
 
 interface InsertedRow {
   seq: number;
@@ -381,7 +407,7 @@ export class D1Store implements Store {
   }
 
   async pendingPrompt(kitchenId: string, promptId: string): Promise<PendingPrompt | null> {
-    const row = await this.db.prepare(PENDING_PROMPT).bind(kitchenId, promptId).first<PromptRecord>();
+    const row = await this.db.prepare(PENDING_PROMPT).bind(kitchenId, promptId, SUPERSEDE_WALK_LINKS).first<PromptRecord>();
     if (!row) return null;
     return {
       id: row.id,

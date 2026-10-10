@@ -122,16 +122,19 @@ export interface RowsPerWrite {
   event: number;
   event_superseding: number;
   event_answering: number;
+  event_referencing: number;
   budget_add: number;
 }
 
 // The adapter cannot know before the batch runs whether the date's budget row exists yet, or which
 // partial indexes the event will fill, so it reserves the worst case: a first-of-date event plus the
-// measured extra of each partial index this event carries a key for.
+// measured extra of each partial index this event carries a key for. A superseding line carries its
+// chain's root too, so its extra covers both of those keys.
 export function expectedRowsFor(event: NewEvent, rowsPerWrite: RowsPerWrite): number {
   const supersedingExtra = event.supersedesId === null ? 0 : rowsPerWrite.event_superseding - rowsPerWrite.event;
   const answeringExtra = event.answersId === null ? 0 : rowsPerWrite.event_answering - rowsPerWrite.event;
-  return rowsPerWrite.event_first_of_day + supersedingExtra + answeringExtra;
+  const referencingExtra = event.refId === null ? 0 : rowsPerWrite.event_referencing - rowsPerWrite.event;
+  return rowsPerWrite.event_first_of_day + supersedingExtra + answeringExtra + referencingExtra;
 }
 
 export interface AppendInput {

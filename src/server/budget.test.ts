@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { D1Store } from '../store/d1-store';
-import type { D1Like } from '../store/port';
+import { D1Store, LATEST_BY_SCREEN, PENDING_PROMPT, SUPERSEDE_WALK_LINKS } from '../store/d1-store';
+import type { D1Like, KitchenRow, NewEvent } from '../store/port';
 import { countingD1, HANDFUL_OF_ROWS, type CountingD1 } from '../test-support/counting-d1';
 import {
   appendInput,
   HOUR_MS,
+  insertEvents,
   insertLines,
   insertScratchKitchens,
   kitchenInput,
@@ -36,6 +37,14 @@ const D1_QUERIES_PER_INVOCATION = 50;
 const STATEMENTS_PER_ROUND = 5;
 // Around its sweep round a mint runs the budget read and its kitchen insert's batch of two.
 const MINT_STATEMENTS_BESIDE_ROUND = 3;
+const SCREEN = 'budget-wall';
+// One short of the 200-line kitchen cap, and a run of 150 events on one chain or one head.
+const BUSY_SCREEN = 199;
+const LONG_RUN = 150;
+// The prompt and the line said wrong, plus the walk back to the wrong_number event, which local D1
+// measured at about two rows per link (16 rows with the event at the last link, 18 past the bound,
+// 2026-10-10). A few more than a handful, and fixed by the bound whatever the kitchen holds.
+const WALK_ROWS = 2 + 2 * SUPERSEDE_WALK_LINKS;
 const DEMO_FULL = 'The demo is full for today. Try the replay.';
 const KITCHEN_FULL = 'This kitchen is full. Start a new kitchen to keep logging.';
 const KITCHEN_CLOSED = 'This kitchen has closed. Start a new kitchen to keep logging.';
@@ -99,6 +108,58 @@ describe('the daily row budget, the kitchen caps and retention', () => {
   function deleteBatchRows(counted: CountingD1): number {
     const batch = counted.batches.find((each) => each.queries.some((query) => query.includes('DELETE')));
     return batch ? batch.results.reduce((sum, result) => sum + result.meta.rows_written, 0) : 0;
+  }
+
+  async function rowsReadBy<T>(read: (store: D1Store) => Promise<T>): Promise<{ value: T; rowsRead: number }> {
+    const counted = countingD1(worker.db);
+    const value = await read(new D1Store(counted.db));    return { value, rowsRead: counted.totals().rowsRead };
+  }
+
+  // A kitchen written first, then one busier with lines that a read wandering past its own kitchen
+  // would count.
+  async function kitchenWithBusierNeighbour(): Promise<KitchenRow> {
+    const kitchen = scratchKitchen();
+    await worker.store.createKitchen(kitchenInput(kitchen, limits));
+    const [busier] = await insertScratchKitchens(worker.db, [kitchen.createdAt]);
+    await insertLines(worker.db, busier, 1000, kitchen.createdAt + MINUTE_MS);
+    return kitchen;
+  }
+
+  function screenReadings(kitchenId: string, count: number, from: number): NewEvent[] {
+    return Array.from({ length: count }, (_, index) => testEvent(kitchenId, { screenId: SCREEN, occurredAt: from + index }));
+  }
+
+  const prompting = { valueTenths: null, unit: null, verdict: null, ruleId: null, expiresAt: T0 + HOUR_MS } as const;
+
+  function held(kitchenId: string, overrides: Partial<NewEvent>): NewEvent {
+    return testEvent(kitchenId, { ...prompting, kind: 'held', outcome: 'held', unit: 'F', ...overrides });
+  }
+
+  function refusalOf(kitchenId: string, overrides: Partial<NewEvent>): NewEvent {
+    return testEvent(kitchenId, { ...prompting, kind: 'refusal', outcome: 'refused', promptKind: 'number', ...overrides });
+  }
+
+  function receiptOf(kitchenId: string, overrides: Partial<NewEvent>): NewEvent {
+    return testEvent(kitchenId, { ...prompting, kind: 'receipt', outcome: 'held', expiresAt: null, ...overrides });
+  }
+
+  // A line, the wrong_number event that said it wrong, then `refusals` numberless answers, each a
+  // refusal answering the one before it.
+  function correctionChain(kitchenId: string, refusals: number): { line: NewEvent; last: NewEvent; events: NewEvent[] } {
+    const line = testEvent(kitchenId, { screenId: SCREEN });
+    const said = testEvent(kitchenId, {
+      ...prompting,
+      screenId: SCREEN,
+      kind: 'wrong_number',
+      outcome: 'held',
+      promptKind: 'number_after_wrong',
+      refId: line.id,
+    });
+    const events = [line, said];
+    for (let index = 0; index < refusals; index++) {
+      events.push(refusalOf(kitchenId, { screenId: SCREEN, answersId: events[events.length - 1].id }));
+    }
+    return { line, last: events[events.length - 1], events };
   }
 
   describe('the daily budget and the kitchen caps', () => {
@@ -165,49 +226,121 @@ describe('the daily row budget, the kitchen caps and retention', () => {
     });
 
     // Every answer reads its pending prompt first. Only a prompt on a digit-repeat chain (a hold, or a
-    // refusal stored on it) needs its chain counted, and that count walks the kitchen's events; any
-    // other question is one indexed read (153 rows at 150 lines before the count moved behind the
-    // chain branch).
-    it('reads one row for a pending question and walks the kitchen only for a prompt on a digit-repeat chain', async () => {
+    // refusal stored on it) needs its chain counted, and that count reads only the chain's holds and
+    // refusals. Any other question is one indexed read.
+    it('reads one row for a pending question and a handful for a prompt on a digit-repeat chain', async () => {
       const minted = await mintThroughRoute(worker.fetch, worker.baseUrl);
       const lines = 150;
       await insertLines(worker.db, minted.id, lines, T0);
       const url = new URL(minted.mcpPath, worker.baseUrl);
       const ask = async (args: Record<string, unknown>): Promise<string> => {
-        const result = await callLogReading(worker.fetch, url, { screen_id: 'budget-wall', request_id: crypto.randomUUID(), ...args });
+        const result = await callLogReading(worker.fetch, url, { screen_id: SCREEN, request_id: crypto.randomUUID(), ...args });
         return (result.structuredContent?.prompt as { id: string }).id;
       };
       const whoIsLogging = await ask({ check_point: 'walk_in', value: 38 });
       const digitRepeat = await ask({ check_point: 'walk_in', value: 15, initials: 'AB' });
       const readsFor = async (promptId: string): Promise<number> => {
-        const counted = countingD1(worker.db);
-        expect(await new D1Store(counted.db).pendingPrompt(minted.id, promptId)).not.toBeNull();
-        return counted.totals().rowsRead;
+        const { value, rowsRead } = await rowsReadBy((store) => store.pendingPrompt(minted.id, promptId));
+        expect(value).not.toBeNull();
+        return rowsRead;
       };
 
       expect(await readsFor(whoIsLogging)).toBeLessThanOrEqual(2);
-      expect(await readsFor(digitRepeat)).toBeLessThan(1.5 * lines);
+      expect(await readsFor(digitRepeat)).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
+    });
+
+    // A digit-repeat hold is named in ref_id by every "wrong number" receipt that asked its question
+    // again, and those receipts are not misses: the count reads the chain's holds and refusals only.
+    it('reads a handful of rows for a digit-repeat prompt whose head 150 receipts name', async () => {
+      const kitchen = await kitchenWithBusierNeighbour();
+      const head = held(kitchen.id, { promptKind: 'digit_repeat', valueTenths: 150 });
+      const asked = Array.from({ length: LONG_RUN }, () => receiptOf(kitchen.id, { refId: head.id }));
+      const second = held(kitchen.id, { promptKind: 'digit_repeat', valueTenths: 510, refId: head.id, answersId: head.id });
+      const missed = refusalOf(kitchen.id, { refId: head.id, answersId: second.id });
+      await insertEvents(worker.db, [head, ...asked, second, missed]);
+
+      const atHead = await rowsReadBy((store) => store.pendingPrompt(kitchen.id, head.id));
+      const atRefusal = await rowsReadBy((store) => store.pendingPrompt(kitchen.id, missed.id));
+
+      expect(atHead.value).toMatchObject({ id: head.id, repeats: 2, supersedes: null });
+      expect(atRefusal.value).toMatchObject({ id: missed.id, repeats: 2, supersedes: null });
+      expect(atHead.rowsRead).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
+      expect(atRefusal.rowsRead).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
+    });
+
+    // A numberless answer to a correction's question stores a refusal answering it, and so on with no
+    // limit, so the walk back to the wrong_number event stops after SUPERSEDE_WALK_LINKS links.
+    it('reads a bounded handful of rows for the last prompt of a 150-link numberless chain', async () => {
+      const kitchen = await kitchenWithBusierNeighbour();
+      const chain = correctionChain(kitchen.id, LONG_RUN);
+      await insertEvents(worker.db, chain.events);
+
+      const { value, rowsRead } = await rowsReadBy((store) => store.pendingPrompt(kitchen.id, chain.last.id));
+
+      expect(value).toMatchObject({ id: chain.last.id, repeats: 0, supersedes: null });
+      expect(rowsRead).toBeLessThanOrEqual(WALK_ROWS);
+    });
+
+    it('reads a bounded handful of rows for a correction chain within the walk bound, and finds its line', async () => {
+      const kitchen = await kitchenWithBusierNeighbour();
+      const chain = correctionChain(kitchen.id, SUPERSEDE_WALK_LINKS - 1);
+      await insertEvents(worker.db, chain.events);
+
+      const { value, rowsRead } = await rowsReadBy((store) => store.pendingPrompt(kitchen.id, chain.last.id));
+
+      expect(value?.supersedes).toMatchObject({ lineId: chain.line.id, superseded: false });
+      expect(rowsRead).toBeLessThanOrEqual(WALK_ROWS);
     });
 
     // "Wrong number" reads the screen's newest event and, for a reading, counts the corrections along
-    // its chain. Both are held to the kitchen's own lines: a busier kitchen written later must not be
-    // walked on the way. Measured 303 rows at 151 lines on local D1 (2026-09-30), one walk for each;
-    // a third walk, or a scan down the whole table, goes past the bound.
-    it('reads no more than the kitchen lines for "wrong number", however many lines another kitchen holds', async () => {
+    // its chain. Measured on local D1 before the screen index (2026-10-10): 40 rows at 10 readings on
+    // the screen, 2,600 at 50 and 39,999 at 199, since the corrections count ran for every candidate
+    // before the newest was picked.
+    it('reads a handful of rows for "wrong number" on a screen holding 199 readings, beside a busier kitchen', async () => {
       const kitchen = scratchKitchen();
       await worker.store.createKitchen(kitchenInput(kitchen, limits));
-      const lines = 150;
-      await insertLines(worker.db, kitchen.id, lines, kitchen.createdAt + MINUTE_MS);
-      const reading = testEvent(kitchen.id, { screenId: 'budget-wall' });
-      await worker.store.append(appendInput(reading, limits));
+      const readings = screenReadings(kitchen.id, BUSY_SCREEN, kitchen.createdAt + MINUTE_MS);
+      await insertEvents(worker.db, readings);
       const [busier] = await insertScratchKitchens(worker.db, [kitchen.createdAt]);
+      await insertEvents(worker.db, screenReadings(busier, BUSY_SCREEN, kitchen.createdAt + MINUTE_MS));
       await insertLines(worker.db, busier, 1000, kitchen.createdAt + MINUTE_MS);
-      const counted = countingD1(worker.db);
 
-      const latest = await new D1Store(counted.db).latestByScreen(kitchen.id, 'budget-wall', kitchen.createdAt);
+      const { value, rowsRead } = await rowsReadBy((store) => store.latestByScreen(kitchen.id, SCREEN, kitchen.createdAt));
 
-      expect(latest).toMatchObject({ id: reading.id, kind: 'reading', corrections: 0 });
-      expect(counted.totals().rowsRead).toBeLessThan(2.5 * lines);
+      expect(value).toMatchObject({ id: readings[readings.length - 1].id, kind: 'reading', corrections: 0 });
+      expect(rowsRead).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
+    });
+
+    it('reads a handful of rows for "wrong number" when every event on the screen is older than the window', async () => {
+      const kitchen = await kitchenWithBusierNeighbour();
+      await insertEvents(worker.db, screenReadings(kitchen.id, BUSY_SCREEN, kitchen.createdAt + MINUTE_MS));
+
+      const { value, rowsRead } = await rowsReadBy((store) => store.latestByScreen(kitchen.id, SCREEN, kitchen.createdAt + HOUR_MS));
+
+      expect(value).toBeNull();
+      expect(rowsRead).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
+    });
+
+    // A search on kitchen_id alone walks every event the kitchen holds, and a scan walks the table.
+    it('plans the screen read and the pending prompt read with no walk of a kitchen and no scan of events', async () => {
+      const plans = await Promise.all(
+        [LATEST_BY_SCREEN, PENDING_PROMPT].map(async (sql) => {
+          const parameters = Math.max(...[...sql.matchAll(/\?(\d+)/g)].map((match) => Number(match[1])));
+          const values = ['kitchen', 'id', SUPERSEDE_WALK_LINKS].slice(0, parameters);
+          const rows = await worker.db.prepare('EXPLAIN QUERY PLAN ' + sql).bind(...values).all<{ detail: string }>();
+          const aliases = ['events', ...[...sql.matchAll(/\bevents AS (\w+)/g)].map((match) => match[1])];
+          return { details: rows.results.map((row) => row.detail).join(' / '), scan: new RegExp(`SCAN (${aliases.join('|')})\\b`) };
+        }),
+      );
+      console.log(`query plans\nlatest by screen: ${plans[0].details}\npending prompt: ${plans[1].details}`);
+
+      for (const plan of plans) {
+        expect(plan.details).not.toMatch(/USING (COVERING )?INDEX \w+ \(kitchen_id=\?\)/);
+        expect(plan.details).not.toMatch(plan.scan);
+      }
+      expect(plans[0].details).toMatch(/USING INDEX events_screen \(kitchen_id=\? AND screen_id=\?\)/);
+      expect(plans[0].details).toMatch(/USING INDEX events_root \(root_id=\?\)/);
+      expect(plans[1].details).toMatch(/USING INDEX events_ref \(ref_id=\? AND kind=\?\)/);
     });
 
     it('accepts a write 1 ms inside the write window and refuses one at its end, saying the kitchen has closed', async () => {

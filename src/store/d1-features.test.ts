@@ -470,8 +470,10 @@ describe('what local D1 guarantees for the record', () => {
       kitchen_create: meter.rows,
       event_first_of_day: await write({}),
       event: await write({}),
-      event_superseding: await write({ supersedesId: crypto.randomUUID() }),
+      // A correcting line names its chain's root beside the line it supersedes, as the domain writes it.
+      event_superseding: await write({ supersedesId: crypto.randomUUID(), rootId: crypto.randomUUID() }),
       event_answering: await write({ answersId: crypto.randomUUID() }),
+      event_referencing: await write({ refId: crypto.randomUUID() }),
     };
     console.log('measured rows written per write kind', JSON.stringify(measured));
     expect(measured).toEqual({
@@ -480,8 +482,48 @@ describe('what local D1 guarantees for the record', () => {
       event: stored.event,
       event_superseding: stored.event_superseding,
       event_answering: stored.event_answering,
+      event_referencing: stored.event_referencing,
     });
   });
+
+  // Every shape of event the domain stores, with the links it stores them with: the budget counts the
+  // reservation, so a shape writing more rows than it reserved would let the day overrun its cap.
+  it('never writes more rows than expectedRowsFor reserves, for every event shape the domain stores', async () => {
+    const rowsPerWrite = readRowsPerWrite();
+    const meter = new RowsMeter();
+    const metered = new D1Store(meter.wrap(d1.db));
+    const prompting = { valueTenths: null, unit: null, verdict: null, ruleId: null, expiresAt: KITCHEN_CREATED_AT + 120_000 } as const;
+    const shapes: [string, (kitchenId: string) => Partial<NewEvent>][] = [
+      ['a reading', () => ({})],
+      ['an answer', () => ({ answersId: crypto.randomUUID() })],
+      ['a correcting reading', () => ({ supersedesId: crypto.randomUUID(), rootId: crypto.randomUUID(), answersId: crypto.randomUUID() })],
+      ['a wrong_number marker', () => ({ ...prompting, kind: 'wrong_number', promptKind: 'number_after_wrong', refId: crypto.randomUUID() })],
+      ['a hold on a digit-repeat chain', () => ({ ...prompting, kind: 'held', unit: 'F', promptKind: 'digit_repeat', refId: crypto.randomUUID(), answersId: crypto.randomUUID() })],
+      ['a refusal on a digit-repeat chain', () => ({ ...prompting, kind: 'refusal', promptKind: 'number', refId: crypto.randomUUID(), answersId: crypto.randomUUID() })],
+      ['a receipt naming a prompt', () => ({ ...prompting, kind: 'receipt', expiresAt: null, refId: crypto.randomUUID() })],
+      ['a receipt ending a chain', () => ({ ...prompting, kind: 'receipt', expiresAt: null, refId: crypto.randomUUID(), answersId: crypto.randomUUID() })],
+    ];
+    const matrix: string[] = [];
+    let day = 0;
+
+    for (const [label, shape] of shapes) {
+      for (const budgetRow of ['first of date', 'later'] as const) {
+        day += 1;
+        const utcDate = `2029-01-${String(day).padStart(2, '0')}`;
+        const kitchenId = await freshKitchen();
+        if (budgetRow === 'later') {
+          expectStatus(await store.append(appendInput(testEvent(kitchenId), limits, { utcDate })), 'appended');
+        }
+        const event = testEvent(kitchenId, shape(kitchenId));
+        const reserve = expectedRowsFor(event, rowsPerWrite);
+        expectStatus(await metered.append(appendInput(event, limits, { utcDate, expectedRows: reserve })), 'appended');
+        matrix.push(`${label} / ${budgetRow}: measured ${meter.rows}, reserved ${reserve}`);
+        expect(meter.rows, matrix[matrix.length - 1]).toBeLessThanOrEqual(reserve);
+      }
+    }
+    console.log(`rows written by event shape\n${matrix.join('\n')}`);
+    expect(matrix).toHaveLength(shapes.length * 2);
+  }, 60_000);
 
   it('never writes more rows than expectedRowsFor reserves, for every event kind, index shape and budget-row state', async () => {
     const rowsPerWrite = readRowsPerWrite();
