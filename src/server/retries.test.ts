@@ -186,6 +186,28 @@ describe('retry-safe writes over MCP', () => {
       expect(await events(kitchenId)).toHaveLength(before.length);
     });
 
+    // Only a line carries a record code, so a receipt's expired retry names none rather than a blank one.
+    it("names the line's record code in a reading's expired retry and no code in a receipt's", async () => {
+      const kitchenId = await kitchen();
+      const reading = { ...WALK_IN_38, request_id: crypto.randomUUID() };
+      const nothingToFix = { ...WRONG_NUMBER, screen_id: 'retry-empty-wall', request_id: crypto.randomUUID() };
+      const logged = await say(kitchenId, reading, AFTERNOON);
+      const receipt = await say(kitchenId, nothingToFix, AFTERNOON);
+
+      const readingAgain = await say(kitchenId, reading, AFTERNOON + RETRY_WINDOW_MS + 1);
+      const receiptAgain = await say(kitchenId, nothingToFix, AFTERNOON + RETRY_WINDOW_MS + 1);
+
+      expect(logged.structuredContent?.recordCode).toBe('261020-001');
+      expect(receipt.structuredContent?.outcome).toBe('nothing_to_fix');
+      expect(readingAgain.content).toEqual([
+        { type: 'text', text: 'Tolsey already logged this call earlier, record 261020-001. Use a new request_id only for a new reading.' },
+      ]);
+      expect(receiptAgain.content).toEqual([
+        { type: 'text', text: 'Tolsey already logged this call earlier. Use a new request_id only for a new reading.' },
+      ]);
+      expect([readingAgain._meta, receiptAgain._meta]).toEqual([{ error: 'request_id_expired' }, { error: 'request_id_expired' }]);
+    });
+
     // Equal arguments alone never make a duplicate: the recovery both refusals point a host to logs.
     it.each([
       ['a judged reading', WALK_IN_38, 'in_range'],
