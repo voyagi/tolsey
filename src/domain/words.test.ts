@@ -383,6 +383,14 @@ describe('rebuildWords on a refused line', () => {
     expect(rebuildWords('under 38.5', profile, undefined, walkIn)).toBe('under 38.5');
   });
 
+  // Dropping the symbol would quote "<41" as "reads 41", a refused line that reads like a reading.
+  it('keeps a limit symbol beside the figure it limits, and drops one that touches no figure', () => {
+    expect(rebuildWords('the walk-in reads <41', profile, undefined, walkIn)).toBe('the walk-in reads < 41');
+    expect(rebuildWords('the walk-in reads ~38', profile, undefined, walkIn)).toBe('the walk-in reads ~ 38');
+    expect(rebuildWords('the walk-in reads 38+', profile, undefined, walkIn)).toBe('the walk-in reads 38 +');
+    expect(rebuildWords('the walk-in > the reach-in', profile, undefined, walkIn)).toBe('the walk-in the reach-in');
+  });
+
   it('stores no words for a refused call that names no check and says nothing recognised', () => {
     expect(rebuildWords('<b>hello</b>', profile, undefined, undefined)).toBe('');
   });

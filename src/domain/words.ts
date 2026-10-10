@@ -183,14 +183,19 @@ function isSignBelow(tokens: readonly string[], index: number, hedges: Hedges): 
   return next === undefined || next === hedges.zero || next === '0';
 }
 
+// A symbol limits a figure only where it touches one: markup brackets around words pass, while a
+// bracket touching a figure ("<b>38</b>") cannot be told from a limit and counts as one.
+function isSymbolOnFigure(tokens: readonly string[], index: number): boolean {
+  return HEDGE_SYMBOL.has(tokens[index]) && (isFigure(tokens[index - 1]) || isFigure(tokens[index + 1]));
+}
+
 // Every limit word other than a sign "below" hedges wherever it stands, and a decade word hedges the
-// figure after it: "high 40" is somewhere in the high forties, never 40.
+// figure after it: "high 40" is somewhere in the high forties, never 40. A symbol on a figure refuses,
+// the safe direction.
 function hedgesAt(tokens: readonly string[], index: number, hedges: Hedges): boolean {
   const token = tokens[index];
   if (hedges.approximations.includes(token) || hedges.tens.includes(token) || DECADE_FIGURE.test(token)) return true;
-  // A symbol hedges only where it touches a figure: markup brackets around words pass, while a bracket
-  // touching a figure ("<b>38</b>") cannot be told from a limit and refuses, the safe direction.
-  if (HEDGE_SYMBOL.has(token)) return isFigure(tokens[index - 1]) || isFigure(tokens[index + 1]);
+  if (HEDGE_SYMBOL.has(token)) return isSymbolOnFigure(tokens, index);
   if (hedges.limits.includes(token)) return !isSignBelow(tokens, index, hedges);
   if (hedges.ranges.includes(token)) return isFigure(tokens[index - 1]) && isFigure(tokens[index + 1]);
   if (hedges.decades.includes(token)) return isFigure(tokens[index + 1]);
@@ -311,6 +316,9 @@ function storedTokens(tokens: readonly string[], profile: KitchenProfile, value:
     } else if (isQuotedFigure(token, known, number === undefined)) {
       if (figures < MOST_FIGURES_QUOTED) kept.push(token);
       figures += 1;
+    } else if (number === undefined && isSymbolOnFigure(tokens, at)) {
+      // The limit stays with the figure it limits, so "<41" is quoted "< 41", never a plain 41.
+      kept.push(token);
     } else if (known.has(token)) {
       kept.push(token);
     }
