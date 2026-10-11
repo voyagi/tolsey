@@ -2,9 +2,10 @@ import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/cli
 import { createMcpHandler } from '@modelcontextprotocol/server';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { temperatureRowFrom, type RuleRow } from '../domain/rule';
-import { D1Store, SUPERSEDE_WALK_LINKS } from '../store/d1-store';
+import { D1Store, PENDING_PROMPT, SUPERSEDE_WALK_LINKS } from '../store/d1-store';
 import type { AppendInput, AppendOutcome, KitchenRow, Store, StoredLine } from '../store/port';
 import { barrierStore } from '../test-support/barrier-store';
+import { countingD1 } from '../test-support/counting-d1';
 import { openTestD1, type TestD1 } from '../test-support/d1';
 import { gatedStore } from '../test-support/gated-store';
 import { callLogReading, type ToolResult } from '../test-support/mcp-client';
@@ -18,6 +19,9 @@ const DAY = '2026-10-20';
 const SCREEN = 'correction-wall';
 const SECOND_MS = 1000;
 const WALK_IN_45 = { check_point: 'walk_in', value: 45, words: 'walk-in 45', initials: 'AB' };
+// The race loser's reads at the walk bound, measured at 66 on local D1 (2026-10-11), with a few rows of
+// room. ADR 0002's bound on a day's reads quotes the measured figure.
+const RACE_LOSER_ROWS = 70;
 
 interface Result extends ToolResult {
   _meta?: Record<string, unknown>;
@@ -677,6 +681,41 @@ describe('two numbers for one correction that both read the prompt before either
     expect(late.content[0]?.text).toBe('That reading was already corrected. Say the check and its number again.');
     expect((await store.pendingPrompt(kitchen.id, open))?.answered).toBe(true);
     expect(await store.openChecks(kitchen.id, DAY)).toEqual([]);
+  });
+
+  // The costliest call ADR 0002 bounds: the loser of two numbers for two questions about one line, each
+  // question followed by numberless answers to the last link the supersede walk reaches. It reads its
+  // prompt three times (deciding, deciding again after its conflict, and the prompt its event answered)
+  // and appends twice. The counter sees every read but the failed batch's, for which D1 returns no figure.
+  it('reads its prompt three times and appends twice when it loses two numbers racing at the walk bound', async () => {
+    const kitchen = await ownKitchen();
+    const screen = crypto.randomUUID();
+    const deps = depsFor(store, RULES, { kitchen });
+    const { line, questions } = await twoQuestions(kitchen, screen);
+    const deepest = async (question: string): Promise<string> => {
+      let prompt = question;
+      for (let link = 0; link < SUPERSEDE_WALK_LINKS; link++) {
+        const numberless = { words: 'the walk-in is fine', pending_prompt_id: prompt, screen_id: screen, request_id: crypto.randomUUID() };
+        prompt = promptOf(await callThrough(deps, numberless)).id;
+      }
+      return prompt;
+    };
+    const won = await deepest(questions[0]);
+    const lost = await deepest(questions[1]);
+    const counted = countingD1(d1.db);
+    const gate = gatedStore(new D1Store(counted.db), 'pendingPrompt');
+
+    const losing = callThrough(depsFor(gate.store, RULES, { kitchen }), answer(screen, lost, 39));
+    await gate.reached;
+    const winner = await callThrough(deps, answer(screen, won, 40));
+    gate.release();
+    const loser = await losing;
+
+    expect(winner.structuredContent).toMatchObject({ outcome: 'in_range', supersedesLineId: line });
+    expect(loser.content[0]?.text).toBe('That reading was already corrected. Say the check and its number again.');
+    expect(counted.statements.filter((statement) => statement.query === PENDING_PROMPT)).toHaveLength(3);
+    console.log(`race loser at the walk bound: ${counted.totals().rowsRead} rows read`);
+    expect(counted.totals().rowsRead).toBeLessThanOrEqual(RACE_LOSER_ROWS);
   });
 
   // Fold recheck finding 1: a third writer can fill the budget between the loser's two appends.

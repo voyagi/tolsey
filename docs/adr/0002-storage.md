@@ -141,9 +141,18 @@ A tool call therefore reads at most about 30 rows: 1 for the kitchen, 0 or 1 for
 read that names a refusal's reason included (held to a handful by "reads a handful of rows for an append
 refused at the line cap" in `src/store/d1-features.test.ts`). At
 the 100,000 Workers requests a day the account allows, that is at most about 3 million rows read, under
-D1's 5 million. An answer that loses a race to a concurrent answer of the same prompt reads the prompt
-twice more and appends again, about 67 rows, and the winner it lost to is a request of its own, so a day
-made only of such pairs still averages under 50 rows a request, below 5 million. No read flood can
+D1's 5 million. The costliest call is an answer that loses a race. A loser on the same prompt reads it
+once more and appends its receipt. Two numbers for two questions about one line, each question at the
+walk bound, make the loser read its prompt three times and append twice: 66 rows on local D1
+(2026-10-11, held by "reads its prompt three times and appends twice when it loses two numbers racing at
+the walk bound" in `src/server/corrections.test.ts`), plus the kitchen and whatever the batch that fails
+on the unique index read before failing, for which D1 returns no figure. With about 10 for that batch,
+as an accepted append reads, a day made only of such pairs would average about 53 rows a request and
+pass 5 million at 100,000 requests. Such pairs cannot fill a day: the loser meets the unique index only
+while the write budget has room, since an insert the budget refuses writes nothing and conflicts with
+nothing, and each pair spends at least 23 rows of it, 13 for the winner's correcting line and 10 for the
+loser's receipt. The 40,000 rows admit fewer than 1,800 pairs a day, under 200,000 rows read, and every
+call after the budget is spent is refused at its insert within the 30 rows above. No read flood can
 then stop the account's queries before its requests run out. The mint flood stays bounded by the write
 budget, with the replay as its fallback, so no per-client limit is needed. A mint refused at the budget
 reads its budget row and nothing else, and an admitted one runs one sweep round, whose search reads
