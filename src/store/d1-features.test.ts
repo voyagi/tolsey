@@ -61,7 +61,19 @@ class RowsMeter {
 }
 
 const EVENT_KINDS: EventKind[] = ['reading', 'refusal', 'held', 'wrong_number', 'receipt'];
-const INDEX_SHAPES = ['none', 'supersedes', 'answers', 'both'] as const;
+// Every combination of the keys that fill a partial index: supersedes_id with its chain's root, as the
+// domain writes a correcting line, answers_id and ref_id.
+type IndexKey = 'supersedes' | 'answers' | 'refers';
+const INDEX_SHAPES: readonly (readonly IndexKey[])[] = [
+  [],
+  ['supersedes'],
+  ['answers'],
+  ['refers'],
+  ['supersedes', 'answers'],
+  ['supersedes', 'refers'],
+  ['answers', 'refers'],
+  ['supersedes', 'answers', 'refers'],
+];
 const NO_ROWS = { changes: 0, rows_read: 0, rows_written: 0, last_row_id: 0 };
 
 // Local D1 always returns the follow-up read's one row, so only a stand-in can leave it empty: its
@@ -542,14 +554,17 @@ describe('what local D1 guarantees for the record', () => {
           if (budgetRow === 'later') {
             expectStatus(await store.append(appendInput(testEvent(kitchenId), limits, { utcDate })), 'appended');
           }
+          const supersedes = shape.includes('supersedes');
           const event = testEvent(kitchenId, {
             kind,
-            supersedesId: shape === 'supersedes' || shape === 'both' ? crypto.randomUUID() : null,
-            answersId: shape === 'answers' || shape === 'both' ? crypto.randomUUID() : null,
+            supersedesId: supersedes ? crypto.randomUUID() : null,
+            rootId: supersedes ? crypto.randomUUID() : null,
+            answersId: shape.includes('answers') ? crypto.randomUUID() : null,
+            refId: shape.includes('refers') ? crypto.randomUUID() : null,
           });
           const reserve = expectedRowsFor(event, rowsPerWrite);
           expectStatus(await metered.append(appendInput(event, limits, { utcDate, expectedRows: reserve })), 'appended');
-          matrix.push(`${kind} / ${shape} / ${budgetRow}: measured ${meter.rows}, reserved ${reserve}`);
+          matrix.push(`${kind} / ${shape.join('+') || 'none'} / ${budgetRow}: measured ${meter.rows}, reserved ${reserve}`);
           expect(meter.rows, matrix[matrix.length - 1]).toBeLessThanOrEqual(reserve);
         }
       }

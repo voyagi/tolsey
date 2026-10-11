@@ -258,9 +258,10 @@ row exists or which partial indexes the event fills, so every event append reser
 `src/store/port.ts`: the `event_first_of_day` figure, plus `event_superseding - event` when the event
 supersedes a line, plus `event_answering - event` when it answers a prompt, plus
 `event_referencing - event` when it names a line or a prompt in `ref_id`. A matrix test in the same
-file measures every event kind (reading, refusal, held, wrong_number, receipt), with no partial index
-key, a `supersedes_id` only, an `answers_id` only and both, as the first event of a UTC date and as a
-later one, and holds the measured rows at or below the reserve in all 40 cells. A second test does the
+file measures every event kind (reading, refusal, held, wrong_number, receipt) with every combination
+of the partial index keys, none of them included: a `supersedes_id` with its chain's root, an
+`answers_id` and a `ref_id`. Each runs as the first event of a UTC date and as a later one, and the
+measured rows stay at or below the reserve in all 80 cells. A second test does the
 same for every shape of event the domain stores, with the links it stores them with: a reading, an
 answer, a correcting reading, a wrong_number marker, a hold and a refusal on a digit-repeat chain, a
 receipt naming a prompt and a receipt ending a chain. The reserve runs high
