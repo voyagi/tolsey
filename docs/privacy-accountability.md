@@ -22,7 +22,7 @@ visitor writes is deleted within 24 hours.
 
 | What | Why | Legal basis | Where | How long | How it is deleted |
 | --- | --- | --- | --- | --- | --- |
-| IP addresses of visitors | Cloudflare needs them to route and protect each request | Article 6(1)(f): delivering and protecting each request | In transit through Cloudflare's network | The Worker never stores or logs them | Nothing to delete: the Worker writes no IP address to the database or its logs |
+| IP addresses of visitors | Cloudflare needs them to route and protect each request | Article 6(1)(f): delivering and protecting each request | In transit through Cloudflare's network | The Worker never stores them or writes them into a log line, though a fault line's stored metadata may hold one for 3 days (Security) | Nothing to delete in the database: the Worker writes no IP address to it, and Cloudflare drops a kept log line after 3 days |
 | Readings, refusals and prompts written in the public demo | To show a spoken reading becoming a record line | Article 6(1)(f): showing the product to a visitor who chose to try it | A scratch kitchen in the D1 database | Deleted whole within 24 hours | An hourly job deletes each scratch kitchen and all its lines once it is 22 hours 45 minutes old |
 | Staff initials | To show who logged a reading | Article 6(1)(f), as for the line they belong to | Stored with the line they belong to | As long as that line | With the line; any initials outside the kitchen's closed roster are refused and never stored |
 | The words said with a reading | To show what was heard | Article 6(1)(f), as for the line they belong to | Stored with the line they belong to | As long as that line | With the line |
@@ -78,8 +78,12 @@ complies with the EU-U.S. Data Privacy Framework.
 - Logs carry an error's name and code only, never a request's content (`src/server/guards.ts`).
   Cloudflare's per-request logs, which would record each URL and its metadata, are switched off in
   `wrangler.jsonc`, and the deploy preflight refuses a config that turns them on or leaves them to
-  the platform's default (`scripts/deploy-preflight.mjs`). The Worker's own lines are kept for 3 days
-  on the free plan.
+  the platform's default (`scripts/deploy-preflight.mjs`). The Worker's own lines are written only
+  when something fails and are kept for 3 days on the free plan. Cloudflare stores each of them with
+  metadata about the invocation that wrote it, and its documentation does not list that metadata, so a
+  fault line written while serving a request may hold that request's URL, which carries the scratch
+  kitchen's id, and other request details such as the visitor's IP address, for those 3 days. The
+  first deploy reads the stored fields of one such line, and this record is corrected to what it holds.
 - Free text never persists (Words, above), and initials outside the roster are refused (Initials).
 - D1 encrypts stored data at rest with AES-256-GCM (Cloudflare's D1 data security documentation,
   read 2026-10-10).

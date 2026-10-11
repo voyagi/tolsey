@@ -54,10 +54,15 @@ the same way, and the mint goes ahead. Both sweeps run the same round, so a faul
 the hourly run too and shows in the Cron Trigger's past events; a fault that hits only mint rounds
 (a busy database under load) moves no deletion bound while the hourly runs succeed, and shows only as
 `[mint-sweep]` lines. Those lines are kept because `wrangler.jsonc` turns Workers Logs on (3 days on
-the free plan) with its per-request logs off, so no request's URL, which carries the kitchen id, is
-logged; the deploy preflight refuses a config without both. Workers Logs lists the Worker's own logs
-apart from the per-request ones, which is what that switch turns off; the first deploy confirms a
-request leaves no per-request log. Writes close one retry window early so that a retry of the last accepted
+the free plan) with its per-request logs off, so a request that succeeds leaves no log line; the
+deploy preflight refuses a config without both, or one that turns the Worker's own lines off or
+samples them. Workers Logs lists the Worker's own logs apart from the per-request ones, which is what
+that switch turns off. It stores each of the Worker's own lines with metadata about the invocation
+that wrote it, which Cloudflare's documentation does not list, so a fault line written while serving
+a request may still hold that request's URL, which carries the kitchen id. The first deploy confirms a
+request leaves no per-request log and reads the stored fields of one `[mcp]` line, which a text/plain
+POST to a scratch kitchen writes on demand ("logs a text/plain POST through onerror" in
+`src/server/logging.test.ts`). Writes close one retry window early so that a retry of the last accepted
 write still finds its kitchen and gets its stored result before the sweep may take it; closing at the
 full retention age would let such a retry answer "not found" instead.
 

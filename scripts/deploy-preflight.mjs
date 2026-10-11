@@ -26,7 +26,9 @@
 //   - triggers.crons holds the hourly "0 * * * *" retention schedule
 //   - observability.enabled is exactly true, so the Worker's own log lines are kept, and
 //     observability.logs.invocation_logs is exactly false (absent is not false: wrangler fills it in
-//     as true), so no request's URL or metadata is logged (docs/privacy-accountability.md)
+//     as true), so a request that succeeds leaves no log line (docs/privacy-accountability.md)
+//   - observability.logs.enabled and observability.logs.persist are true or absent, and both
+//     head_sampling_rate keys are 1 or absent, so no fault line is dropped or sampled away
 //   - package.json scripts.deploy runs the build, the preflight, the remote migration apply, the
 //     applied-migrations check and wrangler deploy in that order, every step joined by &&
 //     (a ; or || lets the Worker deploy after a failed step)
@@ -106,15 +108,37 @@ function configProblems(config) {
   if (!crons.includes(RETENTION_CRON)) {
     problems.push(`triggers.crons does not contain "${RETENTION_CRON}", so the hourly retention delete would never run`);
   }
-  const observability = config.observability !== null && typeof config.observability === 'object' ? config.observability : {};
+  return problems.concat(loggingProblems(config));
+}
+
+function objectOrEmpty(value) {
+  return value !== null && typeof value === 'object' ? value : {};
+}
+
+// Each logging key a Worker config can carry is judged here. Absent logs.enabled, logs.persist and
+// head sampling rates leave the platform default, which keeps every line; an explicit value that turns
+// the Worker's own lines off, keeps them out of the dashboard or samples them is refused.
+function loggingProblems(config) {
+  const problems = [];
+  const observability = objectOrEmpty(config.observability);
+  const logs = objectOrEmpty(observability.logs);
   if (observability.enabled !== true) {
     const state = 'enabled' in observability ? JSON.stringify(observability.enabled) : 'absent';
     problems.push(`observability.enabled is ${state}, not true: the [retention] and [mint-sweep] fault lines would not be kept`);
   }
-  const logs = observability.logs !== null && typeof observability.logs === 'object' ? observability.logs : {};
   if (logs.invocation_logs !== false) {
     const state = 'invocation_logs' in logs ? JSON.stringify(logs.invocation_logs) : 'absent';
     problems.push(`observability.logs.invocation_logs is ${state}, not false: every request's URL, which carries the kitchen id, would be logged against the privacy record`);
+  }
+  for (const key of ['enabled', 'persist']) {
+    if (key in logs && logs[key] !== true) {
+      problems.push(`observability.logs.${key} is ${JSON.stringify(logs[key])}, not true or absent: the Worker's own fault lines would not be kept`);
+    }
+  }
+  for (const [path, block] of [['observability', observability], ['observability.logs', logs]]) {
+    if ('head_sampling_rate' in block && block.head_sampling_rate !== 1) {
+      problems.push(`${path}.head_sampling_rate is ${JSON.stringify(block.head_sampling_rate)}, not 1 or absent: only a sample of the Worker's own fault lines would be kept`);
+    }
   }
   return problems;
 }
@@ -294,6 +318,16 @@ function selftest() {
       runCli(fixture({ mutate: (c) => { delete c.observability.logs; } })), 1, /invocation_logs is absent, not false/);
     check('invocation_logs true is refused',
       runCli(fixture({ mutate: (c) => { c.observability.logs.invocation_logs = true; } })), 1, /invocation_logs is true, not false/);
+    check('logs.enabled false is refused, since it drops the fault lines',
+      runCli(fixture({ mutate: (c) => { c.observability.logs.enabled = false; } })), 1, /observability\.logs\.enabled is false, not true or absent/);
+    check('logs.persist false is refused, since it keeps the fault lines out of the dashboard',
+      runCli(fixture({ mutate: (c) => { c.observability.logs.persist = false; } })), 1, /observability\.logs\.persist is false, not true or absent/);
+    check('a head sampling rate below 1 on observability is refused',
+      runCli(fixture({ mutate: (c) => { c.observability.head_sampling_rate = 0.1; } })), 1, /observability\.head_sampling_rate is 0\.1, not 1 or absent/);
+    check('a head sampling rate below 1 on observability.logs is refused',
+      runCli(fixture({ mutate: (c) => { c.observability.logs.head_sampling_rate = 0; } })), 1, /observability\.logs\.head_sampling_rate is 0, not 1 or absent/);
+    check('logs.enabled and logs.persist true with both sampling rates at 1 clear',
+      runCli(fixture({ mutate: (c) => { Object.assign(c.observability, { head_sampling_rate: 1 }); Object.assign(c.observability.logs, { enabled: true, persist: true, head_sampling_rate: 1 }); } })), 0, /cleared/);
     check('no deploy script is refused',
       runCli(fixture({ deploy: null })), 1, /package\.json has no deploy script/);
     check('a deploy script running wrangler deploy before the remote migrations is refused',
