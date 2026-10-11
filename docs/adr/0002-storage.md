@@ -133,13 +133,13 @@ the newest, a read that grew with the square of the screen's readings: 40 rows a
 window is applied to it after, so a call stored later with a clock behind an earlier one is the newest
 even when it falls outside the window, and then leaves nothing to correct. A reading's corrections are
 counted through `events_root` and `events_ref`: 6 rows when the newest reading closes a chain corrected
-twice, the most READ-05 allows. An answer counts its digit-repeat chain's misses with
-one count of holds and one of refusals through `events_ref`, so the receipts naming the chain's head
-are never read: 5 rows for a head 150 receipts name and 9 for a refusal on its chain, where the count
-walked the kitchen before (153 rows at 150 lines). The walk back to the wrong_number event that started
-a correction follows at most 8 links (`SUPERSEDE_WALK_LINKS` in `src/store/d1-store.ts`), at about two
-rows a link: 16 rows with the event at the last link, and 18 for the last prompt of a 150-link chain of
-numberless answers, which before the bound walked all 150. A chain longer than 8 links means a host
+twice, the most READ-05 allows. An answer counts its digit-repeat chain's misses with one count of
+holds and one of refusals through `events_ref`, so the receipts naming the chain's head are never
+read: 5 rows for a head 150 receipts name and 9 for a refusal on its chain, where the count walked the
+kitchen before (153 rows at 150 lines). The walk back to the wrong_number event that started a
+correction follows at most 8 links (`SUPERSEDE_WALK_LINKS` in `src/store/port.ts`, which both stores
+read), at about two rows a link: 16 rows with the event at the last link, and 18 for the last prompt
+of a 150-link chain of numberless answers, which before the bound walked all 150. A chain longer than 8 links means a host
 answered "what is the number" with no number more than a handful of times, and past the bound the
 number finally given is logged as a fresh line, while the wrong_number event still marks the line it
 said wrong.

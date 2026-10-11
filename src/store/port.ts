@@ -82,10 +82,17 @@ export interface SupersedeTarget {
   superseded: boolean;
 }
 
+// How many answers_id links a store follows back from a prompt to the "wrong number" that started its
+// chain. A numberless answer to a correction's question stores a refusal answering it, and nothing
+// limits how many follow, so every store stops here: past it the chain has no supersede target, and
+// the number finally given is logged as a fresh line.
+export const SUPERSEDE_WALK_LINKS = 8;
+
 // An event that asked a question, as the call answering it needs it. repeats counts the misses so
 // far on a digit-repeat chain: every digit_repeat hold after the chain's first, and every refusal of
 // a numberless answer on it, this prompt included (0 for the first hold and for any prompt off a chain).
-// supersedes is set when the chain this prompt belongs to started from a "wrong number".
+// supersedes is set when the chain this prompt belongs to started from a "wrong number" at most
+// SUPERSEDE_WALK_LINKS links back.
 export interface PendingPrompt {
   id: string;
   promptKind: string;

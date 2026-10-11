@@ -1,8 +1,8 @@
 import { recordCode } from '../domain/business-day';
 import { onRepeatChain } from '../domain/prompts';
-import { SUPERSEDE_WALK_LINKS } from './d1-store';
 import {
   classifyRepeat,
+  SUPERSEDE_WALK_LINKS,
   type AppendInput,
   type AppendOutcome,
   type CreateKitchenInput,

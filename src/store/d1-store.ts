@@ -13,6 +13,7 @@ import {
   type StoredLine,
   type StoredRequest,
   type SupersedeTarget,
+  SUPERSEDE_WALK_LINKS,
 } from './port';
 
 // Statement 1 of the append batch. The day line and the record code are allocated inside the INSERT,
@@ -132,12 +133,9 @@ ORDER BY line.check_point_id`;
 // answered one another until a wrong_number event, one id seek per link and SUPERSEDE_WALK_LINKS links
 // at most. It runs only for a prompt that answers something: a prompt that answers nothing did not
 // start from a correction, and stays one indexed read.
-// A numberless answer to a correction's question stores a refusal answering it, and nothing limits how
-// many follow, so the walk is bounded. A chain longer than the bound means a host answered "what is the
-// number" with no number more than a handful of times. Past it, the number finally given is logged as
-// a fresh line, while the wrong_number event still marks the line it said wrong.
-export const SUPERSEDE_WALK_LINKS = 8;
-
+// The bound is the port's (SUPERSEDE_WALK_LINKS). A chain longer than it means a host answered "what
+// is the number" with no number more than a handful of times, and the wrong_number event still marks
+// the line it said wrong.
 export const PENDING_PROMPT = `
 SELECT
   asked.id AS id, asked.prompt_kind AS prompt_kind, asked.check_point_id AS check_point_id,

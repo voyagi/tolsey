@@ -10,9 +10,9 @@ import {
   scratchKitchen,
   testEvent,
 } from '../test-support/events';
-import { D1Store, SUPERSEDE_WALK_LINKS } from './d1-store';
+import { D1Store } from './d1-store';
 import { MemoryStore } from './memory-store';
-import type { AppendInput, AppendOutcome, NewEvent, Store } from './port';
+import { SUPERSEDE_WALK_LINKS, type AppendInput, type AppendOutcome, type NewEvent, type Store } from './port';
 
 const limits = readLimits();
 const DAY = '2026-10-20';

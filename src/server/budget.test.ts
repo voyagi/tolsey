@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { D1Store, LATEST_BY_SCREEN, PENDING_PROMPT, SUPERSEDE_WALK_LINKS } from '../store/d1-store';
-import type { D1Like, KitchenRow, NewEvent } from '../store/port';
+import { D1Store, LATEST_BY_SCREEN, PENDING_PROMPT } from '../store/d1-store';
+import { SUPERSEDE_WALK_LINKS, type D1Like, type KitchenRow, type NewEvent } from '../store/port';
 import { countingD1, HANDFUL_OF_ROWS, type CountingD1 } from '../test-support/counting-d1';
 import {
   appendInput,

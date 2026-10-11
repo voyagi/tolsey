@@ -2,8 +2,15 @@ import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/cli
 import { createMcpHandler } from '@modelcontextprotocol/server';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { temperatureRowFrom, type RuleRow } from '../domain/rule';
-import { D1Store, PENDING_PROMPT, SUPERSEDE_WALK_LINKS } from '../store/d1-store';
-import type { AppendInput, AppendOutcome, KitchenRow, Store, StoredLine } from '../store/port';
+import { D1Store, PENDING_PROMPT } from '../store/d1-store';
+import {
+  SUPERSEDE_WALK_LINKS,
+  type AppendInput,
+  type AppendOutcome,
+  type KitchenRow,
+  type Store,
+  type StoredLine,
+} from '../store/port';
 import { barrierStore } from '../test-support/barrier-store';
 import { countingD1 } from '../test-support/counting-d1';
 import { openTestD1, type TestD1 } from '../test-support/d1';
