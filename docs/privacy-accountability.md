@@ -79,7 +79,9 @@ complies with the EU-U.S. Data Privacy Framework.
   Cloudflare's per-request logs, which would record each URL and its metadata, are switched off in
   `wrangler.jsonc`, and the deploy preflight refuses a config that turns them on or leaves them to
   the platform's default (`scripts/deploy-preflight.mjs`). The Worker's own lines are written only
-  when something fails and are kept for 3 days on the free plan. Cloudflare stores each of them with
+  when something fails and are kept for 3 days on the free plan (Workers Logs pricing,
+  https://developers.cloudflare.com/workers/observability/logs/workers-logs/, read 2026-10-11, which
+  also says Workers Logs moves to Cloudflare's Observability pricing on 2026-12-01). Cloudflare stores each of them with
   metadata about the invocation that wrote it, and its documentation does not list that metadata, so a
   fault line written while serving a request may hold that request's URL, which carries the scratch
   kitchen's id, and other request details such as the visitor's IP address, for those 3 days. The
