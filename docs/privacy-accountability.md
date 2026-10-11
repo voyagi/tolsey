@@ -78,7 +78,9 @@ complies with the EU-U.S. Data Privacy Framework.
 - Logs carry an error's name and code only, never a request's content (`src/server/guards.ts`).
   Cloudflare's per-request logs, which would record each URL and its metadata, are switched off in
   `wrangler.jsonc`, and the deploy preflight refuses a config that turns them on or leaves them to
-  the platform's default (`scripts/deploy-preflight.mjs`). The Worker's own lines are written only
+  the platform's default (`scripts/deploy-preflight.mjs`). Cloudflare's traces, which would record each
+  request's full URL with the visitor's user agent and location, stay off, and the same preflight
+  refuses a config that turns them on or sends logs or traces to an outside destination. The Worker's own lines are written only
   when something fails and are kept for 3 days on the free plan (Workers Logs pricing,
   https://developers.cloudflare.com/workers/observability/logs/workers-logs/, read 2026-10-11, which
   also says Workers Logs moves to Cloudflare's Observability pricing on 2026-12-01). Cloudflare stores each of them with

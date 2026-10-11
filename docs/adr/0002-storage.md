@@ -56,7 +56,8 @@ the hourly run too and shows in the Cron Trigger's past events; a fault that hit
 `[mint-sweep]` lines. Those lines are kept because `wrangler.jsonc` turns Workers Logs on (3 days on
 the free plan) with its per-request logs off, so a request that succeeds leaves no log line; the
 deploy preflight refuses a config without both, or one that turns the Worker's own lines off or
-samples them. Workers Logs lists the Worker's own logs apart from the per-request ones, which is what
+samples them, turns traces on (a trace records each request's full URL) or sends logs or traces to an
+outside destination. Workers Logs lists the Worker's own logs apart from the per-request ones, which is what
 that switch turns off. It stores each of the Worker's own lines with metadata about the invocation
 that wrote it, which Cloudflare's documentation does not list, so a fault line written while serving
 a request may still hold that request's URL, which carries the kitchen id. The first deploy confirms a

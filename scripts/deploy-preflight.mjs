@@ -29,6 +29,9 @@
 //     as true), so a request that succeeds leaves no log line (docs/privacy-accountability.md)
 //   - observability.logs.enabled and observability.logs.persist are true or absent, and both
 //     head_sampling_rate keys are 1 or absent, so no fault line is dropped or sampled away
+//   - observability.traces.enabled is false or absent, since a trace records each request's full URL,
+//     and observability.logs.destinations and observability.traces.destinations are empty or absent,
+//     so no line goes to a service the privacy record does not name
 //   - package.json scripts.deploy runs the build, the preflight, the remote migration apply, the
 //     applied-migrations check and wrangler deploy in that order, every step joined by &&
 //     (a ; or || lets the Worker deploy after a failed step)
@@ -115,9 +118,11 @@ function objectOrEmpty(value) {
   return value !== null && typeof value === 'object' ? value : {};
 }
 
-// Each logging key a Worker config can carry is judged here. Absent logs.enabled, logs.persist and
-// head sampling rates leave the platform default, which keeps every line; an explicit value that turns
-// the Worker's own lines off, keeps them out of the dashboard or samples them is refused.
+// The keys that keep, drop or sample the Worker's own lines are judged here, and the ones that record
+// a request or send a line elsewhere in exportProblems. Absent logs.enabled, logs.persist and head
+// sampling rates leave the platform default, which keeps every line; an explicit value that turns the
+// Worker's own lines off, keeps them out of the dashboard or samples them is refused.
+// redact_query_string is left alone: the kitchen id sits in the path, never in a query string.
 function loggingProblems(config) {
   const problems = [];
   const observability = objectOrEmpty(config.observability);
@@ -138,6 +143,25 @@ function loggingProblems(config) {
   for (const [path, block] of [['observability', observability], ['observability.logs', logs]]) {
     if ('head_sampling_rate' in block && block.head_sampling_rate !== 1) {
       problems.push(`${path}.head_sampling_rate is ${JSON.stringify(block.head_sampling_rate)}, not 1 or absent: only a sample of the Worker's own fault lines would be kept`);
+    }
+  }
+  return problems.concat(exportProblems(observability, logs));
+}
+
+// A fetch handler's trace records url.full and url.path, which carry the kitchen id, with the
+// visitor's user agent and location (Workers traces, spans and attributes, read 2026-10-11). Tracing
+// is off unless a config turns it on, so absent passes. A destination sends lines to a service the
+// privacy record names as no processor of this Worker's data.
+function exportProblems(observability, logs) {
+  const problems = [];
+  const traces = objectOrEmpty(observability.traces);
+  if ('enabled' in traces && traces.enabled !== false) {
+    problems.push(`observability.traces.enabled is ${JSON.stringify(traces.enabled)}, not false or absent: every request's URL, which carries the kitchen id, would be traced against the privacy record`);
+  }
+  for (const [path, block] of [['observability.logs', logs], ['observability.traces', traces]]) {
+    const empty = Array.isArray(block.destinations) && block.destinations.length === 0;
+    if ('destinations' in block && !empty) {
+      problems.push(`${path}.destinations is ${JSON.stringify(block.destinations)}, not empty or absent: lines would go to a service the privacy record does not name`);
     }
   }
   return problems;
@@ -192,7 +216,7 @@ function run(cwd) {
     console.error('[deploy-preflight] Nothing was deployed. Fix wrangler.jsonc or package.json, then npm run deploy again.');
     return 1;
   }
-  console.log(`[deploy-preflight] cleared: database, ${DEPLOYED_HOST} route and allowlist, workers_dev and preview_urls off, hourly cron, fault logs kept with request logs off, deploy order.`);
+  console.log(`[deploy-preflight] cleared: database, ${DEPLOYED_HOST} route and allowlist, workers_dev and preview_urls off, hourly cron, fault logs kept with request logs and traces off, deploy order.`);
   return 0;
 }
 
@@ -326,6 +350,14 @@ function selftest() {
       runCli(fixture({ mutate: (c) => { c.observability.head_sampling_rate = 0.1; } })), 1, /observability\.head_sampling_rate is 0\.1, not 1 or absent/);
     check('a head sampling rate below 1 on observability.logs is refused',
       runCli(fixture({ mutate: (c) => { c.observability.logs.head_sampling_rate = 0; } })), 1, /observability\.logs\.head_sampling_rate is 0, not 1 or absent/);
+    check('traces turned on is refused, since a trace records each request\'s URL',
+      runCli(fixture({ mutate: (c) => { c.observability.traces = { enabled: true }; } })), 1, /observability\.traces\.enabled is true, not false or absent/);
+    check('a log destination is refused',
+      runCli(fixture({ mutate: (c) => { c.observability.logs.destinations = ['an-outside-sink']; } })), 1, /observability\.logs\.destinations is \["an-outside-sink"\], not empty or absent/);
+    check('a trace destination is refused even with traces off',
+      runCli(fixture({ mutate: (c) => { c.observability.traces = { enabled: false, destinations: ['an-outside-sink'] }; } })), 1, /observability\.traces\.destinations is \["an-outside-sink"\], not empty or absent/);
+    check('traces off and empty destinations clear',
+      runCli(fixture({ mutate: (c) => { c.observability.traces = { enabled: false, destinations: [] }; c.observability.logs.destinations = []; } })), 0, /cleared/);
     check('logs.enabled and logs.persist true with both sampling rates at 1 clear',
       runCli(fixture({ mutate: (c) => { Object.assign(c.observability, { head_sampling_rate: 1 }); Object.assign(c.observability.logs, { enabled: true, persist: true, head_sampling_rate: 1 }); } })), 0, /cleared/);
     check('no deploy script is refused',
