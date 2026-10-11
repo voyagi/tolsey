@@ -125,7 +125,8 @@ the newest, a read that grew with the square of the screen's readings: 40 rows a
 50 and 39,999 at 199. Now the newest event the screen wrote, receipts left out, is picked first and the
 window is applied to it after, so a call stored later with a clock behind an earlier one is the newest
 even when it falls outside the window, and then leaves nothing to correct. A reading's corrections are
-counted through `events_root` and `events_ref`. An answer counts its digit-repeat chain's misses with
+counted through `events_root` and `events_ref`: 6 rows when the newest reading closes a chain corrected
+twice, the most READ-05 allows. An answer counts its digit-repeat chain's misses with
 one count of holds and one of refusals through `events_ref`, so the receipts naming the chain's head
 are never read: 5 rows for a head 150 receipts name and 9 for a refusal on its chain, where the count
 walked the kitchen before (153 rows at 150 lines). The walk back to the wrong_number event that started
@@ -137,7 +138,7 @@ number finally given is logged as a fresh line, while the wrong_number event sti
 said wrong.
 
 A tool call therefore reads at most about 30 rows: 1 for the kitchen, 0 or 1 for its request id, up to
-18 for the prompt it answers or 2 to 3 for the screen's newest event, and about 10 for the append, the
+18 for the prompt it answers or 2 to 6 for the screen's newest event, and about 10 for the append, the
 read that names a refusal's reason included (held to a handful by "reads a handful of rows for an append
 refused at the line cap" in `src/store/d1-features.test.ts`). At
 the 100,000 Workers requests a day the account allows, that is at most about 3 million rows read, under

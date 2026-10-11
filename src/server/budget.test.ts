@@ -355,6 +355,26 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       expect(rowsRead).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
     });
 
+    // The most a reading's corrections count meets: READ-05 lets a line be corrected twice, so the newest
+    // reading closes a chain of three whose first two lines were said wrong. Only this shape counts
+    // corrections over rows that exist, through events_ref and events_root.
+    it('reads a handful of rows for "wrong number" after a reading corrected twice, on a busy screen', async () => {
+      const kitchen = await kitchenWithBusierNeighbour();
+      const readings = screenReadings(kitchen.id, BUSY_SCREEN - 4, kitchen.createdAt + MINUTE_MS);
+      const root = readings[readings.length - 1];
+      const saidWrong = (line: NewEvent): NewEvent =>
+        testEvent(kitchen.id, { ...prompting, screenId: SCREEN, kind: 'wrong_number', outcome: 'held', promptKind: 'number_after_wrong', refId: line.id });
+      const first = testEvent(kitchen.id, { screenId: SCREEN, supersedesId: root.id, rootId: root.id });
+      const second = testEvent(kitchen.id, { screenId: SCREEN, supersedesId: first.id, rootId: root.id });
+      await insertEvents(worker.db, [...readings, saidWrong(root), first, saidWrong(first), second]);
+
+      const { value, rowsRead } = await rowsReadBy((store) => store.latestByScreen(kitchen.id, SCREEN, kitchen.createdAt));
+
+      console.log(`wrong number after two corrections: ${rowsRead} rows read`);
+      expect(value).toMatchObject({ id: second.id, kind: 'reading', corrections: 2 });
+      expect(rowsRead).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
+    });
+
     it('plans the screen read and the pending prompt read with no walk of a kitchen and no scan of events', async () => {
       expect(boundedPlanProblems(await queryPlans())).toEqual([]);
     });
