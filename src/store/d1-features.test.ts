@@ -62,11 +62,13 @@ class RowsMeter {
 
 const EVENT_KINDS: EventKind[] = ['reading', 'refusal', 'held', 'wrong_number', 'receipt'];
 // Every combination of the keys that fill a partial index: supersedes_id with its chain's root, as the
-// domain writes a correcting line, answers_id and ref_id.
-type IndexKey = 'supersedes' | 'answers' | 'refers';
+// domain writes a correcting line, answers_id and ref_id. Plus a root_id alone, which no shipped path
+// writes: the reserve must not rest on that.
+type IndexKey = 'supersedes' | 'root' | 'answers' | 'refers';
 const INDEX_SHAPES: readonly (readonly IndexKey[])[] = [
   [],
   ['supersedes'],
+  ['root'],
   ['answers'],
   ['refers'],
   ['supersedes', 'answers'],
@@ -558,7 +560,7 @@ describe('what local D1 guarantees for the record', () => {
           const event = testEvent(kitchenId, {
             kind,
             supersedesId: supersedes ? crypto.randomUUID() : null,
-            rootId: supersedes ? crypto.randomUUID() : null,
+            rootId: supersedes || shape.includes('root') ? crypto.randomUUID() : null,
             answersId: shape.includes('answers') ? crypto.randomUUID() : null,
             refId: shape.includes('refers') ? crypto.randomUUID() : null,
           });

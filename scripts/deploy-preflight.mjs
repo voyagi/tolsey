@@ -32,6 +32,10 @@
 //   - observability.traces.enabled is false or absent, since a trace records each request's full URL,
 //     and observability.logs.destinations and observability.traces.destinations are empty or absent,
 //     so no line goes to a service the privacy record does not name
+//   - logpush is false or absent, and tail_consumers and streaming_tail_consumers are empty or absent,
+//     since a Logpush job and a Tail Worker each receive every request's URL and metadata
+//   - previews is absent or empty, since a previews block can turn all of the above back on for
+//     preview deployments, which this Worker never publishes
 //   - package.json scripts.deploy runs the build, the preflight, the remote migration apply, the
 //     applied-migrations check and wrangler deploy in that order, every step joined by &&
 //     (a ; or || lets the Worker deploy after a failed step)
@@ -145,7 +149,11 @@ function loggingProblems(config) {
       problems.push(`${path}.head_sampling_rate is ${JSON.stringify(block.head_sampling_rate)}, not 1 or absent: only a sample of the Worker's own fault lines would be kept`);
     }
   }
-  return problems.concat(exportProblems(observability, logs));
+  return problems.concat(exportProblems(observability, logs), sinkProblems(config));
+}
+
+function isEmptyList(value) {
+  return Array.isArray(value) && value.length === 0;
 }
 
 // A fetch handler's trace records url.full and url.path, which carry the kitchen id, with the
@@ -159,10 +167,34 @@ function exportProblems(observability, logs) {
     problems.push(`observability.traces.enabled is ${JSON.stringify(traces.enabled)}, not false or absent: every request's URL, which carries the kitchen id, would be traced against the privacy record`);
   }
   for (const [path, block] of [['observability.logs', logs], ['observability.traces', traces]]) {
-    const empty = Array.isArray(block.destinations) && block.destinations.length === 0;
-    if ('destinations' in block && !empty) {
+    if ('destinations' in block && !isEmptyList(block.destinations)) {
       problems.push(`${path}.destinations is ${JSON.stringify(block.destinations)}, not empty or absent: lines would go to a service the privacy record does not name`);
     }
+  }
+  return problems;
+}
+
+// The top-level keys the installed wrangler types beside observability that also send a request's
+// details out: logpush sends Workers Trace Events, which hold metadata about each request and
+// response, to a Logpush job, and a Tail Worker receives each invocation's request URL, status,
+// console lines and errors (Cloudflare Workers docs through Context7, read 2026-10-11). A previews
+// block may override logpush, observability and the tail consumers for preview deployments
+// (wrangler's PreviewsConfig type); this Worker publishes none, so any previews block is refused
+// rather than judged a second time.
+function sinkProblems(config) {
+  const problems = [];
+  if ('logpush' in config && config.logpush !== false) {
+    problems.push(`logpush is ${JSON.stringify(config.logpush)}, not false or absent: every request's URL and metadata would go to a Logpush job the privacy record does not name`);
+  }
+  for (const key of ['tail_consumers', 'streaming_tail_consumers']) {
+    if (key in config && !isEmptyList(config[key])) {
+      problems.push(`${key} is ${JSON.stringify(config[key])}, not empty or absent: a Tail Worker would receive every request's URL, which carries the kitchen id`);
+    }
+  }
+  const previews = config.previews;
+  const emptyPreviews = previews !== null && typeof previews === 'object' && !Array.isArray(previews) && Object.keys(previews).length === 0;
+  if ('previews' in config && !emptyPreviews) {
+    problems.push(`previews is ${JSON.stringify(previews)}, not empty or absent: it could turn logging, traces, Logpush or Tail Workers back on for preview deployments, which this Worker never publishes`);
   }
   return problems;
 }
@@ -216,7 +248,7 @@ function run(cwd) {
     console.error('[deploy-preflight] Nothing was deployed. Fix wrangler.jsonc or package.json, then npm run deploy again.');
     return 1;
   }
-  console.log(`[deploy-preflight] cleared: database, ${DEPLOYED_HOST} route and allowlist, workers_dev and preview_urls off, hourly cron, fault logs kept with request logs and traces off, deploy order.`);
+  console.log(`[deploy-preflight] cleared: database, ${DEPLOYED_HOST} route and allowlist, workers_dev and preview_urls off, hourly cron, fault logs kept with request logs, traces, Logpush and Tail Workers off, deploy order.`);
   return 0;
 }
 
@@ -358,6 +390,16 @@ function selftest() {
       runCli(fixture({ mutate: (c) => { c.observability.traces = { enabled: false, destinations: ['an-outside-sink'] }; } })), 1, /observability\.traces\.destinations is \["an-outside-sink"\], not empty or absent/);
     check('traces off and empty destinations clear',
       runCli(fixture({ mutate: (c) => { c.observability.traces = { enabled: false, destinations: [] }; c.observability.logs.destinations = []; } })), 0, /cleared/);
+    check('logpush turned on is refused, since a Logpush job receives every request\'s metadata',
+      runCli(fixture({ mutate: (c) => { c.logpush = true; } })), 1, /logpush is true, not false or absent/);
+    check('a tail consumer is refused',
+      runCli(fixture({ mutate: (c) => { c.tail_consumers = [{ service: 'a-tail-worker' }]; } })), 1, /tail_consumers is \[\{"service":"a-tail-worker"\}\], not empty or absent/);
+    check('a streaming tail consumer is refused',
+      runCli(fixture({ mutate: (c) => { c.streaming_tail_consumers = [{ service: 'a-tail-worker' }]; } })), 1, /streaming_tail_consumers is \[\{"service":"a-tail-worker"\}\], not empty or absent/);
+    check('a previews block is refused, since it can turn logging back on for preview deployments',
+      runCli(fixture({ mutate: (c) => { c.previews = { logpush: true }; } })), 1, /previews is \{"logpush":true\}, not empty or absent/);
+    check('logpush false, empty tail consumer lists and an empty previews block clear',
+      runCli(fixture({ mutate: (c) => { Object.assign(c, { logpush: false, tail_consumers: [], streaming_tail_consumers: [], previews: {} }); } })), 0, /cleared/);
     check('logs.enabled and logs.persist true with both sampling rates at 1 clear',
       runCli(fixture({ mutate: (c) => { Object.assign(c.observability, { head_sampling_rate: 1 }); Object.assign(c.observability.logs, { enabled: true, persist: true, head_sampling_rate: 1 }); } })), 0, /cleared/);
     check('no deploy script is refused',

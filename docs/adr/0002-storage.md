@@ -56,8 +56,10 @@ the hourly run too and shows in the Cron Trigger's past events; a fault that hit
 `[mint-sweep]` lines. Those lines are kept because `wrangler.jsonc` turns Workers Logs on (3 days on
 the free plan) with its per-request logs off, so a request that succeeds leaves no log line; the
 deploy preflight refuses a config without both, or one that turns the Worker's own lines off or
-samples them, turns traces on (a trace records each request's full URL) or sends logs or traces to an
-outside destination. Workers Logs lists the Worker's own logs apart from the per-request ones, which is what
+samples them, turns traces on (a trace records each request's full URL), sends logs or traces to an
+outside destination, turns Logpush on or attaches a Tail Worker (each receives every request's URL and
+metadata), or carries a `previews` block that could turn any of these back on for preview
+deployments. Workers Logs lists the Worker's own logs apart from the per-request ones, which is what
 that switch turns off. It stores each of the Worker's own lines with metadata about the invocation
 that wrote it, which Cloudflare's documentation does not list, so a fault line written while serving
 a request may still hold that request's URL, which carries the kitchen id. The first deploy confirms a
@@ -279,12 +281,14 @@ both `events_supersedes` and `events_root`, and the referencing one carries a `r
 The adapter cannot know before the batch runs whether the date's budget row or the kitchen's counter
 row exists or which partial indexes the event fills, so every event append reserves `expectedRowsFor(event)` from
 `src/store/port.ts`: the `event_first_of_day` figure, plus `event_superseding - event` when the event
-supersedes a line, plus `event_answering - event` when it answers a prompt, plus
+supersedes a line or names a chain's root (a `root_id` alone fills `events_root`, so it reserves both
+rows and errs high by one), plus `event_answering - event` when it answers a prompt, plus
 `event_referencing - event` when it names a line or a prompt in `ref_id`. A matrix test in the same
 file measures every event kind (reading, refusal, held, wrong_number, receipt) with every combination
 of the partial index keys, none of them included: a `supersedes_id` with its chain's root, an
-`answers_id` and a `ref_id`. Each runs as the first event of a UTC date and as a later one, and the
-measured rows stay at or below the reserve in all 80 cells. A second test does the
+`answers_id` and a `ref_id`, plus a `root_id` alone, which no shipped path writes. Each runs as the
+first event of a UTC date and as a later one, and the measured rows stay at or below the reserve in
+all 90 cells. A second test does the
 same for every shape of event the domain stores, with the links it stores them with: a reading, an
 answer, a correcting reading, a wrong_number marker, a hold and a refusal on a digit-repeat chain, a
 receipt naming a prompt and a receipt ending a chain. The reserve runs high

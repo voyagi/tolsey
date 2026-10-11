@@ -80,7 +80,10 @@ complies with the EU-U.S. Data Privacy Framework.
   `wrangler.jsonc`, and the deploy preflight refuses a config that turns them on or leaves them to
   the platform's default (`scripts/deploy-preflight.mjs`). Cloudflare's traces, which would record each
   request's full URL with the visitor's user agent and location, stay off, and the same preflight
-  refuses a config that turns them on or sends logs or traces to an outside destination. The Worker's own lines are written only
+  refuses a config that turns them on or sends logs or traces to an outside destination. It also
+  refuses Logpush (`logpush`) and Tail Workers (`tail_consumers`, `streaming_tail_consumers`), each of
+  which would receive every request's URL and metadata, and any `previews` block, which could turn
+  one of these back on for preview deployments. The Worker's own lines are written only
   when something fails and are kept for 3 days on the free plan (Workers Logs pricing,
   https://developers.cloudflare.com/workers/observability/logs/workers-logs/, read 2026-10-11, which
   also says Workers Logs moves to Cloudflare's Observability pricing on 2026-12-01). Cloudflare stores each of them with

@@ -48,6 +48,19 @@ const WALK_ROWS = 2 + 2 * SUPERSEDE_WALK_LINKS;
 const KITCHEN_FULL = 'This kitchen is full. Start a new kitchen to keep logging.';
 const KITCHEN_CLOSED = 'This kitchen has closed. Start a new kitchen to keep logging.';
 
+// How many values a query binds: its distinct ?N placeholders must be exactly ?1 to ?N, with N no
+// more than the values on hand, or a value would land on the wrong placeholder and the plan read
+// would describe a query the store never runs.
+function placeholderCount(sql: string, available: number): number {
+  const numbers = [...new Set([...sql.matchAll(/\?(\d+)/g)].map((match) => Number(match[1])))].sort((a, b) => a - b);
+  if (numbers.some((number, index) => number !== index + 1) || numbers.length > available) {
+    const error = new Error(`the query's placeholders are ${numbers.map((number) => `?${number}`).join(', ')}, not ?1 to ?N with N at most ${available}`);
+    error.name = 'PlaceholderMismatch';
+    throw error;
+  }
+  return numbers.length;
+}
+
 describe('the daily row budget, the kitchen caps and retention', () => {
   let worker: InProcessWorker;
   const limits: StoreLimits = readLimits();
@@ -120,8 +133,8 @@ describe('the daily row budget, the kitchen caps and retention', () => {
   async function queryPlans(): Promise<{ details: string; scan: RegExp }[]> {
     const plans = await Promise.all(
       [LATEST_BY_SCREEN, PENDING_PROMPT].map(async (sql) => {
-        const parameters = Math.max(...[...sql.matchAll(/\?(\d+)/g)].map((match) => Number(match[1])));
-        const values = ['kitchen', 'id', SUPERSEDE_WALK_LINKS].slice(0, parameters);
+        const bindable = ['kitchen', 'id', SUPERSEDE_WALK_LINKS];
+        const values = bindable.slice(0, placeholderCount(sql, bindable.length));
         const rows = await worker.db.prepare('EXPLAIN QUERY PLAN ' + sql).bind(...values).all<{ detail: string }>();
         const aliases = ['events', ...[...sql.matchAll(/\bevents AS (\w+)/g)].map((match) => match[1])];
         return { details: rows.results.map((row) => row.detail).join(' / '), scan: new RegExp(`SCAN (${aliases.join('|')})\\b`) };
