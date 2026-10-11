@@ -23,5 +23,9 @@
   "preview_urls": false,
   "triggers": {
     "crons": ["0 * * * *"]
+  },
+  "observability": {
+    "enabled": true,
+    "logs": { "invocation_logs": false }
   }
 }

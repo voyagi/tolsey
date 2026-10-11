@@ -5,8 +5,10 @@
 // does not fail loudly at deploy time: a Worker with no database_id deploys and then answers
 // every tool call with a binding error, a missing hostname in ALLOWED_HOSTNAMES makes the Host
 // check refuse every real request, workers_dev left at its default publishes a second public URL
-// on the account subdomain, and a missing cron quietly stops the retention delete. This gate
-// refuses all of those before wrangler touches the account.
+// on the account subdomain, a missing cron quietly stops the retention delete, and logging left to
+// the platform's default either drops the sweeps' fault lines or records every request's URL, which
+// carries the kitchen id, against the privacy record. This gate refuses all of those before wrangler
+// touches the account.
 //
 // It reads dist/tolsey/wrangler.json, the config the Vite plugin builds and wrangler deploy
 // actually ships, never wrangler.jsonc: the plugin rewrites the config, so the source file is not
@@ -22,6 +24,9 @@
 //   - workers_dev and preview_urls are exactly false (absent is not false)
 //   - routes holds { pattern: tolsey.taranity.com, custom_domain: true }
 //   - triggers.crons holds the hourly "0 * * * *" retention schedule
+//   - observability.enabled is exactly true, so the Worker's own log lines are kept, and
+//     observability.logs.invocation_logs is exactly false (absent is not false: wrangler fills it in
+//     as true), so no request's URL or metadata is logged (docs/privacy-accountability.md)
 //   - package.json scripts.deploy runs the build, the preflight, the remote migration apply, the
 //     applied-migrations check and wrangler deploy in that order, every step joined by &&
 //     (a ; or || lets the Worker deploy after a failed step)
@@ -101,6 +106,16 @@ function configProblems(config) {
   if (!crons.includes(RETENTION_CRON)) {
     problems.push(`triggers.crons does not contain "${RETENTION_CRON}", so the hourly retention delete would never run`);
   }
+  const observability = config.observability !== null && typeof config.observability === 'object' ? config.observability : {};
+  if (observability.enabled !== true) {
+    const state = 'enabled' in observability ? JSON.stringify(observability.enabled) : 'absent';
+    problems.push(`observability.enabled is ${state}, not true: the [retention] and [mint-sweep] fault lines would not be kept`);
+  }
+  const logs = observability.logs !== null && typeof observability.logs === 'object' ? observability.logs : {};
+  if (logs.invocation_logs !== false) {
+    const state = 'invocation_logs' in logs ? JSON.stringify(logs.invocation_logs) : 'absent';
+    problems.push(`observability.logs.invocation_logs is ${state}, not false: every request's URL, which carries the kitchen id, would be logged against the privacy record`);
+  }
   return problems;
 }
 
@@ -153,7 +168,7 @@ function run(cwd) {
     console.error('[deploy-preflight] Nothing was deployed. Fix wrangler.jsonc or package.json, then npm run deploy again.');
     return 1;
   }
-  console.log(`[deploy-preflight] cleared: database, ${DEPLOYED_HOST} route and allowlist, workers_dev and preview_urls off, hourly cron, deploy order.`);
+  console.log(`[deploy-preflight] cleared: database, ${DEPLOYED_HOST} route and allowlist, workers_dev and preview_urls off, hourly cron, fault logs kept with request logs off, deploy order.`);
   return 0;
 }
 
@@ -173,6 +188,7 @@ function cleanConfig() {
     preview_urls: false,
     routes: [{ pattern: DEPLOYED_HOST, custom_domain: true }],
     triggers: { crons: [RETENTION_CRON] },
+    observability: { enabled: true, logs: { invocation_logs: false } },
     vars: { ALLOWED_HOSTNAMES: DEPLOYED_HOST },
     d1_databases: [
       { binding: 'DB', database_name: 'tolsey', database_id: '11111111-2222-4333-8444-555555555555', migrations_dir: '../../migrations' },
@@ -270,6 +286,14 @@ function selftest() {
       runCli(fixture({ mutate: (c) => { c.routes = [{ pattern: DEPLOYED_HOST, custom_domain: 'true' }]; } })), 1, /no custom-domain route/);
     check('no hourly cron is refused',
       runCli(fixture({ mutate: (c) => { c.triggers = {}; } })), 1, /triggers\.crons does not contain "0 \* \* \* \*"/);
+    check('no observability block is refused for both keys, since the platform default decides neither',
+      runCli(fixture({ mutate: (c) => { delete c.observability; } })), 1, /observability\.enabled is absent[\s\S]*invocation_logs is absent/);
+    check('observability enabled false is refused',
+      runCli(fixture({ mutate: (c) => { c.observability.enabled = false; } })), 1, /observability\.enabled is false, not true/);
+    check('invocation_logs absent is refused, since wrangler fills it in as true',
+      runCli(fixture({ mutate: (c) => { delete c.observability.logs; } })), 1, /invocation_logs is absent, not false/);
+    check('invocation_logs true is refused',
+      runCli(fixture({ mutate: (c) => { c.observability.logs.invocation_logs = true; } })), 1, /invocation_logs is true, not false/);
     check('no deploy script is refused',
       runCli(fixture({ deploy: null })), 1, /package\.json has no deploy script/);
     check('a deploy script running wrangler deploy before the remote migrations is refused',

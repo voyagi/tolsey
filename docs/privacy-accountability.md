@@ -76,6 +76,10 @@ complies with the EU-U.S. Data Privacy Framework.
 - The judged demo kitchen refuses every write. Visitor writes land only in a scratch kitchen reached
   by a 128-bit random id (`src/server/kitchens.ts`).
 - Logs carry an error's name and code only, never a request's content (`src/server/guards.ts`).
+  Cloudflare's per-request logs, which would record each URL and its metadata, are switched off in
+  `wrangler.jsonc`, and the deploy preflight refuses a config that turns them on or leaves them to
+  the platform's default (`scripts/deploy-preflight.mjs`). The Worker's own lines are kept for 3 days
+  on the free plan.
 - Free text never persists (Words, above), and initials outside the roster are refused (Initials).
 - D1 encrypts stored data at rest with AES-256-GCM (Cloudflare's D1 data security documentation,
   read 2026-10-10).

@@ -50,7 +50,14 @@ hours (PRIV-03), and the mint reports the same bound to the visitor as `expiresA
 it as failed in the Cron Trigger's past events, the Worker logs `[retention]` with the error's name
 and code, and the kitchens it left are deleted by the next hourly run or the next mint's sweep, so
 each failed run can stretch that bound by an hour. A mint's own round that fails logs `[mint-sweep]`
-the same way, and the mint goes ahead. Writes close one retry window early so that a retry of the last accepted
+the same way, and the mint goes ahead. Both sweeps run the same round, so a fault in its queries fails
+the hourly run too and shows in the Cron Trigger's past events; a fault that hits only mint rounds
+(a busy database under load) moves no deletion bound while the hourly runs succeed, and shows only as
+`[mint-sweep]` lines. Those lines are kept because `wrangler.jsonc` turns Workers Logs on (3 days on
+the free plan) with its per-request logs off, so no request's URL, which carries the kitchen id, is
+logged; the deploy preflight refuses a config without both. Workers Logs lists the Worker's own logs
+apart from the per-request ones, which is what that switch turns off; the first deploy confirms a
+request leaves no per-request log. Writes close one retry window early so that a retry of the last accepted
 write still finds its kitchen and gets its stored result before the sweep may take it; closing at the
 full retention age would let such a retry answer "not found" instead.
 
