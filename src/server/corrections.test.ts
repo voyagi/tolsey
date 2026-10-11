@@ -2,7 +2,7 @@ import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/cli
 import { createMcpHandler } from '@modelcontextprotocol/server';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { temperatureRowFrom, type RuleRow } from '../domain/rule';
-import { D1Store } from '../store/d1-store';
+import { D1Store, SUPERSEDE_WALK_LINKS } from '../store/d1-store';
 import type { AppendInput, AppendOutcome, KitchenRow, Store, StoredLine } from '../store/port';
 import { barrierStore } from '../test-support/barrier-store';
 import { openTestD1, type TestD1 } from '../test-support/d1';
@@ -276,6 +276,32 @@ describe('wrong number through MCP, each step its own request', () => {
     const stored = await lines(kitchenId);
     expect(stored.find((line) => line.kind === 'refusal')?.supersedesId).toBeNull();
     expect(outcomeCounts(stored).out_of_range).toBeUndefined();
+  });
+
+  // Nothing limits the numberless answers to a correction's question, so the walk back to the
+  // wrong_number event follows SUPERSEDE_WALK_LINKS links at most (ADR 0002). Within the bound the
+  // number supersedes the 45. One answer past it, the number is a fresh line: the 45 keeps its verdict
+  // and is counted, its wrong_number event still marks it said wrong, and the walk-in closes either way.
+  it.each([
+    ['supersedes the 45 with the number given after as many numberless answers as the walk follows', SUPERSEDE_WALK_LINKS, true],
+    ['logs the number given one numberless answer past the walk as a fresh line beside the 45', SUPERSEDE_WALK_LINKS + 1, false],
+  ])('%s', async (_name, numberless, supersedes) => {
+    const kitchenId = await kitchen();
+    const fortyFive = await walkInFortyFive(kitchenId);
+    let prompt = promptOf(await saidWrong(kitchenId));
+    for (let answer = 0; answer < numberless; answer++) {
+      prompt = promptOf(await say(kitchenId, { words: 'the walk-in is fine', pending_prompt_id: prompt.id }));
+    }
+
+    const logged = await say(kitchenId, { value: 40, pending_prompt_id: prompt.id });
+
+    expect(logged.structuredContent).toMatchObject({ outcome: 'in_range', value: 40, initials: 'AB' });
+    expect(logged.structuredContent?.supersedesLineId).toBe(supersedes ? fortyFive : undefined);
+    const stored = await lines(kitchenId);
+    expect(stored.find((line) => line.kind === 'wrong_number')).toMatchObject({ refId: fortyFive });
+    const saidWrongCounted = supersedes ? {} : { out_of_range: 1 };
+    expect(outcomeCounts(stored)).toEqual({ in_range: 1, refused: numberless, ...saidWrongCounted });
+    expect(await worker.store.openChecks(kitchenId, DAY)).toEqual([]);
   });
 
   // RECD-05 puts every line on the business day of its own write, so a correction said just after the
