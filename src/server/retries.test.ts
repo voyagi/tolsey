@@ -34,8 +34,8 @@ const WALK_IN_38 = { check_point: 'walk_in', value: 38, words: 'walk-in 38', ini
 const WALK_IN_45 = { check_point: 'walk_in', value: 45, words: 'walk-in 45', initials: 'AB' };
 const WRONG_NUMBER = { words: 'wrong number', initials: 'AB' };
 
-// The store methods a log_reading call can reach; the Worker's kitchen lookup on each request is left out.
-const TOOL_CALL_METHODS = new Set(['findByRequest', 'pendingPrompt', 'latestByScreen', 'append']);
+// The Worker looks its kitchen up on every request; every other store call a request makes is the tool's.
+const KITCHEN_LOOKUP = 'findKitchen';
 
 function promptIdOf(result: Result): string {
   const prompt = result.structuredContent?.prompt as { id: string } | undefined;
@@ -368,7 +368,7 @@ describe('retry-safe writes over MCP', () => {
       const retry = await say(kitchenId, call);
 
       expect(JSON.stringify(retry)).toBe(JSON.stringify(first));
-      expect(counting.calls.filter((name) => TOOL_CALL_METHODS.has(name))).toEqual(['findByRequest']);
+      expect(counting.calls.filter((name) => name !== KITCHEN_LOOKUP)).toEqual(['findByRequest']);
     });
   });
 
