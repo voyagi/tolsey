@@ -137,14 +137,22 @@ number finally given is logged as a fresh line, while the wrong_number event sti
 said wrong.
 
 A tool call therefore reads at most about 30 rows: 1 for the kitchen, 0 or 1 for its request id, up to
-18 for the prompt it answers or 2 to 3 for the screen's newest event, and about 10 for the append. At
+18 for the prompt it answers or 2 to 3 for the screen's newest event, and about 10 for the append, the
+read that names a refusal's reason included (held to a handful by "reads a handful of rows for an append
+refused at the line cap" in `src/store/d1-features.test.ts`). At
 the 100,000 Workers requests a day the account allows, that is at most about 3 million rows read, under
 D1's 5 million. An answer that loses a race to a concurrent answer of the same prompt reads the prompt
 twice more and appends again, about 67 rows, and the winner it lost to is a request of its own, so a day
 made only of such pairs still averages under 50 rows a request, below 5 million. No read flood can
 then stop the account's queries before its requests run out. The mint flood stays bounded by the write
-budget, with the replay as its fallback, so no per-client limit is needed. The read figures are
-measured again on remote D1 at the first deploy.
+budget, with the replay as its fallback, so no per-client limit is needed. A mint refused at the budget
+reads its budget row and nothing else, and an admitted one runs one sweep round, whose search reads
+only kitchens past their age and whose deletes read the rows they delete, as the hourly run's do, so
+those reads grow with what was stored, never with the number of requests. D1 keeps no table
+statistics until ANALYZE runs, and its docs recommend `PRAGMA optimize`, which runs it, after an index
+is created; both plans and their handful of rows hold on a busy table that has statistics ("keeps both
+plans and their handful of rows once ANALYZE has gathered statistics on a busy table" in
+`src/server/budget.test.ts`). The read figures are measured again on remote D1 at the first deploy.
 
 ## Events table
 

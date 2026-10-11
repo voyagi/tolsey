@@ -111,7 +111,40 @@ describe('the daily row budget, the kitchen caps and retention', () => {
 
   async function rowsReadBy<T>(read: (store: D1Store) => Promise<T>): Promise<{ value: T; rowsRead: number }> {
     const counted = countingD1(worker.db);
-    const value = await read(new D1Store(counted.db));    return { value, rowsRead: counted.totals().rowsRead };
+    const value = await read(new D1Store(counted.db));
+    return { value, rowsRead: counted.totals().rowsRead };
+  }
+
+  // The plans of the screen read and the pending prompt read, each with a pattern naming a scan of
+  // events under any alias the query gives it.
+  async function queryPlans(): Promise<{ details: string; scan: RegExp }[]> {
+    const plans = await Promise.all(
+      [LATEST_BY_SCREEN, PENDING_PROMPT].map(async (sql) => {
+        const parameters = Math.max(...[...sql.matchAll(/\?(\d+)/g)].map((match) => Number(match[1])));
+        const values = ['kitchen', 'id', SUPERSEDE_WALK_LINKS].slice(0, parameters);
+        const rows = await worker.db.prepare('EXPLAIN QUERY PLAN ' + sql).bind(...values).all<{ detail: string }>();
+        const aliases = ['events', ...[...sql.matchAll(/\bevents AS (\w+)/g)].map((match) => match[1])];
+        return { details: rows.results.map((row) => row.detail).join(' / '), scan: new RegExp(`SCAN (${aliases.join('|')})\\b`) };
+      }),
+    );
+    console.log(`query plans\nlatest by screen: ${plans[0].details}\npending prompt: ${plans[1].details}`);
+    return plans;
+  }
+
+  // A search on kitchen_id alone walks every event the kitchen holds, and a scan walks the table. Each
+  // broken expectation is named, so a failure says which plan went wrong and how.
+  function boundedPlanProblems(plans: { details: string; scan: RegExp }[]): string[] {
+    const required: [number, RegExp][] = [
+      [0, /USING INDEX events_screen \(kitchen_id=\? AND screen_id=\?\)/],
+      [0, /USING INDEX events_root \(root_id=\?\)/],
+      [1, /USING INDEX events_ref \(ref_id=\? AND kind=\?\)/],
+    ];
+    const walks = plans.flatMap((plan, index) => [
+      ...(/USING (COVERING )?INDEX \w+ \(kitchen_id=\?\)/.test(plan.details) ? [`plan ${index} walks a kitchen`] : []),
+      ...(plan.scan.test(plan.details) ? [`plan ${index} scans events`] : []),
+    ]);
+    const missing = required.filter(([index, pattern]) => !pattern.test(plans[index].details));
+    return [...walks, ...missing.map(([index, pattern]) => `plan ${index} lacks ${pattern.source}`)];
   }
 
   // A kitchen written first, then one busier with lines that a read wandering past its own kitchen
@@ -322,26 +355,29 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       expect(rowsRead).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
     });
 
-    // A search on kitchen_id alone walks every event the kitchen holds, and a scan walks the table.
     it('plans the screen read and the pending prompt read with no walk of a kitchen and no scan of events', async () => {
-      const plans = await Promise.all(
-        [LATEST_BY_SCREEN, PENDING_PROMPT].map(async (sql) => {
-          const parameters = Math.max(...[...sql.matchAll(/\?(\d+)/g)].map((match) => Number(match[1])));
-          const values = ['kitchen', 'id', SUPERSEDE_WALK_LINKS].slice(0, parameters);
-          const rows = await worker.db.prepare('EXPLAIN QUERY PLAN ' + sql).bind(...values).all<{ detail: string }>();
-          const aliases = ['events', ...[...sql.matchAll(/\bevents AS (\w+)/g)].map((match) => match[1])];
-          return { details: rows.results.map((row) => row.detail).join(' / '), scan: new RegExp(`SCAN (${aliases.join('|')})\\b`) };
-        }),
-      );
-      console.log(`query plans\nlatest by screen: ${plans[0].details}\npending prompt: ${plans[1].details}`);
+      expect(boundedPlanProblems(await queryPlans())).toEqual([]);
+    });
 
-      for (const plan of plans) {
-        expect(plan.details).not.toMatch(/USING (COVERING )?INDEX \w+ \(kitchen_id=\?\)/);
-        expect(plan.details).not.toMatch(plan.scan);
-      }
-      expect(plans[0].details).toMatch(/USING INDEX events_screen \(kitchen_id=\? AND screen_id=\?\)/);
-      expect(plans[0].details).toMatch(/USING INDEX events_root \(root_id=\?\)/);
-      expect(plans[1].details).toMatch(/USING INDEX events_ref \(ref_id=\? AND kind=\?\)/);
+    // D1 keeps no table statistics until ANALYZE runs, and its docs recommend PRAGMA optimize, which
+    // runs it, after an index is created. Statistics can move the planner to another index, so both
+    // plans and their handful of rows must hold on a busy table that has them.
+    it('keeps both plans and their handful of rows once ANALYZE has gathered statistics on a busy table', async () => {
+      const kitchen = await kitchenWithBusierNeighbour();
+      await insertEvents(worker.db, screenReadings(kitchen.id, BUSY_SCREEN, kitchen.createdAt + MINUTE_MS));
+      const chain = correctionChain(kitchen.id, SUPERSEDE_WALK_LINKS - 1);
+      await insertEvents(worker.db, chain.events);
+      await worker.db.prepare('ANALYZE').run();
+
+      // The control: statistics exist for the events table and its indexes, so the plans below were
+      // chosen with them.
+      expect(await count("SELECT COUNT(*) AS n FROM sqlite_stat1 WHERE tbl = 'events'")).toBeGreaterThan(1);
+      expect(boundedPlanProblems(await queryPlans())).toEqual([]);
+      const latest = await rowsReadBy((store) => store.latestByScreen(kitchen.id, SCREEN, kitchen.createdAt));
+      const prompt = await rowsReadBy((store) => store.pendingPrompt(kitchen.id, chain.last.id));
+      expect(latest.rowsRead).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
+      expect(prompt.value?.supersedes).toMatchObject({ lineId: chain.line.id });
+      expect(prompt.rowsRead).toBeLessThanOrEqual(WALK_ROWS);
     });
 
     it('accepts a write 1 ms inside the write window and refuses one at its end, saying the kitchen has closed', async () => {
@@ -411,14 +447,17 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       expect(round.rowsCounted).toBe(2 + readings + rowsPerWrite.budget_add);
     });
 
-    it('runs one read and no write when nothing has expired', async () => {
-      await insertScratchKitchens(worker.db, [T0 - HOUR_MS]);
+    // Every admitted mint runs a round, so its search must seek the kitchens past their age through
+    // kitchens_expiry: a walk of the live kitchens would read them all on every mint of a busy day.
+    it('runs one read of a row or two and no write when nothing has expired, however many kitchens are live', async () => {
+      await insertScratchKitchens(worker.db, Array.from({ length: 500 }, (_, index) => T0 - HOUR_MS + index));
       const counted = countingD1(worker.db);
 
       const round = await expireKitchens(counted.db, T0, limits, rowsPerWrite, limits.sweepBatchLimit);
 
       expect(round).toEqual({ kitchensRead: 0, kitchensDeleted: 0, rowsCounted: 0 });
       expect(counted.statements).toHaveLength(1);
+      expect(counted.totals().rowsRead).toBeLessThanOrEqual(2);
       expect(counted.totals().rowsWritten).toBe(0);
       expect(await budgetRows()).toBe(0);
     });
