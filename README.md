@@ -11,7 +11,7 @@ Status: early development. Nothing here is deployed yet.
 
 ## Setup
 
-Requirements: Node.js 22 or newer, npm.
+Requirements: Node.js 24 or newer, npm.
 
 ```sh
 npm install
