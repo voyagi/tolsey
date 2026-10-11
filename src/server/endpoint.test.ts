@@ -1,5 +1,5 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { dumpRecordTables } from '../test-support/d1';
 import { HOUR_MS, readLimits } from '../test-support/events';
 import { callLogReading, walkInArguments } from '../test-support/mcp-client';
@@ -100,6 +100,26 @@ describe('POST /api/kitchens and the kitchen a visitor writes to', () => {
       day_start: '04:00',
       created_at: MINT_AT,
     });
+  });
+
+  // The id is the only key to a scratch kitchen, and the privacy record calls it random: the shape
+  // check above passes a fixed or counted id just as well, so the id is tied to the bytes the secure
+  // random source returned.
+  it('makes each kitchen id from 16 bytes of the secure random source', async () => {
+    const drawn = vi.spyOn(crypto, 'getRandomValues');
+    try {
+      const first = await mintThroughRoute(worker.fetch, worker.baseUrl);
+      const second = await mintThroughRoute(worker.fetch, worker.baseUrl);
+
+      const drawnIds = drawn.mock.results
+        .map((result) => result.value as unknown)
+        .filter((bytes): bytes is Uint8Array => bytes instanceof Uint8Array && bytes.length === 16)
+        .map((bytes) => [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join(''));
+      expect(drawnIds).toEqual(expect.arrayContaining([first.id, second.id]));
+      expect(first.id).not.toBe(second.id);
+    } finally {
+      drawn.mockRestore();
+    }
   });
 
   it('mints a kitchen labelled capture with no rights beyond any other scratch kitchen', async () => {
