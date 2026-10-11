@@ -364,6 +364,19 @@ describe.each(LEGS)('the store contract on $name', (leg) => {
       expect(await store.pendingPrompt(kitchenId, first.id)).toMatchObject({ id: first.id, refId: null, repeats: 0 });
     });
 
+    // A miss is a digit_repeat hold or a refusal on the chain (the port's PendingPrompt). No call stores a
+    // hold of another kind naming a chain's head today, so this pins that promise.
+    it('counts no miss for a hold of another kind that names the chain head', async () => {
+      const kitchenId = await kitchen();
+      const first = prompt(kitchenId, { promptKind: 'digit_repeat', valueTenths: 150 });
+      await appended(first);
+      await appended(prompt(kitchenId, { refId: first.id }));
+      const second = prompt(kitchenId, { promptKind: 'digit_repeat', valueTenths: 510, answersId: first.id, refId: first.id });
+      await appended(second);
+
+      expect((await store.pendingPrompt(kitchenId, second.id))?.repeats).toBe(1);
+    });
+
     it('gives a question no supersede target when the line it says wrong belongs to another kitchen', async () => {
       const kitchenId = await kitchen();
       const foreign = testEvent(await kitchen());
@@ -489,6 +502,25 @@ describe.each(LEGS)('the store contract on $name', (leg) => {
       await appended(testEvent(kitchenId, { screenId: 'wall-c', supersedesId: first.id, rootId: first.id, answersId: one.id, occurredAt: AT + 2000 }));
 
       expect(await store.latestByScreen(kitchenId, 'wall-c', AT)).toMatchObject({ kind: 'reading', corrections: 1 });
+    });
+
+    // Only a wrong_number event says a line wrong (the port's ScreenEvent). No call stores another kind
+    // naming a reading in ref_id today, so this pins that promise for the root and a correcting line alike.
+    it('counts no correction for a line that only another kind of event names in ref_id', async () => {
+      const kitchenId = await kitchen();
+      const plain = testEvent(kitchenId, { screenId: 'wall-r' });
+      await appended(plain);
+      await appended(receipt(kitchenId, { screenId: 'wall-r', refId: plain.id, occurredAt: AT + 1000 }));
+      const root = testEvent(kitchenId, { screenId: 'wall-s' });
+      await appended(root);
+      const said = prompt(kitchenId, { screenId: 'wall-s', kind: 'wrong_number', promptKind: 'number_after_wrong', refId: root.id, valueTenths: null, occurredAt: AT + 1000 });
+      await appended(said);
+      const corrected = testEvent(kitchenId, { screenId: 'wall-s', supersedesId: root.id, rootId: root.id, answersId: said.id, occurredAt: AT + 2000 });
+      await appended(corrected);
+      await appended(receipt(kitchenId, { screenId: 'wall-s', refId: corrected.id, occurredAt: AT + 3000 }));
+
+      expect(await store.latestByScreen(kitchenId, 'wall-r', AT)).toMatchObject({ id: plain.id, corrections: 0 });
+      expect(await store.latestByScreen(kitchenId, 'wall-s', AT)).toMatchObject({ id: corrected.id, corrections: 1 });
     });
 
     // The newest event the screen wrote is picked first and the window applied to it after, so a call

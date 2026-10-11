@@ -4,7 +4,7 @@ import rulesJson from '../../data/rules/food-code-2022.json';
 import { describeSource } from '../domain/citation';
 import { KitchenProfileSchema, RuleTableSchema, type RuleRow, type RuleTable } from '../domain/rule';
 import { D1Store } from '../store/d1-store';
-import type { Store } from '../store/port';
+import { countingStore, type CountingStore } from '../test-support/counting-store';
 import { openTestD1, type TestD1 } from '../test-support/d1';
 import { callLogReading, walkInArguments, type ToolResult } from '../test-support/mcp-client';
 import { byId, sendRaw, type RawResponse } from '../test-support/raw-mcp';
@@ -22,29 +22,6 @@ const INITIALIZE = JSON.stringify({
   method: 'initialize',
   params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'hostile-probe', version: '1.0.0' } },
 });
-
-interface CountingStore {
-  store: Store;
-  calls: string[];
-}
-
-// Every method called on the wrapped store is recorded by name, so a test can prove that a path
-// never reached storage at all, which a byte-for-byte dump of the tables cannot tell apart from a
-// write the store's own guard refused.
-function countingStore(inner: Store): CountingStore {
-  const calls: string[] = [];
-  const store = new Proxy(inner, {
-    get(target, property, receiver) {
-      const value: unknown = Reflect.get(target, property, receiver);
-      if (typeof value !== 'function') return value;
-      return (...args: unknown[]): unknown => {
-        calls.push(String(property));
-        return (value as (...params: unknown[]) => unknown).apply(target, args);
-      };
-    },
-  });
-  return { store, calls };
-}
 
 type WithMeta = ToolResult & { _meta?: unknown };
 

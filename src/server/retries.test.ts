@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { D1Store } from '../store/d1-store';
 import type { Store } from '../store/port';
+import { countingStore } from '../test-support/counting-store';
 import { openTestD1, type TestD1 } from '../test-support/d1';
 import { gatedStore, type GatedStore } from '../test-support/gated-store';
 import { callLogReading, type ToolResult } from '../test-support/mcp-client';
@@ -32,6 +33,9 @@ type Args = Record<string, unknown>;
 const WALK_IN_38 = { check_point: 'walk_in', value: 38, words: 'walk-in 38', initials: 'AB' };
 const WALK_IN_45 = { check_point: 'walk_in', value: 45, words: 'walk-in 45', initials: 'AB' };
 const WRONG_NUMBER = { words: 'wrong number', initials: 'AB' };
+
+// The store methods a log_reading call can reach; the Worker's kitchen lookup on each request is left out.
+const TOOL_CALL_METHODS = new Set(['findByRequest', 'pendingPrompt', 'latestByScreen', 'append']);
 
 function promptIdOf(result: Result): string {
   const prompt = result.structuredContent?.prompt as { id: string } | undefined;
@@ -320,6 +324,51 @@ describe('retry-safe writes over MCP', () => {
       expect(first.content[0]?.text).toMatch(/already corrected/);
       expect(JSON.stringify(retry)).toBe(JSON.stringify(first));
       expect(await events(kitchenId)).toHaveLength(before.length);
+    });
+  });
+
+  // The store's duplicate answer hides a second decision or a second append: the reply and the rows
+  // stay the same, and only the reads ADR 0002 bounds grow. So these count the store calls themselves.
+  describe('what one call asks of the store', () => {
+    type Setup = (kitchenId: string) => Promise<Args>;
+    const CALLS: [string, Setup][] = [
+      ['a judged reading', () => Promise.resolve(WALK_IN_38)],
+      [
+        'an answer to who is logging',
+        async (kitchenId) => ({ initials: 'MR', pending_prompt_id: promptIdOf(await say(kitchenId, { check_point: 'walk_in', value: 38 })) }),
+      ],
+      [
+        'a "wrong number"',
+        async (kitchenId) => {
+          await say(kitchenId, WALK_IN_45);
+          return WRONG_NUMBER;
+        },
+      ],
+    ];
+
+    it.each(CALLS)('appends %s exactly once', async (_label, setup) => {
+      const kitchenId = await kitchen();
+      const args = await setup(kitchenId);
+      const counting = countingStore(plain);
+      current = counting.store;
+
+      const result = await say(kitchenId, args);
+
+      expect(result.isError).not.toBe(true);
+      expect(counting.calls.filter((name) => name === 'append')).toEqual(['append']);
+    });
+
+    it.each(CALLS)('answers a retry of %s from its stored reply, reading the request id and nothing else', async (_label, setup) => {
+      const kitchenId = await kitchen();
+      const call = { ...(await setup(kitchenId)), request_id: crypto.randomUUID() };
+      const first = await say(kitchenId, call);
+      const counting = countingStore(plain);
+      current = counting.store;
+
+      const retry = await say(kitchenId, call);
+
+      expect(JSON.stringify(retry)).toBe(JSON.stringify(first));
+      expect(counting.calls.filter((name) => TOOL_CALL_METHODS.has(name))).toEqual(['findByRequest']);
     });
   });
 
