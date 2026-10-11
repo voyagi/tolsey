@@ -16,6 +16,13 @@
 // hash, so the next run clears the file again: the safe direction. Every recorded mutation score
 // comes from `npm run mutate:full`, never from this script.
 //
+// NO LOWER PRIORITY. Running the step below normal priority was measured on 2026-10-02 with every
+// core of the machine busy: the conformance suite then failed (tests and setup hooks past their
+// 5 and 10 s limits, then a failed tool call once those limits were raised), while the same suite
+// at normal priority passed. A failure like that stops the step in Stryker's initial run, or
+// counts a mutant as killed, so the step runs at normal priority and the lighter suite in
+// vitest.stryker.config.ts is what keeps its load down.
+//
 // Exit codes: Stryker's own; 2 when Stryker is not installed or the inputs cannot be listed.
 //
 // Usage: node scripts/mutate-incremental.mjs [--selftest]
@@ -31,7 +38,7 @@ const INCREMENTAL_FILE = join('reports', 'stryker-incremental.json');
 const HASH_FILE = join('reports', 'stryker-inputs.sha256');
 const INPUT_PATHSPECS = [
   'src', 'data', 'migrations', 'package.json', 'package-lock.json', 'stryker.config.json',
-  'vitest.config.ts', 'tsconfig*.json', 'wrangler.jsonc',
+  'vitest.config.ts', 'vitest.stryker.config.ts', 'tsconfig*.json', 'wrangler.jsonc',
 ];
 
 // Untracked files count too (--others): a new test file must clear results before it is committed.
@@ -120,6 +127,7 @@ function selftest() {
     };
     put('package.json', '{"name":"fx","private":true}\n');
     put('stryker.config.json', '{}\n');
+    put('vitest.stryker.config.ts', 'export default {};\n');
     put('src/domain/judge.ts', 'export const limit = 1;\n');
     put('src/domain/judge.test.ts', 'one test\n');
     put('data/rules.json', '[]\n');
@@ -127,7 +135,7 @@ function selftest() {
     put('reports/stryker-incremental.json', '{"stale":true}\n');
     if (git) {
       execFileSync('git', ['init', '-q'], { cwd: root, stdio: 'pipe' });
-      execFileSync('git', ['add', 'package.json', 'stryker.config.json', 'src', 'data'], { cwd: root, stdio: 'pipe' });
+      execFileSync('git', ['add', 'package.json', 'stryker.config.json', 'vitest.stryker.config.ts', 'src', 'data'], { cwd: root, stdio: 'pipe' });
     }
     return { root, put };
   };
@@ -165,6 +173,9 @@ function selftest() {
     put('stryker.config.json', '{"concurrency":2}\n');
     got = runCli(root);
     check('a changed stryker.config.json clears the incremental file', cleared(got), seen(got));
+    put('vitest.stryker.config.ts', 'export default { test: { projects: [] } };\n');
+    got = runCli(root);
+    check('a changed vitest.stryker.config.ts clears the incremental file', cleared(got), seen(got));
     put('src/domain/judge.ts', 'export const limit = 2;\n');
     got = runCli(root);
     check('a changed non-test file under src/domain clears the incremental file (a mutant in another file can depend on it)', cleared(got), seen(got));
@@ -177,7 +188,7 @@ function selftest() {
     got = runCli(root);
     check('after a failed run the stored hash is unchanged, so the next run clears the file again', cleared(got) && got.code === 0, seen(got));
     const badArgs = got.calls.filter((c) => JSON.stringify(c.args) !== '["run","--incremental"]');
-    check('every run passed Stryker exactly run --incremental', got.calls.length === 9 && badArgs.length === 0,
+    check('every run passed Stryker exactly run --incremental', got.calls.length === 10 && badArgs.length === 0,
       `${got.calls.length} stub calls, ${badArgs.length} with other arguments: ${JSON.stringify(badArgs.map((c) => c.args))}`);
 
     const outside = makeRoot({ git: false });

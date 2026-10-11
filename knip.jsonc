@@ -4,7 +4,9 @@
     // Gate harnesses and their mutant harnesses are run directly with node, never imported.
     "scripts/*.mjs",
     // The probe Worker is named only in intl-probe.wrangler.jsonc, which the Intl parity e2e test starts.
-    "src/test-support/intl-probe.worker.ts"
+    "src/test-support/intl-probe.worker.ts",
+    // The mutation step's Vitest config is named only in stryker.config.json (vitest.configFile).
+    "vitest.stryker.config.ts"
   ],
   // Reference mockups are loaded by HTML pages, which knip does not follow.
   "ignoreFiles": ["design/mockups/**"],
