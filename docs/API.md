@@ -59,8 +59,9 @@ so the Worker runs both before any route logic (`hostOrOriginRejection` in `src/
    list with 403 and a JSON-RPC error such as `"Invalid Host: attacker.example"`. Matching is exact,
    so a suffix such as `<deployed hostname>.attacker.example` is refused.
 3. The SDK's `originValidationResponse` refuses an `Origin` header whose host is not on the list with
-   403, `Origin: null` included. A request with no `Origin` header (a server-side MCP host) passes this
-   step.
+   403, and refuses any value that does not parse as a URL, `Origin: null` included. A request with no
+   `Origin` header, or an empty one, passes this step: only browsers send the header, and a server-side
+   MCP host sends none.
 
 `/api/kitchens` sits behind the same checks as `/mcp`.
 
