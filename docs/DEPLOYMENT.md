@@ -23,7 +23,8 @@ There is no Dockerfile and no other hosting config in the repository.
 
 ## Before the first deploy
 
-The repository does not carry a database id, so the first deploy needs these steps first.
+Until the first deploy the repository carries no database id, so the first deploy needs these steps
+first.
 
 ### 1. Create the D1 database
 
@@ -62,6 +63,11 @@ Local development, the test harnesses and `wrangler d1 migrations apply DB --loc
 entry without an id, so nothing local breaks while it is missing. The deploy preflight refuses the
 deploy until it is set (see below).
 
+Commit `wrangler.jsonc` with the id before the first deploy, so every commit that is ever deployed
+carries it. The rollback procedure below checks out an earlier deployed commit: with the id kept as a
+local edit, that checkout is refused when `wrangler.jsonc` changed in between, or loses the edit, and
+then the preflight refuses the deploy.
+
 ### 3. Check the custom domain and `ALLOWED_HOSTNAMES`
 
 The deployed hostname has to agree in every tracked place that names it:
@@ -72,6 +78,8 @@ The deployed hostname has to agree in every tracked place that names it:
   places above.
 - The tests that pin the shipped list: `src/server/built-worker.e2e.test.ts` (the built allowlist),
   and the `DEPLOYED` constants in `src/server/worker.test.ts` and `src/server/hostile-input.test.ts`.
+- The preflight's own `--selftest` cases that spell the hostname out instead of using `DEPLOYED_HOST`
+  (`scripts/deploy-preflight.mjs`). `npm test` runs that selftest, so a missed one turns it red.
 
 Moving to another hostname means changing all of them together.
 
