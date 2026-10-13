@@ -85,7 +85,11 @@ listed name (a loopback dev server, a LAN address) would pass it. The local dev 
 only and never reaches a build.
 
 The custom-domain route attaches the hostname to the Worker during the deploy. Cloudflare's Custom
-Domains documentation lists what the hostname's zone needs beforehand.
+Domains documentation lists what the hostname's zone needs beforehand. If the hostname already has
+DNS records, or is the custom domain of another Worker on the account, `wrangler deploy` asks whether
+to take it over, and answering no stops the deploy. Run the deploy from an interactive terminal:
+without one, Wrangler skips both questions and takes over the existing records and the other
+Worker's domain without asking.
 
 ### 4. Check Cron Trigger headroom
 
