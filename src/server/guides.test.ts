@@ -4,6 +4,7 @@ import { TOOL_NAMES } from '../contract/tools';
 import { readLimits, readRowsPerWrite } from '../test-support/events';
 import { byId, postJsonRpc, type Endpoint } from '../test-support/raw-mcp';
 import { openInProcessWorker, type InProcessWorker } from '../test-support/target';
+import { DEMO_PROFILE } from './data';
 
 // The guides describe what the server registers today and quote the data files. When a later phase
 // registers another tool, attaches the card resources, or measures a figure again, the conformance and
@@ -104,15 +105,21 @@ describe('the guides and what the server registers', () => {
 describe('the guides and the data they quote', () => {
   const limits = readLimits();
   const rows = readRowsPerWrite();
+  const windows = {
+    correctionWindowSeconds: DEMO_PROFILE.correctionWindowSeconds,
+    promptExpirySeconds: DEMO_PROFILE.promptExpirySeconds,
+  };
 
   it('finds the quoted figures it checks, so a reworded guide cannot pass by quoting none', () => {
     expect(quotedFigures(API, 'dailyRowCap')).toContain(limits.dailyRowCap);
     expect(quotedFigures(CONFIGURATION, 'dailyRowCap')).toContain(limits.dailyRowCap);
     expect(quotedFigures(API, 'event_first_of_day')).toContain(rows.event_first_of_day);
+    expect(quotedFigures(API, 'correctionWindowSeconds')).toContain(windows.correctionWindowSeconds);
+    expect(quotedFigures(API, 'promptExpirySeconds')).toContain(windows.promptExpirySeconds);
   });
 
-  it('quotes every store limit and every measured row count as the data files hold them', () => {
-    expect(wrongFigures({ ...limits, ...rows })).toEqual([]);
+  it('quotes every store limit, every measured row count and the profile windows as the data files hold them', () => {
+    expect(wrongFigures({ ...limits, ...rows, ...windows })).toEqual([]);
   });
 
   it('copies data/store/limits.json into CONFIGURATION.md as the Worker loads it', () => {

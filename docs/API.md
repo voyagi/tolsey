@@ -85,9 +85,11 @@ so the Worker runs both before any route logic (`hostOrOriginRejection` in `src/
 
 ## POST /api/kitchens
 
-Mints a scratch kitchen: a private, writable copy of the demo kitchen's profile (time zone
-`America/Chicago`, business day starting `04:00`, roster, check points and rules) that lives for a
-limited time. Handled by `handleKitchensRoute` and `mintKitchen` in `src/server/kitchens.ts`.
+Mints a scratch kitchen: a private, writable kitchen that lives for a limited time. It stores the demo
+profile's time zone (`America/Chicago`) and business day start (`04:00`) when it is minted, and reads the
+demo profile's roster, check points and rules on every call, so a deploy that changes those changes
+them for every scratch kitchen at once. Handled by `handleKitchensRoute` and `mintKitchen` in
+`src/server/kitchens.ts`.
 
 ### Request
 

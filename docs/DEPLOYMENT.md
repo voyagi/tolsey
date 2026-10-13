@@ -140,13 +140,20 @@ Every step is joined by `&&`, so the first step that exits non-zero stops the ch
    unless none are left to apply (see below).
 5. **`wrangler deploy`**. Ships the built Worker and assets.
 
-To deploy, install from the lockfile the way CI does, then run the script:
+To deploy, start from a clean checkout (`git status` lists no changes), install from the lockfile the
+way CI does, then run the script with the commit as the version's message:
 
 ```bash
 npm ci --ignore-scripts
 npm rebuild esbuild workerd
-npm run deploy
+npm run deploy '--' --message "$(git rev-parse HEAD)"
 ```
+
+The same three lines work in Bash and in PowerShell. Arguments after `--` go to the last step,
+`wrangler deploy`, which stores the message with the uploaded version. Wrangler records no commit on its
+own, so this message is the only record of what was deployed, and the rollback procedure below reads
+it. Keep the quotes around `--`: Windows PowerShell runs npm through its `.ps1` shim, which drops a
+bare `--` and the message with it, and the deploy then goes ahead with no record.
 
 A `node_modules` left by another branch or by `npm install` can hold versions CI never tested, and the
 build ships whatever it finds there.
@@ -277,11 +284,14 @@ deploy can make:
 
 The repository defines no rollback command or workflow. To return to an earlier version:
 
-1. Check out the commit that was last deployed successfully.
+1. Find the commit to return to. `npx wrangler deployments list` prints each deployment with its
+   versions, and each version's `Message` is the commit it was deployed from (see "The deploy script"
+   above). Check that commit out.
 2. Install that commit's locked dependencies, as CI does: `npm ci --ignore-scripts`, then
    `npm rebuild esbuild workerd`. A build from the newer tree's `node_modules` would ship a mix that
    was never tested.
-3. Run `npm run deploy`. The preflight and the migration check run as usual.
+3. Run `npm run deploy '--' --message "$(git rev-parse HEAD)"`. The preflight and the migration check
+   run as usual.
 
 `npx wrangler rollback` also makes an earlier uploaded version of the Worker active again, by default
 the version uploaded before the latest one. It asks for a confirmation and a message, and it runs
