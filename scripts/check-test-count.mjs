@@ -5,8 +5,8 @@
 // count taken on its own:
 //   1. A test is skipped or left as a todo (it.skip, or a missing binding turned into a skip) and
 //      the suite stays green. No test in src is skipped on purpose, so anything but passed is
-//      refused in every folder: a floor alone lets a whole skipped file pass while the count stays
-//      above it.
+//      refused in every folder and every project, the e2e one included: a floor alone lets a whole
+//      skipped file pass while the count stays above it.
 //   2. A test file in a folder no Vitest project names is never collected, and nothing notices.
 //      Every tracked test-shaped file under src must be in the report. The list is deliberately
 //      wider than the projects' own globs: a list built from those globs could never see the orphan.
@@ -34,11 +34,11 @@ import { fileURLToPath } from 'node:url';
 
 const VITEST_BIN = join('node_modules', 'vitest', 'vitest.mjs');
 const REPORT_NAME = 'vitest-count.json';
-const PROJECTS = ['unit', 'store', 'conformance'];
+// e2e runs the built Worker, so the gate:test-count script builds first, as test:e2e does. Left out,
+// an end-to-end test turned into a skip would pass both the e2e run and this gate.
+const PROJECTS = ['unit', 'store', 'conformance', 'e2e'];
 const TIMEOUT_MS = 20 * 60 * 1000;
 const TEST_FILE_SPECS = [':(glob)src/**/*.test.ts', ':(glob)src/**/*.test.tsx', ':(glob)src/**/*.spec.ts', ':(glob)src/**/*.spec.tsx'];
-// Mirrors E2E_FILES in vitest.config.ts: those files run in `npm run test:e2e`, not in this report.
-const E2E_FILE = /^src\/server\/.*\.e2e\.test\.ts$/;
 
 function parseFloor(argv) {
   const at = argv.indexOf('--floor');
@@ -55,7 +55,7 @@ function listTrackedTests(cwd) {
   const out = execFileSync('git', ['ls-files', '-z', '--', ...TEST_FILE_SPECS], {
     cwd, encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
   });
-  return out.split('\0').filter((p) => p && !E2E_FILE.test(p));
+  return out.split('\0').filter(Boolean);
 }
 
 function runVitest(cwd, reportPath) {
@@ -232,11 +232,12 @@ function selftest() {
       ...extra,
     };
   };
-  // The three tracked non-e2e files, each with one passing test unless a case overrides a file.
+  // The four tracked files, each with one passing test unless a case overrides a file.
   const passing = (root, overrides = {}) => [
     overrides.domain ?? file(root, 'src/domain/a.test.ts', [test('judges a reading')]),
     overrides.store ?? file(root, 'src/store/b.test.ts', [test('stores a line')]),
     overrides.server ?? file(root, 'src/server/c.test.ts', [test('answers a call')]),
+    overrides.e2e ?? file(root, 'src/server/d.e2e.test.ts', [test('answers on the built worker')]),
   ];
   const runCli = (root, { fixture, args = ['--floor', '3'], stubExit = 0 } = {}) => {
     if (fixture !== undefined) writeFileSync(join(root, 'fixture-report.json'), typeof fixture === 'string' ? fixture : JSON.stringify(fixture));
@@ -253,8 +254,18 @@ function selftest() {
   };
   try {
     let root = makeRoot();
-    check('every test passed at or above the floor is CLEAN, and a tracked e2e file is not required in the report',
-      runCli(root, { fixture: report(passing(root)) }), 0, /CLEAN: 3 tests passed/);
+    check('every test passed at or above the floor is CLEAN, the tracked e2e file included',
+      runCli(root, { fixture: report(passing(root)) }), 0, /CLEAN: 4 tests passed/);
+
+    root = makeRoot();
+    check('a skipped test in an e2e file exits 1 naming it', runCli(root, {
+      fixture: report(passing(root, { e2e: file(root, 'src/server/d.e2e.test.ts', [test('answers on the built worker'), test('mints on the built worker', 'skipped')]) })),
+    }), 1, /src\/server\/d\.e2e\.test\.ts: skipped: mints on the built worker/);
+
+    root = makeRoot();
+    check('a tracked e2e file absent from the report exits 1 naming it', runCli(root, {
+      fixture: report(passing(root).filter((entry) => !entry.name.endsWith('d.e2e.test.ts'))),
+    }), 1, /src\/server\/d\.e2e\.test\.ts: tracked but not in the report/);
 
     root = makeRoot();
     check('a skipped test in a src/store file exits 1 naming it', runCli(root, {
@@ -275,7 +286,7 @@ function selftest() {
 
     root = makeRoot();
     check('a passed count below the floor exits 1', runCli(root, { fixture: report(passing(root)), args: ['--floor', '10'] }),
-      1, /only 3 tests passed, below the floor of 10/);
+      1, /only 4 tests passed, below the floor of 10/);
 
     root = makeRoot(['src/ui/x.test.tsx']);
     check('a tracked src/ui/x.test.tsx absent from the report exits 1 naming it', runCli(root, { fixture: report(passing(root)) }),

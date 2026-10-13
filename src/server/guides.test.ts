@@ -147,7 +147,7 @@ describe('the guides and the data they quote', () => {
     expect(API).toContain(`so between ${rows.event_first_of_day} and ${most}`);
   });
 
-  // The floor is raised whenever tests are added (14 raises from 2026-09-28 to 2026-10-13).
+  // The floor is raised whenever tests are added (15 raises from 2026-09-28 to 2026-10-13).
   it('quotes the test-count floor that the gate:test-count script runs with', () => {
     const scripts = (JSON.parse(readFileSync('package.json', 'utf8')) as { scripts: Record<string, string> }).scripts;
     const floor = /--floor (\d+)/.exec(scripts['gate:test-count'] ?? '')?.[1];

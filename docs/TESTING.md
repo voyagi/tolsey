@@ -143,7 +143,7 @@ npm run mutate:full   # stryker run, a complete run
 ### No skipped tests
 
 No test is skipped on purpose. `it.skip`, `describe.skip` and `it.todo` all fail the test-count
-gate, in every folder. The shared helpers follow the same rule: `openTestD1()` throws when
+gate, in every folder, the end-to-end tests included. The shared helpers follow the same rule: `openTestD1()` throws when
 `wrangler.jsonc` has no `DB` binding instead of letting a store suite skip.
 
 ### Shared helpers (`src/test-support/`)
@@ -194,15 +194,16 @@ projects only; the workerd run adds nothing to it.
 npm run gate:test-count
 ```
 
-`scripts/check-test-count.mjs --floor 1114` runs the `unit`, `store` and `conformance` projects with
-Vitest's JSON reporter, writing the report to a new temporary folder each time. The floor is set in
-the `gate:test-count` script in `package.json`. The gate refuses the run when:
+The script builds the Worker, then `scripts/check-test-count.mjs --floor 1161` runs the `unit`,
+`store`, `conformance` and `e2e` projects with Vitest's JSON reporter, writing the report to a new
+temporary folder each time. The `e2e` project runs the built Worker, as `npm run test:e2e` does. The
+floor is set in the `gate:test-count` script in `package.json`. The gate refuses the run when:
 
 - Vitest exits non-zero, the report says `success` is not `true`, any test failed, or any file failed
   to collect (each named, before anything is counted);
 - any test is skipped or todo;
 - fewer tests passed than the floor;
-- a tracked test file under `src` (other than `*.e2e.test.ts`) is absent from the report.
+- a tracked test file under `src` is absent from the report.
 
 Exit codes: 0 clean, 1 findings, 2 unknown (no report, an unparsable or empty report, Vitest not
 installed, or no `--floor`). `node scripts/check-test-count.mjs --selftest` proves each refusal
