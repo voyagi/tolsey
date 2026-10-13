@@ -194,7 +194,7 @@ projects only; the workerd run adds nothing to it.
 npm run gate:test-count
 ```
 
-`scripts/check-test-count.mjs --floor 1100` runs the `unit`, `store` and `conformance` projects with
+`scripts/check-test-count.mjs --floor 1114` runs the `unit`, `store` and `conformance` projects with
 Vitest's JSON reporter, writing the report to a new temporary folder each time. The floor is set in
 the `gate:test-count` script in `package.json`. The gate refuses the run when:
 
@@ -216,8 +216,10 @@ kills mutants with `vitest run --project unit --project conformance --bail 1`. T
 
 `npm run mutate` (`scripts/mutate-incremental.mjs`) uses Stryker's incremental mode, but hashes every
 input first (`src`, `data`, `migrations`, `package.json`, `package-lock.json`, `stryker.config.json`,
-`vitest.config.ts`, `tsconfig*.json`, `wrangler.jsonc`, untracked files included). When the hash
-differs from the one stored after the last successful run, it deletes
+`vitest.config.ts`, `tsconfig*.json`, `wrangler.jsonc`, untracked files included). The five guides in
+`docs/` and `scripts/deploy-preflight.mjs` count as inputs too, because tests in the mutation command
+read them while mutated code runs: an edit to one of these guides makes the next `npm run mutate` a
+full run. When the hash differs from the one stored after the last successful run, it deletes
 `reports/stryker-incremental.json`, so the run is a full one. Stryker's command runner sees the whole
 test command as one test and cannot detect a changed test on its own. A recorded mutation score comes
 from `npm run mutate:full`.

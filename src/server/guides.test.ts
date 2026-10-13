@@ -10,12 +10,17 @@ import { DEMO_PROFILE } from './data';
 // registers another tool, attaches the card resources, or measures a figure again, the conformance and
 // storage pins change with it; these tests make the guides change in the same commit, because they read
 // the registered set from the running Worker and the figures from the Worker's own validated data.
-const API = readFileSync('docs/API.md', 'utf8');
-const ARCHITECTURE = readFileSync('docs/ARCHITECTURE.md', 'utf8');
-const CONFIGURATION = readFileSync('docs/CONFIGURATION.md', 'utf8');
-const DEPLOYMENT = readFileSync('docs/DEPLOYMENT.md', 'utf8');
-const TESTING = readFileSync('docs/TESTING.md', 'utf8');
-const GUIDES = { API, ARCHITECTURE, CONFIGURATION, DEPLOYMENT, TESTING };
+const GUIDE_FILES = {
+  API: 'docs/API.md',
+  ARCHITECTURE: 'docs/ARCHITECTURE.md',
+  CONFIGURATION: 'docs/CONFIGURATION.md',
+  DEPLOYMENT: 'docs/DEPLOYMENT.md',
+  TESTING: 'docs/TESTING.md',
+};
+const GUIDES = Object.fromEntries(
+  Object.entries(GUIDE_FILES).map(([guide, path]) => [guide, readFileSync(path, 'utf8')]),
+) as Record<keyof typeof GUIDE_FILES, string>;
+const { API, ARCHITECTURE, CONFIGURATION, DEPLOYMENT, TESTING } = GUIDES;
 
 function paragraphHolding(text: string, phrase: string): string {
   return text.split(/\r?\n\r?\n/).find((paragraph) => paragraph.includes(phrase)) ?? '';
@@ -142,7 +147,7 @@ describe('the guides and the data they quote', () => {
     expect(API).toContain(`so between ${rows.event_first_of_day} and ${most}`);
   });
 
-  // The floor is raised whenever tests are added (13 raises from 2026-09-28 to 2026-10-11).
+  // The floor is raised whenever tests are added (14 raises from 2026-09-28 to 2026-10-13).
   it('quotes the test-count floor that the gate:test-count script runs with', () => {
     const scripts = (JSON.parse(readFileSync('package.json', 'utf8')) as { scripts: Record<string, string> }).scripts;
     const floor = /--floor (\d+)/.exec(scripts['gate:test-count'] ?? '')?.[1];
@@ -179,5 +184,12 @@ describe('the guides and the files they cite', () => {
     );
 
     expect(missing).toEqual([]);
+  });
+
+  // This file runs inside the mutation command, so its result on a mutant rests on the guides' text too.
+  it('names every guide it reads as a mutation input, so a guide edit clears reused mutation results', () => {
+    const wrapper = readFileSync('scripts/mutate-incremental.mjs', 'utf8');
+
+    expect(Object.values(GUIDE_FILES).filter((path) => !wrapper.includes(`'${path}'`))).toEqual([]);
   });
 });

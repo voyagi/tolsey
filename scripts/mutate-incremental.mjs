@@ -29,9 +29,16 @@ import { fileURLToPath } from 'node:url';
 const STRYKER_BIN = join('node_modules', '@stryker-mutator', 'core', 'bin', 'stryker.js');
 const INCREMENTAL_FILE = join('reports', 'stryker-incremental.json');
 const HASH_FILE = join('reports', 'stryker-inputs.sha256');
+// Besides the code and config, the files a test in the mutation command reads while it runs mutated
+// code: src/server/guides.test.ts loads the Worker and asserts against the five guides, and
+// src/server/deploy-gates.test.ts runs the preflight's selftest, which imports src/server/allowlist.ts.
+// scripts/check-remote-migrations.mjs and verify-ship.mjs are read by tests that load no mutated code,
+// so no mutant's result can depend on them.
 const INPUT_PATHSPECS = [
   'src', 'data', 'migrations', 'package.json', 'package-lock.json', 'stryker.config.json',
   'vitest.config.ts', 'tsconfig*.json', 'wrangler.jsonc',
+  'docs/API.md', 'docs/ARCHITECTURE.md', 'docs/CONFIGURATION.md', 'docs/DEPLOYMENT.md', 'docs/TESTING.md',
+  'scripts/deploy-preflight.mjs',
 ];
 
 // Untracked files count too (--others): a new test file must clear results before it is committed.
