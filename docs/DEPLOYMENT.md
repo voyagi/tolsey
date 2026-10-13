@@ -31,15 +31,21 @@ The repository does not carry a database id, so the first deploy needs these ste
 database under the EU jurisdiction, which is set only at creation and cannot be changed afterwards:
 
 ```bash
-npx wrangler d1 create tolsey --jurisdiction=eu
+npx wrangler d1 create tolsey --jurisdiction=eu --binding DB
 ```
 
 Run it while Wrangler is logged in to the Cloudflare account that will own the Worker, the database
 and the custom domain (`npx wrangler whoami` shows which account that is).
 
-### 2. Put the database id into `wrangler.jsonc`
+`--binding DB` makes Wrangler write the new id into the existing `DB` entry of `wrangler.jsonc`
+without asking. Without it, Wrangler asks whether to add the database to the config and offers the
+binding name `tolsey`; accepting that adds a second entry beside `DB`, which still has no id, and
+the preflight refuses the deploy.
 
-Add the id `wrangler d1 create` printed as `database_id` on the existing `DB` entry:
+### 2. Check the database id in `wrangler.jsonc`
+
+After step 1 the existing `DB` entry carries the id as `database_id`. If the database was created
+another way, copy its id from `npx wrangler d1 list` onto that entry by hand:
 
 ```jsonc
 "d1_databases": [
@@ -224,6 +230,13 @@ reference MCP client. It needs the Worker's base URL:
 
 ```bash
 TOLSEY_MCP_URL=https://<deployed hostname> npm run test:deployed
+```
+
+In PowerShell, set the variable first:
+
+```powershell
+$env:TOLSEY_MCP_URL = 'https://<deployed hostname>'
+npm run test:deployed
 ```
 
 Without `TOLSEY_MCP_URL` the project fails at once. The run mints a scratch kitchen through

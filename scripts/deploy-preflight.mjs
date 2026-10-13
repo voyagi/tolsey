@@ -80,9 +80,9 @@ function configProblems(config) {
   if (!db) {
     problems.push('d1_databases has no entry with binding DB');
   } else if (!('database_id' in db) || db.database_id == null) {
-    problems.push('database_id is not set on the DB binding: create the database with wrangler d1 create tolsey --jurisdiction=eu and put its id into wrangler.jsonc');
+    problems.push('database_id is not set on the DB binding: create the database with wrangler d1 create tolsey --jurisdiction=eu --binding DB, which writes its id onto the DB entry of wrangler.jsonc (a database that already exists: copy its id from wrangler d1 list onto that entry)');
   } else if (typeof db.database_id !== 'string' || db.database_id.trim() === '') {
-    problems.push('database_id is empty on the DB binding: put the id wrangler d1 create printed into wrangler.jsonc');
+    problems.push('database_id is empty on the DB binding: copy the id from wrangler d1 list onto the DB entry of wrangler.jsonc');
   } else if (/^[0-]+$/.test(db.database_id.trim())) {
     problems.push('database_id is the all-zero placeholder, not a real database');
   }

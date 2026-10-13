@@ -335,7 +335,8 @@ phase 2. The drift test for captured runs (DEMO-03) validates tool presence, `ou
 
 ## Location and jurisdiction
 
-The owner creates the database with `wrangler d1 create tolsey --jurisdiction=eu`. The jurisdiction
+The owner creates the database with `wrangler d1 create tolsey --jurisdiction=eu --binding DB`
+(`--binding DB` writes the id into the existing `DB` entry rather than a second one). The jurisdiction
 is set only at creation, cannot be changed afterwards, and takes precedence over any location hint.
 EU is chosen because data stays in EU regions wherever a service offers one. The trade-off is added
 round-trip latency for requests from the US, which is I/O wait and not Worker CPU time. The owner

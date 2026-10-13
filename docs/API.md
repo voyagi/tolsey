@@ -6,8 +6,10 @@ the static assets. This page documents what the code answers today. The storage 
 in [ADR 0002: Storage](adr/0002-storage.md), and the settings it reads are in
 [CONFIGURATION.md](CONFIGURATION.md).
 
-Base URL: `https://<deployed hostname>`. Local runs use whatever host the dev server listens on, as
-long as it is named in `ALLOWED_HOSTNAMES`.
+Base URL: `https://<deployed hostname>`. The local dev server (`npm run dev`) answers on `localhost`
+and `127.0.0.1`, a list `vite.config.ts` sets for `vite serve` only. Never add a local name to
+`ALLOWED_HOSTNAMES` in `wrangler.jsonc`: the deployed list holds the deployed hostname alone, and the
+deploy preflight refuses any other name beside it.
 
 ## Routes
 
@@ -72,7 +74,11 @@ so the Worker runs both before any route logic (`hostOrOriginRejection` in `src/
   `{"jsonrpc":"2.0","id":null,"error":{"code":-32000,"message":"Request body over 64 KiB"}}` and
   `/api/kitchens` answers 413 with `{"error":"body_too_large"}`.
 - **JSON only.** A UTF-8 byte order mark and a `charset` parameter are accepted.
-- **No caching.** Every JSON error and every minted kitchen is sent with `cache-control: no-store`.
+- **No caching.** Every answer the Worker builds itself is sent with `cache-control: no-store`: the
+  503, 413, 404 and 500 errors, the 400 `-32600` for valid JSON that is no JSON-RPC message, the
+  newer-era refusal, every `/api/kitchens` error and every minted kitchen. The answers the MCP SDK
+  builds carry no `cache-control` header: the 403 Host and Origin refusals, the 400 `-32700` parse
+  error, the 400 for an unknown `MCP-Protocol-Version`, and the 405, 406 and 415 transport errors.
 - **Faults.** A fault outside the MCP handler (body read, scope lookup, mint) answers `/api/*` with
   500 `{"error":"server_error"}` and `/mcp` with 500 and JSON-RPC code `-32603` (`Internal error`).
   Only the error's name and code are logged (`logFault`), never its message.
@@ -129,6 +135,8 @@ Checks run in this order, so the first one that fails decides the answer:
 
 | Status | Body | Cause |
 |--------|------|-------|
+| 503 | `{"error":"allowlist_unconfigured","message":"..."}` | `ALLOWED_HOSTNAMES` missing or malformed |
+| 403 | The SDK's JSON-RPC error, code `-32000`, such as `"Invalid Host: attacker.example"` | Host or Origin not on the allowlist |
 | 413 | `{"error":"body_too_large"}` | Body over 64 KiB |
 | 404 | `{"error":"not_found"}` | Any `/api/*` path other than `/api/kitchens` |
 | 415 | `{"error":"unsupported_media_type"}` | Non-empty body without a JSON content type |
@@ -136,6 +144,7 @@ Checks run in this order, so the first one that fails decides the answer:
 | 400 | `{"error":"invalid_body"}` | Body is not JSON, not an object, or holds a key other than `label` |
 | 400 | `{"error":"invalid_label"}` | `label` is not `capture` or `conformance` |
 | 503 | `{"error":"demo_full","message":"The demo is full for today. Try the replay."}` | The day's row budget is spent |
+| 500 | `{"error":"server_error"}` | A fault while reading the body or minting |
 
 ## MCP endpoint
 
@@ -165,12 +174,12 @@ Server info reported on initialize: `{"name":"tolsey","version":"0.1.0"}`. Capab
 | 400 | `-32700` | Empty body or invalid JSON |
 | 400 | `-32600` | Valid JSON that is no JSON-RPC message (`{}`, `[]`, `null`, a number) |
 | 400 | `-32000` | Unsupported protocol version or modern-era request |
-| 403 | | Host or Origin not on the allowlist |
+| 403 | `-32000` | Host or Origin not on the allowlist (the message names the refused value) |
 | 404 | `-32000` | Unknown kitchen or malformed kitchen path |
 | 405 | `-32000` | GET or DELETE |
 | 406 | `-32000` | `Accept` lacks `text/event-stream` |
 | 413 | `-32000` | Body over 64 KiB |
-| 415 | | Non-JSON content type |
+| 415 | `-32000` | Non-JSON content type |
 | 500 | `-32603` | Fault outside the MCP handler |
 | 503 | | `ALLOWED_HOSTNAMES` missing or malformed (body is the `allowlist_unconfigured` object) |
 
@@ -202,7 +211,7 @@ Defined by `LogReadingInputSchema` in `src/contract/log-reading.ts`:
 | `value` | number | No | From -459.6 to 1000, at most one decimal place. Leave it out when the cook said no number |
 | `measured` | enum | No | `air` or a food id: `chicken_soup`, `prime_rib`, `raw_chicken`, `catered_chili`, `milk`. When left out, the check point's default (if it has one) is used |
 | `words` | string | No | The cook's words, unchanged, up to 200 characters |
-| `initials` | string | No | Up to 8 characters. Non-letters are dropped and A to Z is upper-cased, so `a.b.` reads as `AB`. Must be on the kitchen's roster |
+| `initials` | string | No | Up to 8 characters. Every character that is not a letter is dropped. When the rest is plain A to Z it is upper-cased, so `a.b.` reads as `AB`; any other letters are kept as sent, and no roster entry matches them. Must be on the kitchen's roster |
 | `pending_prompt_id` | string | No | Up to 64 characters. The `prompt.id` of the question Tolsey just asked, sent with the cook's answer |
 
 The check point and food lists come from `data/kitchens/demo.json`. A call that fails the schema is

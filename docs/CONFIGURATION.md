@@ -198,10 +198,11 @@ are left to apply.
 
 Before the first deploy, the database must be created and its id added to `wrangler.jsonc`.
 `docs/adr/0002-storage.md` records the command, which creates the database under the EU
-jurisdiction:
+jurisdiction. `--binding DB` writes the new id into the existing `DB` entry instead of adding a
+second entry under the name `tolsey`:
 
 ```bash
-npx wrangler d1 create tolsey --jurisdiction=eu
+npx wrangler d1 create tolsey --jurisdiction=eu --binding DB
 ```
 
 ## Defaults
@@ -238,7 +239,7 @@ environments is the hostname list and where the database lives.
 | Environment | How it runs | `ALLOWED_HOSTNAMES` | `DB` |
 |-------------|-------------|---------------------|------|
 | Local dev | `npm run dev` (Vite with `@cloudflare/vite-plugin`) | `localhost,127.0.0.1`, set by `DEV_ONLY_VARS` in `vite.config.ts` for `vite serve` only | Local D1 |
-| Local preview | `npm run build`, then `npm run preview` | The deployed hostname from `wrangler.jsonc`, so requests to `/mcp` and `/api/*` on a local address are refused | Local D1 |
+| Local preview | `npm run build`, then `npm run preview` | The deployed hostname from `wrangler.jsonc`, so requests to `/mcp` and `/api/*` on a local address are refused. Use `npm run dev` for local MCP calls, never a local name added to `wrangler.jsonc` | Local D1 |
 | Tests, in process | `vitest` projects `unit`, `store`, `conformance` | `localhost,127.0.0.1` (`LOCAL_HOSTNAMES`, `src/test-support/target.ts`) | D1 from Wrangler's `getPlatformProxy`, migrations applied in setup |
 | Tests, workerd | `npm run test:e2e` | `localhost,127.0.0.1`, passed to `createTestHarness` over the built config | Local D1, migrations applied with `applyD1Migrations` |
 | Tests, deployed | `npm run test:deployed` | The deployed Worker's own list | Remote D1. Needs `TOLSEY_MCP_URL`. |
