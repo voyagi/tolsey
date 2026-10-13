@@ -127,7 +127,7 @@ curl -X POST "https://<deployed hostname>/api/kitchens" \
 | `id` | 32 lowercase hex characters |
 | `mcpPath` | The MCP endpoint for this kitchen, `/mcp/k/<id>` |
 | `closesAt` | End of the write window: creation plus `writeWindowHours` (22.75) less `retryWindowSeconds` (120). After it, `log_reading` is refused with `kitchen_closed` |
-| `expiresAt` | Latest deletion time while every hourly run succeeds: creation plus `retentionAgeHours` (22.75) plus one hour plus a 15 minute late-start allowance. Each failed run can push the deletion back by an hour ([ADR 0002](adr/0002-storage.md)) |
+| `expiresAt` | When the kitchen and its lines are due to be deleted: creation plus `retentionAgeHours` (22.75) plus one hour plus a 15 minute late-start allowance. It holds only while every hourly run succeeds and starts within 15 minutes of its scheduled hour. Cloudflare documents no start guarantee, so a later start deletes the kitchen later, and each failed run can push the deletion back by an hour ([ADR 0002](adr/0002-storage.md)) |
 
 The figures come from `data/store/limits.json` and the constants in `src/server/kitchens.ts`.
 

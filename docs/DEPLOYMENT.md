@@ -328,8 +328,9 @@ Cloudflare itself:
   `docs/privacy-accountability.md` records that these lines are kept for 3 days on the free plan.
 - **Failed hourly runs.** A failed hourly run rethrows, so Cloudflare records it as failed.
   Cloudflare documents no retry of a failed run, so nothing here counts on one: the next hourly run
-  or the next mint's sweep deletes what it left, and each failed run can stretch the 24-hour deletion
-  bound by an hour (`docs/adr/0002-storage.md`).
+  or the next mint's sweep deletes what it left. Each failed run can push deletion back by an hour,
+  and a run that starts more than 15 minutes late pushes it past 24 hours too
+  (`docs/adr/0002-storage.md`).
 - **The daily write budget.** Once `dailyRowCap` is spent, minting and writing are refused with
   "The demo is full for today. Try the replay." until 00:00 UTC.
 - **The account's D1 limits.** Past them no query runs until 00:00 UTC (`docs/adr/0002-storage.md`).

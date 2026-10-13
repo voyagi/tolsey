@@ -91,7 +91,7 @@ POST (405 otherwise), only a JSON content type when a body is sent (415), and on
 reads the day's row budget first and refuses at once when it is spent (503 `demo_full`), runs one
 bounded retention round, then inserts the kitchen under the same budget guard. A created kitchen is
 answered 201 with `id`, `mcpPath` (`/mcp/k/<id>`), `closesAt` (end of the write window) and
-`expiresAt` (the deletion bound).
+`expiresAt` (when it is due to be deleted, while the hourly runs succeed and start on time).
 
 ### Retention
 
