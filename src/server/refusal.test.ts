@@ -159,6 +159,20 @@ describe('a check given without a number, through MCP', () => {
       expect(await worker.store.openChecks(kitchenId, DAY)).toEqual(['walk_in']);
     });
 
+    // Judged at the soup well, a walk-in 38 would fail hot holding: the call is refused instead.
+    it('refuses "walk-in reads 38" sent with the soup well, judges nothing and asks about the soup well', async () => {
+      const kitchenId = await kitchen();
+      const result = await call(kitchenId, { check_point: 'soup_well', value: 38, words: 'walk-in reads 38', initials: 'AB' });
+
+      expect(result.isError).not.toBe(true);
+      expect(result.content[0]?.text).toBe('I need the number on the thermometer. What does the soup well read?');
+      expect(result.structuredContent).toMatchObject({ outcome: 'refused', prompt: { kind: 'number' } });
+      expect(result.structuredContent).not.toHaveProperty('rule');
+      const stored = await lines(kitchenId);
+      expect(ofKind(stored, 'reading')).toHaveLength(0);
+      expect(stored.filter((line) => line.valueTenths !== null || line.verdict !== null)).toHaveLength(0);
+    });
+
     // The 130s straddle the hot-holding limit of 135, so a decade must never pass as a hot reading.
     it('refuses value 135 at the soup well said as "in the 130s" and asks for the number', async () => {
       const kitchenId = await kitchen();

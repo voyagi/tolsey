@@ -323,6 +323,56 @@ export function namesAnotherFigure(tokens: readonly string[], profile: KitchenPr
   });
 }
 
+interface Named {
+  kind: 'checkPoint' | 'food';
+  id: string;
+  tokens: readonly string[];
+}
+
+interface Nameable {
+  id: string;
+  name: string;
+  aliases: readonly string[];
+}
+
+const namedByProfile = new WeakMap<KitchenProfile, readonly Named[]>();
+
+function namedAs(kind: Named['kind'], items: readonly Nameable[]): Named[] {
+  return items.flatMap((item) => [item.name, ...item.aliases].map((phrase) => ({ kind, id: item.id, tokens: tokensOf(phrase) })));
+}
+
+// Every check point and food name and alias with the id it names, longest first like namesOf.
+function namedOf(profile: KitchenProfile): readonly Named[] {
+  let named = namedByProfile.get(profile);
+  if (!named) {
+    named = [...namedAs('checkPoint', profile.checkPoints), ...namedAs('food', profile.foods)]
+      .filter((name) => name.tokens.length > 0)
+      .sort((a, b) => b.tokens.length - a.tokens.length);
+    namedByProfile.set(profile, named);
+  }
+  return named;
+}
+
+export interface NamedInWords {
+  checkPoints: ReadonlySet<string>;
+  foods: ReadonlySet<string>;
+}
+
+// The check points and foods the words name, each found longest first, so "walk-in freezer" names the
+// freezer and "soup well" the check point, never the walk-in or the soup.
+export function namedInWords(tokens: readonly string[], profile: KitchenProfile): NamedInWords {
+  const named = namedOf(profile);
+  const checkPoints = new Set<string>();
+  const foods = new Set<string>();
+  let at = 0;
+  while (at < tokens.length) {
+    const name = named.find((candidate) => candidate.tokens.every((item, offset) => tokens[at + offset] === item));
+    if (name) (name.kind === 'checkPoint' ? checkPoints : foods).add(name.id);
+    at += name ? name.tokens.length : 1;
+  }
+  return { checkPoints, foods };
+}
+
 // A figure a thermometer could show, kept in a refused line so it quotes "under 41" or "38 or 39" as
 // said. Two are the most a limit or a range needs, so a third figure, and any longer run of digits,
 // never persists: digits said in groups, such as a phone or card number, are never stored whole.

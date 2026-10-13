@@ -215,7 +215,7 @@ Defined by `LogReadingInputSchema` in `src/contract/log-reading.ts`:
 | `check_point` | enum | No | One of the demo profile's check points: `walk_in`, `reach_in_1`, `reach_in_2`, `soup_well`, `carving_station`, `receiving`, `freezer`, `cooling`, `reheat` |
 | `value` | number | No | From -459.6 to 1000, at most one decimal place. Leave it out when the cook said no number |
 | `measured` | enum | No | `air` or a food id: `chicken_soup`, `prime_rib`, `raw_chicken`, `catered_chili`, `milk`. When left out, the check point's default (if it has one) is used |
-| `words` | string | No | The cook's words, unchanged, up to 200 characters. They are read beside `value`: a limit, a range or a guess in them, or a figure in digits that is not `value` ("the walk-in reads 38" with `value` 39), refuses the call and asks for the number again |
+| `words` | string | No | The cook's words, unchanged, up to 200 characters. They are read beside the other fields: a limit, a range or a guess in them, a figure in digits that is not `value` ("the walk-in reads 38" with `value` 39), or a check point or food they name that is not the one the reading would be judged by ("walk-in reads 38" with `check_point` `soup_well`), refuses the call and asks for the number again |
 | `initials` | string | No | Up to 8 characters. Every character that is not a letter is dropped. When the rest is plain A to Z it is upper-cased, so `a.b.` reads as `AB`; any other letters are kept as sent, and no roster entry matches them. Must be on the kitchen's roster |
 | `pending_prompt_id` | string | No | Up to 64 characters. The `prompt.id` of the question Tolsey just asked, sent with the cook's answer |
 

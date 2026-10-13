@@ -204,6 +204,35 @@ describe('a value beside words that name another figure', () => {
   });
 });
 
+// The host also sends the check point and the food. Words that name others would have the reading
+// judged by a rule that never applied to what the cook read, so the call is refused like a wrong number.
+describe('a check point or food beside words that name another', () => {
+  it.each([
+    ['soup_well', undefined, 'walk-in reads 38', 38],
+    ['walk_in', undefined, 'the freezer reads 38', 38],
+    ['walk_in', 'milk', 'the chicken soup in the walk-in reads 38', 38],
+    ['carving_station', undefined, 'the chicken soup at the carving station reads 132', 132],
+  ])('refuses the check point %s with food %s beside "%s"', (check_point, measured, words, value) => {
+    const { event, result } = decided(walkIn({ check_point, measured, words, value }));
+    expect(result.structuredContent).toMatchObject({ outcome: 'refused', prompt: { kind: 'number' } });
+    expect(event).toMatchObject({ kind: 'refusal', checkPointId: check_point, valueTenths: null, verdict: null });
+  });
+
+  it.each([
+    ['soup_well', undefined, 'the soup well reads 145', 145, 1450],
+    ['freezer', undefined, 'the walk-in freezer reads minus 5', 5, -50],
+    ['carving_station', undefined, 'the prime rib reads 132', 132, 1320],
+    ['walk_in', 'chicken_soup', 'the soup in the walk-in reads 38', 38, 380],
+  ])('logs the check point %s with food %s beside "%s", which name the same', (check_point, measured, words, value, tenths) => {
+    expect(decided(walkIn({ check_point, measured, words, value })).event).toMatchObject({ kind: 'reading', valueTenths: tenths });
+  });
+
+  it('refuses before asking who is logging, so an answer of initials alone can never log it', () => {
+    const { result } = decided(walkIn({ check_point: 'soup_well', measured: undefined, words: 'walk-in reads 38', initials: undefined }));
+    expect(result.structuredContent).toMatchObject({ outcome: 'refused', prompt: { kind: 'number' } });
+  });
+});
+
 describe('the number judged and the number read back', () => {
   // The walk-in air limit, 41 or less, in tenths.
   const WALK_IN_AIR_LIMIT_TENTHS = 410;

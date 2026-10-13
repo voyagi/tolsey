@@ -150,6 +150,17 @@ describe('pending prompts answered in separate requests, and initials from the r
       expect(await worker.store.openChecks(kitchenId, DAY)).toEqual(['walk_in']);
     });
 
+    it('refuses an answer whose words name another check point than the held one', async () => {
+      const kitchenId = await kitchen();
+      const prompt = promptOf(await say(kitchenId, { check_point: 'walk_in', value: 38 }));
+
+      const refused = await say(kitchenId, { initials: 'MR', words: 'MR, the soup well', pending_prompt_id: prompt.id });
+
+      expect(refused.structuredContent).toMatchObject({ outcome: 'refused', initials: 'MR' });
+      expect(ofKind(await lines(kitchenId), 'reading')).toHaveLength(0);
+      expect(await worker.store.openChecks(kitchenId, DAY)).toEqual(['walk_in']);
+    });
+
     // A state word answers the question, never the reading: the number was said and held already.
     it('logs the held reading for an answer whose words say only a state', async () => {
       const kitchenId = await kitchen();

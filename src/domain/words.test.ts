@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import demoJson from '../../data/kitchens/demo.json';
 import { KitchenProfileSchema } from './rule';
-import { answerNumberWords, classifyNumberWords, namesAnotherFigure, rebuildWords, saysCorrection, tokensOf } from './words';
+import { answerNumberWords, classifyNumberWords, namedInWords, namesAnotherFigure, rebuildWords, saysCorrection, tokensOf } from './words';
 
 const profile = KitchenProfileSchema.parse(demoJson);
 const walkIn = profile.checkPoints.find((point) => point.id === 'walk_in');
@@ -363,6 +363,25 @@ describe('namesAnotherFigure', () => {
     ['the freezer reads minus zero', 5],
   ])('refuses "%s" beside %d', (words, value) => {
     expect(another(words, value)).toBe(true);
+  });
+});
+
+describe('namedInWords', () => {
+  function named(words: string): { checkPoints: string[]; foods: string[] } {
+    const found = namedInWords(tokensOf(words), profile);
+    return { checkPoints: [...found.checkPoints].sort(), foods: [...found.foods].sort() };
+  }
+
+  it.each([
+    ['the walk-in reads 38', ['walk_in'], []],
+    ['the walk-in freezer reads 5', ['freezer'], []],
+    ['the soup well reads 140', ['soup_well'], []],
+    ['the chicken soup at the carving station', ['carving_station'], ['chicken_soup']],
+    ['the chicken reads 38', [], ['raw_chicken']],
+    ['reach in one and reach-in 2', ['reach_in_1', 'reach_in_2'], []],
+    ['it reads 38', [], []],
+  ])('finds in "%s" the check points %j and the foods %j', (words, checkPoints, foods) => {
+    expect(named(words)).toEqual({ checkPoints, foods });
   });
 });
 

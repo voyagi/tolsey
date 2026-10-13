@@ -29,6 +29,7 @@ import {
   answerNumberWords,
   classifyNumberWords,
   formatValue,
+  namedInWords,
   namesAFigure,
   namesAnotherFigure,
   rebuildWords,
@@ -290,6 +291,16 @@ function valueFromWords(facts: Facts, ctx: DecisionContext): number | undefined 
   return valueAsSaid(facts.value, classifyNumberWords(tokens, ctx.profile), tokens, ctx.profile);
 }
 
+// Words that name a check point or a food name the ones the reading is judged by, as plain words name
+// its number: "walk-in reads 38" sent with the soup well would be judged by the hot-holding rule, and
+// "the chicken soup" at the carving station, with no food given, by the roast rule of its default.
+function namesAnotherCheckOrFood(facts: Facts, checkPoint: CheckPoint, profile: KitchenProfile): boolean {
+  const named = namedInWords(tokensOf(facts.words ?? ''), profile);
+  if (named.checkPoints.size > 0 && !named.checkPoints.has(checkPoint.id)) return true;
+  const measured = facts.measured ?? checkPoint.defaultMeasured;
+  return measured !== undefined && named.foods.size > 0 && !named.foods.has(measured);
+}
+
 // A fresh call and an answer run the same decision; an answer only arrives with the prompt's held
 // facts filled in, so a number sent in answer to a refused walk-in is still held when it could be a
 // misheard teen. A call missing both a check and initials is asked which check first. A hold or a
@@ -304,6 +315,8 @@ function decideFacts(facts: Facts, ctx: DecisionContext, answering: Answering): 
   if (checkPoint === undefined) {
     return heldDecision({ ...facts, value }, ctx, links, 'which_check', whichCheckReply(value));
   }
+  // Before any hold, so an answer that only gives initials can never log a reading its words dispute.
+  if (namesAnotherCheckOrFood(facts, checkPoint, ctx.profile)) return refusedOrMissed(facts, ctx, answering);
   if (initials === undefined) return heldDecision({ ...facts, value }, ctx, links, 'who_is_logging', WHO_IS_LOGGING_REPLY);
   const reading = { ...facts, value, checkPoint, initials };
   const { repeat } = answering;
