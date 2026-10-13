@@ -347,7 +347,8 @@ confirms the jurisdiction at creation. Until then `wrangler.jsonc` carries the `
 --local` all accept the entry without one, and no test can reach a remote database. The id, not the
 name, is what pins the Worker to the EU database: wrangler 4.131 deploys a binding with no id by binding a
 database named `tolsey` found on the account, or by creating one under that name with no jurisdiction.
-The deploy preflight refuses a config without the id for that reason.
+The deploy preflight refuses a config without the id for that reason. It checks that an id is set, not
+which database it names, so the id copied in has to be the EU database's own.
 
 ## Test harness
 

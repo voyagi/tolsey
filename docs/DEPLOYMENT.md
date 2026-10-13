@@ -167,7 +167,7 @@ problem at once, not only the first), and `2` when it cannot run, for example wh
 
 | Check | Refused when | Why |
 |-------|--------------|-----|
-| `d1_databases` | There is no `DB` entry, or its `database_id` is absent, empty or the all-zero placeholder | The id is what pins the Worker to the database created under the EU jurisdiction. Without it, `wrangler deploy` does not stop: it binds a database named `tolsey` if the account has one, and otherwise creates one under that name with no jurisdiction and none of the tables, so every scratch-kitchen request and every mint then answers HTTP 500. |
+| `d1_databases` | There is no `DB` entry, or its `database_id` is absent, empty or the all-zero placeholder | The id pins the Worker to the one database it names, so it has to be the id of the database step 1 created under the EU jurisdiction: the preflight checks that an id is set, not which database it belongs to. Without it, `wrangler deploy` does not stop: it binds a database named `tolsey` if the account has one, and otherwise creates one under that name with no jurisdiction and none of the tables, so every scratch-kitchen request and every mint then answers HTTP 500. |
 | `vars.ALLOWED_HOSTNAMES` | It fails `parseAllowlist()`, does not name the deployed hostname, or names any other host beside it | The Worker refuses the whole list over one bad entry (every request would get a 503), a missing deployed host makes the `Host` check refuse every real request, and any extra name would pass the `Origin` check. |
 | `workers_dev`, `preview_urls` | Either is not exactly `false` (absent counts as not false) | `true` publishes a second public URL on the account's `workers.dev` subdomain. Absent leaves the choice elsewhere: Wrangler sets `workers_dev` from the routes (on only when there are none), and leaves Preview URLs to the platform's default. |
 | `routes` | No `{ "pattern": "<deployed hostname>", "custom_domain": true }` route | The Worker would not be served on its custom domain. |
@@ -227,7 +227,9 @@ bear on deploying:
   same refusal. The recovery recorded in the ADR is a code change: `0002` keeps its number and file
   name, its body becomes a statement that changes nothing, and the ADR records the refusal text and
   date. `wrangler d1 migrations apply` rolls back a migration that fails, so the rewritten `0002`
-  applies on the next run.
+  applies on the next run. The database then no longer refuses an edit of a stored line: append-only
+  rests on the store port, which has no method that edits or removes an event, and on the test that
+  reads the adapter's SQL (ADR 0002, "Append-only guard").
 - A schema change that alters the rows a write touches turns the store suite red until
   `data/store/rows-per-write.json` is measured again.
 

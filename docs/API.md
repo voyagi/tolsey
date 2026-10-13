@@ -19,7 +19,7 @@ with single-page-application fallback.
 
 | Method | Path | Description | Auth required |
 |--------|------|-------------|---------------|
-| POST | `/mcp` (or `/mcp/`) | MCP endpoint for the seeded demo kitchen. Reads work; every `log_reading` call is refused with `demo_read_only` | No |
+| POST | `/mcp` (or `/mcp/`) | MCP endpoint for the seeded demo kitchen. `initialize`, `tools/list` and `resources/list` answer as usual, and every `log_reading` call is refused with `demo_read_only`. No tool reads the record yet | No |
 | POST | `/mcp/k/<id>` | MCP endpoint for one scratch kitchen, where `<id>` is exactly 32 lowercase hex characters | No (the id is the only key) |
 | GET, DELETE | `/mcp`, `/mcp/k/<id>` | Refused with 405 and a JSON-RPC `-32000` error (stateless server, no standing stream) | No |
 | POST | `/api/kitchens` | Mints a scratch kitchen and returns its MCP path | No |
@@ -127,7 +127,7 @@ curl -X POST "https://<deployed hostname>/api/kitchens" \
 | `id` | 32 lowercase hex characters |
 | `mcpPath` | The MCP endpoint for this kitchen, `/mcp/k/<id>` |
 | `closesAt` | End of the write window: creation plus `writeWindowHours` (22.75) less `retryWindowSeconds` (120). After it, `log_reading` is refused with `kitchen_closed` |
-| `expiresAt` | Latest deletion time while the hourly sweep runs: creation plus `retentionAgeHours` (22.75) plus one hour plus a 15 minute late-start allowance |
+| `expiresAt` | Latest deletion time while every hourly run succeeds: creation plus `retentionAgeHours` (22.75) plus one hour plus a 15 minute late-start allowance. Each failed run can push the deletion back by an hour ([ADR 0002](adr/0002-storage.md)) |
 
 The figures come from `data/store/limits.json` and the constants in `src/server/kitchens.ts`.
 
@@ -371,7 +371,10 @@ Refusals are tool results with `isError: true`, a sentence in `content[0].text` 
 ## Rate limits
 
 There is no per-client rate limiter. Writes are bounded by storage budgets from
-`data/store/limits.json`, all UTC-day or per-kitchen:
+`data/store/limits.json`, all UTC-day or per-kitchen. The daily budget protects the Cloudflare
+account's write allowance, not the demo from one visitor: a single client that keeps minting can spend
+the whole day's budget, and every visitor after it gets `demo_full` until 00:00 UTC. ADR 0002 records
+why phase 1 has no per-client limit and names the replay as the fallback.
 
 | Limit | Value | Effect |
 |-------|-------|--------|
