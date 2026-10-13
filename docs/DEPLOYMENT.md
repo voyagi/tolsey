@@ -261,10 +261,16 @@ deploy can make:
 The repository defines no rollback command or workflow. To return to an earlier version:
 
 1. Check out the commit that was last deployed successfully.
-2. Run `npm run deploy`. The preflight and the migration check run as usual.
+2. Install that commit's locked dependencies, as CI does: `npm ci --ignore-scripts`, then
+   `npm rebuild esbuild workerd`. A build from the newer tree's `node_modules` would ship a mix that
+   was never tested.
+3. Run `npm run deploy`. The preflight and the migration check run as usual.
 
 `npx wrangler rollback` also makes an earlier uploaded version of the Worker active again, by default
-the version uploaded before the latest one.
+the version uploaded before the latest one. It asks for a confirmation and a message, and it runs
+neither the preflight nor the migration check, so it is only as safe as the version it picks, which
+was checked when `npm run deploy` uploaded it. Routes, the custom domain and the Cron Trigger are not
+part of a version, so a rollback leaves them as they are.
 
 Migrations are not undone by a rollback: the remote schema stays where the last apply left it. The
 migration files never edit or drop what an earlier file created, so an older Worker meets the tables

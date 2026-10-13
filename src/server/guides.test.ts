@@ -1,0 +1,129 @@
+import { readFileSync } from 'node:fs';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { TOOL_NAMES } from '../contract/tools';
+import { readLimits, readRowsPerWrite } from '../test-support/events';
+import { byId, postJsonRpc, type Endpoint } from '../test-support/raw-mcp';
+import { openInProcessWorker, type InProcessWorker } from '../test-support/target';
+
+// The guides describe what the server registers today and quote the data files. When a later phase
+// registers another tool, attaches the card resources, or measures a figure again, the conformance and
+// storage pins change with it; these tests make the guides change in the same commit, because they read
+// the registered set from the running Worker and the figures from the Worker's own validated data.
+const API = readFileSync('docs/API.md', 'utf8');
+const ARCHITECTURE = readFileSync('docs/ARCHITECTURE.md', 'utf8');
+const CONFIGURATION = readFileSync('docs/CONFIGURATION.md', 'utf8');
+const DEPLOYMENT = readFileSync('docs/DEPLOYMENT.md', 'utf8');
+const GUIDES = { API, ARCHITECTURE, CONFIGURATION, DEPLOYMENT };
+
+function paragraphHolding(text: string, phrase: string): string {
+  return text.split(/\r?\n\r?\n/).find((paragraph) => paragraph.includes(phrase)) ?? '';
+}
+
+// Every figure a guide gives right after a backticked key, as "`key` (40000)", "| `key` | `40000` |"
+// or "| `key` | 40000 rows".
+function quotedFigures(text: string, key: string): number[] {
+  const pattern = new RegExp(`\`${key}\`\\s*(?:\\(|\\|)\\s*\`?(-?\\d+(?:\\.\\d+)?)`, 'g');
+  return [...text.matchAll(pattern)].map((match) => Number(match[1]));
+}
+
+function wrongFigures(figures: Record<string, number>): string[] {
+  return Object.entries(GUIDES).flatMap(([guide, text]) =>
+    Object.entries(figures).flatMap(([key, value]) =>
+      quotedFigures(text, key)
+        .filter((quoted) => quoted !== value)
+        .map((quoted) => `${guide}: \`${key}\` quoted as ${quoted}, the data says ${value}`),
+    ),
+  );
+}
+
+describe('the guides and what the server registers', () => {
+  let worker: InProcessWorker;
+  let tools: string[];
+  let resources: string[];
+
+  async function listed(endpoint: Endpoint, method: string, key: 'tools' | 'resources'): Promise<string[]> {
+    const response = await postJsonRpc(endpoint, { jsonrpc: '2.0', id: 1, method, params: {} });
+    const result = byId(response, 1) as Record<typeof key, { name?: string; uri?: string }[]>;
+    return result[key].map((entry) => entry.name ?? entry.uri ?? '');
+  }
+
+  beforeAll(async () => {
+    worker = await openInProcessWorker();
+    const endpoint = { url: new URL('/mcp', worker.baseUrl), fetch: worker.fetch };
+    tools = await listed(endpoint, 'tools/list', 'tools');
+    resources = await listed(endpoint, 'resources/list', 'resources');
+  });
+
+  afterAll(async () => {
+    await worker?.dispose();
+  });
+
+  it('gives every registered tool its own section in API.md', () => {
+    expect(tools.length).toBeGreaterThan(0);
+    expect(tools.filter((name) => !API.includes(`## Tool: ${name}`))).toEqual([]);
+  });
+
+  it('lists as not registered yet exactly the planned tools the server does not register', () => {
+    const paragraph = paragraphHolding(API, 'not registered yet');
+    const namedThere = TOOL_NAMES.filter((name) => paragraph.includes(`\`${name}\``));
+    const unregistered = TOOL_NAMES.filter((name) => !tools.includes(name));
+
+    expect(namedThere).toEqual(unregistered);
+  });
+
+  it('says one tool is registered only while exactly one is', () => {
+    const single = tools.length === 1;
+
+    expect(API.includes('One tool is registered today')).toBe(single);
+    expect(ARCHITECTURE.includes('is the only registered tool')).toBe(single);
+  });
+
+  it('says no resource is registered only while the server lists none', () => {
+    const none = resources.length === 0;
+
+    expect(API.includes('no resource is registered yet')).toBe(none);
+    expect(API.includes('`resources/list` returns an empty list')).toBe(none);
+  });
+});
+
+describe('the guides and the data they quote', () => {
+  const limits = readLimits();
+  const rows = readRowsPerWrite();
+
+  it('finds the quoted figures it checks, so a reworded guide cannot pass by quoting none', () => {
+    expect(quotedFigures(API, 'dailyRowCap')).toContain(limits.dailyRowCap);
+    expect(quotedFigures(CONFIGURATION, 'dailyRowCap')).toContain(limits.dailyRowCap);
+    expect(quotedFigures(API, 'event_first_of_day')).toContain(rows.event_first_of_day);
+  });
+
+  it('quotes every store limit and every measured row count as the data files hold them', () => {
+    expect(wrongFigures({ ...limits, ...rows })).toEqual([]);
+  });
+
+  it('copies data/store/limits.json into CONFIGURATION.md as the Worker loads it', () => {
+    const section = CONFIGURATION.split('### `data/store/limits.json`')[1] ?? '';
+    const block = /```json\r?\n([\s\S]*?)```/.exec(section);
+
+    expect(block).not.toBeNull();
+    expect(JSON.parse(block?.[1] ?? '{}')).toEqual(limits);
+  });
+
+  it('gives the event row reservation that expectedRowsFor computes from the measured rows', () => {
+    const superseding = rows.event_superseding - rows.event;
+    const answering = rows.event_answering - rows.event;
+    const referencing = rows.event_referencing - rows.event;
+    const most = rows.event_first_of_day + superseding + answering + referencing;
+
+    expect(API).toContain(
+      `plus ${superseding} more when it corrects a line, ${answering} when it answers a question and ${referencing} when it points`,
+    );
+    expect(API).toContain(`so between ${rows.event_first_of_day} and ${most}`);
+  });
+
+  it('describes migration 0002 as triggers only while it still creates them', () => {
+    const createsTriggers = /CREATE TRIGGER/i.test(readFileSync('migrations/0002_append_only_guard.sql', 'utf8'));
+
+    expect(ARCHITECTURE.includes('| `0002_append_only_guard.sql` | Triggers that abort')).toBe(createsTriggers);
+    expect(DEPLOYMENT.includes('| `migrations/0002_append_only_guard.sql` | Triggers that abort')).toBe(createsTriggers);
+  });
+});
