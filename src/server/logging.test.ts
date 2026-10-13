@@ -34,19 +34,25 @@ function carryingWords(where: string, words = WORDS): Error {
   return error;
 }
 
-// A database that refuses every query, as D1 does once the account reaches its daily limits. Each
-// statement it was asked to prepare, and each batch, is recorded before the refusal.
+// A database that refuses every query, as D1 does once the account reaches its daily limits. Preparing
+// and binding a statement never reach the database (prepare is synchronous), so they succeed here as they
+// do there, and the refusal comes when a statement or a batch runs. Each statement it was asked to
+// prepare, and each batch, is recorded.
 function refusingDb(asked: string[] = []): D1Like {
+  const refuse = async () => {
+    throw carryingWords('a query');
+  };
   return {
     prepare: (query: string) => {
       asked.push(query);
-      throw carryingWords('a query');
+      const statement = { bind: () => statement, first: refuse, all: refuse, run: refuse };
+      return statement;
     },
     batch: async () => {
       asked.push('batch');
       throw carryingWords('a batch');
     },
-  } as unknown as D1Like;
+  };
 }
 
 function storeWith(overrides: Partial<Store>): Store {
@@ -285,8 +291,12 @@ describe('what a fault leaves in the logs and the reply', () => {
     expect(mint.status).toBe(500);
     expect(await mint.json()).toEqual({ error: 'server_error' });
 
+    // Both lines carry the refusal's own code, so neither 500 came from a method the double lacks.
     expect(asked.length).toBeGreaterThan(0);
-    expect(errorCalls().map((args) => args[0])).toEqual(['[worker]', '[worker]']);
+    expect(errorCalls()).toEqual([
+      ['[worker]', { name: 'Error', code: 'STORE_DOWN' }],
+      ['[worker]', { name: 'Error', code: 'STORE_DOWN' }],
+    ]);
     expect(logged()).not.toContain('failed on');
   });
 

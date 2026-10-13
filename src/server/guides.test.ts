@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { TOOL_NAMES } from '../contract/tools';
 import { readLimits, readRowsPerWrite } from '../test-support/events';
@@ -26,6 +26,20 @@ function quotedFigures(text: string, key: string): number[] {
   const pattern = new RegExp(`\`${key}\`\\s*(?:\\(|\\|)\\s*\`?(-?\\d+(?:\\.\\d+)?)`, 'g');
   return [...text.matchAll(pattern)].map((match) => Number(match[1]));
 }
+
+// A repository path as a guide cites it, by the rule scripts/check-privacy-accountability.mjs applies
+// to the privacy register: backticked, relative, inside at least one folder, a file name with an
+// extension, no parent step.
+function citedPaths(text: string): string[] {
+  const tokens = new Set([...text.matchAll(/`([^`\n]+)`/g)].map((match) => match[1]));
+  return [...tokens].filter(
+    (token) => /^[\w.-]+(\/[\w.-]+)+$/.test(token) && /\.\w+$/.test(token) && !token.split('/').includes('..'),
+  );
+}
+
+// Folders a build or a mutation run writes. A fresh clone has neither, and the mutation sandbox never
+// gets reports/ (Stryker always leaves it out), so a path under them is not checked for existence.
+const BUILD_OUTPUTS = new Set(['dist', 'reports']);
 
 function wrongFigures(figures: Record<string, number>): string[] {
   return Object.entries(GUIDES).flatMap(([guide, text]) =>
@@ -135,5 +149,28 @@ describe('the guides and the data they quote', () => {
 
     expect(ARCHITECTURE.includes('| `0002_append_only_guard.sql` | Triggers that abort')).toBe(createsTriggers);
     expect(DEPLOYMENT.includes('| `migrations/0002_append_only_guard.sql` | Triggers that abort')).toBe(createsTriggers);
+  });
+});
+
+// A guide's claim about a file rests on that file, so a move or a delete fails here, in the commit
+// that makes it, instead of leaving the guide pointing nowhere.
+describe('the guides and the files they cite', () => {
+  it('reads the cited paths it checks, so a broken rule cannot pass by finding none', () => {
+    expect(citedPaths(DEPLOYMENT)).toContain('scripts/deploy-preflight.mjs');
+    expect(citedPaths(TESTING)).toContain('reports/stryker-incremental.json');
+    for (const notAPath of ['text/event-stream', 'ui://tolsey/reading.html']) {
+      expect(API).toContain(`\`${notAPath}\``);
+      expect(citedPaths(API)).not.toContain(notAPath);
+    }
+  });
+
+  it('cites only files that exist, outside the folders a build writes', () => {
+    const missing = Object.entries(GUIDES).flatMap(([guide, text]) =>
+      citedPaths(text)
+        .filter((path) => !BUILD_OUTPUTS.has(path.split('/')[0]) && !existsSync(path))
+        .map((path) => `${guide}: ${path}`),
+    );
+
+    expect(missing).toEqual([]);
   });
 });
