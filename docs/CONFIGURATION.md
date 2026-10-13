@@ -178,8 +178,8 @@ npm run build && node scripts/deploy-preflight.mjs && wrangler d1 migrations app
 - `vars.ALLOWED_HOSTNAMES` passes `parseAllowlist()` and names the deployed hostname and nothing else.
   A loopback or LAN name beside it would let a page served there pass the deployed Worker's
   `Origin` check.
-- `workers_dev` and `preview_urls` are exactly `false` (absent is refused, since Wrangler defaults
-  `workers_dev` to true).
+- `workers_dev` and `preview_urls` are exactly `false` (absent is refused, since Wrangler then sets
+  `workers_dev` from the routes and leaves Preview URLs to the platform's default).
 - `routes` holds the custom-domain route for the deployed hostname.
 - `triggers.crons` contains `0 * * * *`.
 - `observability.enabled` is `true` and `observability.logs.invocation_logs` is exactly `false`.

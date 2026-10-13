@@ -46,10 +46,11 @@ is handed the instant it was scheduled for (`scheduledTime`, which the sweep use
 Cloudflare documents no guarantee of how soon after it the run starts. A test in
 `src/server/budget.test.ts` holds the retention age, the hourly cadence and that allowance inside 24
 hours (PRIV-03), and the mint reports the same bound to the visitor as `expiresAt`
-(`deletionBoundMs` in `src/server/kitchens.ts`). A run that fails is not retried: Cloudflare records
-it as failed in the Cron Trigger's past events, the Worker logs `[retention]` with the error's name
-and code, and the kitchens it left are deleted by the next hourly run or the next mint's sweep, so
-each failed run can stretch that bound by an hour. A mint's own round that fails logs `[mint-sweep]`
+(`deletionBoundMs` in `src/server/kitchens.ts`). A run that fails is recorded as failed in the Cron
+Trigger's past events, and the Worker logs `[retention]` with the error's name and code. Cloudflare
+documents no retry of a failed run (the runtime's `controller.noRetry()` suggests one can happen, and
+the Worker never calls it), so the bound counts on none: the kitchens a failed run left are deleted by
+the next hourly run or the next mint's sweep, and each failed run can stretch that bound by an hour. A mint's own round that fails logs `[mint-sweep]`
 the same way, and the mint goes ahead. Both sweeps run the same round, so a fault in its queries fails
 the hourly run too and shows in the Cron Trigger's past events; a fault that hits only mint rounds
 (a busy database under load) moves no deletion bound while the hourly runs succeed, and shows only as
@@ -343,7 +344,10 @@ EU is chosen because data stays in EU regions wherever a service offers one. The
 round-trip latency for requests from the US, which is I/O wait and not Worker CPU time. The owner
 confirms the jurisdiction at creation. Until then `wrangler.jsonc` carries the `DB` binding with no
 `database_id`: local D1, `getPlatformProxy`, `createTestHarness` and `wrangler d1 migrations apply
---local` all accept the entry without one, and no test can reach a remote database.
+--local` all accept the entry without one, and no test can reach a remote database. The id, not the
+name, is what pins the Worker to the EU database: wrangler 4.131 deploys a binding with no id by binding a
+database named `tolsey` found on the account, or by creating one under that name with no jurisdiction.
+The deploy preflight refuses a config without the id for that reason.
 
 ## Test harness
 
