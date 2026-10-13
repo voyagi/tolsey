@@ -87,8 +87,11 @@ The browser bundle reads no environment values: nothing under `src/` uses `impor
 | `triggers.crons` | `0 * * * *`: the hourly retention sweep (`scheduled()` in `src/server/worker.ts`, `runScheduledSweep()` in `src/server/retention.ts`). |
 | `observability` | Workers Logs on, so the Worker's own `[worker]`, `[mcp]`, `[log_reading]`, `[retention]` and `[mint-sweep]` fault lines are kept. Invocation logs off, so a successful request leaves no log line carrying its URL (and the kitchen id in it). See `docs/privacy-accountability.md`. |
 
-The deployed hostname appears in three tracked places that must agree: `vars.ALLOWED_HOSTNAMES`,
-`routes`, and the `DEPLOYED_HOST` constant in `scripts/deploy-preflight.mjs`.
+The deployed hostname must agree in `vars.ALLOWED_HOSTNAMES`, `routes` and the `DEPLOYED_HOST`
+constant in `scripts/deploy-preflight.mjs`, and the tests that pin the shipped list and the
+preflight's own selftest spell it out too.
+[DEPLOYMENT.md](DEPLOYMENT.md#3-check-the-custom-domain-and-allowed_hostnames) lists every place to
+change together.
 
 ### `data/store/limits.json`
 
