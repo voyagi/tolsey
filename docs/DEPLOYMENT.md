@@ -132,11 +132,16 @@ Every step is joined by `&&`, so the first step that exits non-zero stops the ch
    unless none are left to apply (see below).
 5. **`wrangler deploy`**. Ships the built Worker and assets.
 
-To deploy:
+To deploy, install from the lockfile the way CI does, then run the script:
 
 ```bash
+npm ci --ignore-scripts
+npm rebuild esbuild workerd
 npm run deploy
 ```
+
+A `node_modules` left by another branch or by `npm install` can hold versions CI never tested, and the
+build ships whatever it finds there.
 
 ### What the preflight refuses
 
@@ -147,7 +152,7 @@ problem at once, not only the first), and `2` when it cannot run, for example wh
 
 | Check | Refused when | Why |
 |-------|--------------|-----|
-| `d1_databases` | There is no `DB` entry, or its `database_id` is absent, empty or the all-zero placeholder | A Worker with no real database deploys and then answers every tool call with a binding error. |
+| `d1_databases` | There is no `DB` entry, or its `database_id` is absent, empty or the all-zero placeholder | A Worker with no real database deploys and then answers every scratch-kitchen request and every mint with HTTP 500, because the kitchen lookup and the mint's budget read fail first. |
 | `vars.ALLOWED_HOSTNAMES` | It fails `parseAllowlist()`, does not name the deployed hostname, or names any other host beside it | The Worker refuses the whole list over one bad entry (every request would get a 503), a missing deployed host makes the `Host` check refuse every real request, and any extra name would pass the `Origin` check. |
 | `workers_dev`, `preview_urls` | Either is not exactly `false` (absent counts as not false) | Wrangler defaults `workers_dev` to true, which publishes a second public URL on the account's `workers.dev` subdomain. |
 | `routes` | No `{ "pattern": "<deployed hostname>", "custom_domain": true }` route | The Worker would not be served on its custom domain. |
@@ -305,5 +310,11 @@ Cloudflare itself:
   is not retried; the next hourly run or the next mint's sweep deletes what it left, and each failed
   run can stretch the 24-hour deletion bound by an hour (`docs/adr/0002-storage.md`).
 - **The daily write budget.** Once `dailyRowCap` is spent, minting and writing are refused with
-  "The demo is full for today. Try the replay." until 00:00 UTC. Past the account's own D1 limits,
-  every tool call answers with the fixed server-fault sentence and writes a `[log_reading]` line.
+  "The demo is full for today. Try the replay." until 00:00 UTC.
+- **The account's D1 limits.** Past them no query runs until 00:00 UTC (`docs/adr/0002-storage.md`).
+  A request to a scratch kitchen then fails at its kitchen lookup (`resolveScope` in
+  `src/server/scope.ts`), before any tool runs, and answers HTTP 500 with JSON-RPC `-32603`. A mint
+  answers 500 `{"error":"server_error"}`. Both write a `[worker]` line, and the hourly run fails with a
+  `[retention]` line. The demo kitchen at `/mcp` still answers, because nothing it does reads storage.
+  Only a store fault that reaches the tool itself answers with the fixed server-fault sentence and a
+  `[log_reading]` line.

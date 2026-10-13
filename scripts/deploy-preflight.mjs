@@ -3,12 +3,12 @@
 //
 // WHY. The owner deploys a public Worker by hand, once per save point. A wrong key in the config
 // does not fail loudly at deploy time: a Worker with no database_id deploys and then answers
-// every tool call with a binding error, a missing hostname in ALLOWED_HOSTNAMES makes the Host
-// check refuse every real request, workers_dev left at its default publishes a second public URL
-// on the account subdomain, a missing cron quietly stops the retention delete, and logging left to
-// the platform's default either drops the Worker's fault lines or records every request's URL, which
-// carries the kitchen id, against the privacy record. This gate refuses all of those before wrangler
-// touches the account.
+// every scratch-kitchen request and every mint with a 500, a missing hostname in ALLOWED_HOSTNAMES
+// makes the Host check refuse every real request, workers_dev left at its default publishes a
+// second public URL on the account subdomain, a missing cron quietly stops the retention delete,
+// and logging left to the platform's default either drops the Worker's fault lines or records every
+// request's URL, which carries the kitchen id, against the privacy record. This gate refuses all of
+// those before wrangler touches the account.
 //
 // It reads dist/tolsey/wrangler.json, the config the Vite plugin builds and wrangler deploy
 // actually ships, never wrangler.jsonc: the plugin rewrites the config, so the source file is not

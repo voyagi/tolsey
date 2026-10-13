@@ -106,8 +106,9 @@ empty ones, which delete as 8,000 rows either way. The retention age is 22 hours
 hourly runs of one UTC day delete what was minted from 00:15 of the previous day to 00:15 of that day,
 which reaches into two budget days: a day can spend up to about 16,000 rows of deletion on top of its
 cap, plus a budget row per round. The cap therefore assumes every other D1 database on the account
-writes fewer than about 43,000 rows a day, and past the account limit every tool call answers with the
-fixed server-fault sentence.
+writes fewer than about 43,000 rows a day. Past the account limit a request to a scratch kitchen never
+reaches its tool: the kitchen lookup in `resolveScope` fails first and the Worker answers HTTP 500 with a
+`[worker]` line, as it does for a mint.
 
 Reads are not budgeted, so the line cap never walks the kitchen's lines. Each kitchen's line count is
 kept in its own row of `kitchen_lines` (migration 0003, which backfilled it from the lines already

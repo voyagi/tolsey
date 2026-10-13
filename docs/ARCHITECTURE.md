@@ -176,7 +176,7 @@ data/
 migrations/      D1 schema, applied in order by wrangler
 scripts/         Repository gates and the deploy preflight
 design/          Art direction and static HTML mockups, not part of the build
-docs/            Architecture decision records and compliance records
+docs/            These guides, architecture decision records and compliance records
 ```
 
 - `src/server` is the only layer that touches the platform: requests, bindings, the clock and the

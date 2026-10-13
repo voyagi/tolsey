@@ -146,6 +146,9 @@ Checks run in this order, so the first one that fails decides the answer:
 | 503 | `{"error":"demo_full","message":"The demo is full for today. Try the replay."}` | The day's row budget is spent |
 | 500 | `{"error":"server_error"}` | A fault while reading the body or minting |
 
+Only a POST has its body read, so the 413 and 415 checks apply to POST alone. Any other method skips
+them and gets 404 on another `/api/*` path, or 405 on `/api/kitchens`, whatever body it carries.
+
 ## MCP endpoint
 
 ### Transport
@@ -378,6 +381,11 @@ Each mint reserves `kitchen_create` (5) rows. Each event reserves `event_first_o
 plus 2 more when it corrects a line, 1 when it answers a question and 1 when it points at another
 line (a `wrong_number` marker, a receipt, or a line on a digit-repeat chain), so between 10 and 14
 (`expectedRowsFor` in `src/store/port.ts`, figures from `data/store/rows-per-write.json`).
+
+Retention spends the same daily total. Each sweep round, hourly or run by a mint, adds the rows it
+deleted plus `budget_add` (2) after the delete, and is never refused (`expireKitchens` in
+`src/server/retention.ts`). A day's deletions can therefore push the total past `dailyRowCap` and
+leave fewer rows for mints and lines than the cap alone suggests.
 
 ## Local exploration
 

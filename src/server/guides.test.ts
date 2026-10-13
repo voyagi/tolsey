@@ -13,7 +13,8 @@ const API = readFileSync('docs/API.md', 'utf8');
 const ARCHITECTURE = readFileSync('docs/ARCHITECTURE.md', 'utf8');
 const CONFIGURATION = readFileSync('docs/CONFIGURATION.md', 'utf8');
 const DEPLOYMENT = readFileSync('docs/DEPLOYMENT.md', 'utf8');
-const GUIDES = { API, ARCHITECTURE, CONFIGURATION, DEPLOYMENT };
+const TESTING = readFileSync('docs/TESTING.md', 'utf8');
+const GUIDES = { API, ARCHITECTURE, CONFIGURATION, DEPLOYMENT, TESTING };
 
 function paragraphHolding(text: string, phrase: string): string {
   return text.split(/\r?\n\r?\n/).find((paragraph) => paragraph.includes(phrase)) ?? '';
@@ -118,6 +119,15 @@ describe('the guides and the data they quote', () => {
       `plus ${superseding} more when it corrects a line, ${answering} when it answers a question and ${referencing} when it points`,
     );
     expect(API).toContain(`so between ${rows.event_first_of_day} and ${most}`);
+  });
+
+  // The floor is raised whenever tests are added (13 raises from 2026-09-28 to 2026-10-11).
+  it('quotes the test-count floor that the gate:test-count script runs with', () => {
+    const scripts = (JSON.parse(readFileSync('package.json', 'utf8')) as { scripts: Record<string, string> }).scripts;
+    const floor = /--floor (\d+)/.exec(scripts['gate:test-count'] ?? '')?.[1];
+
+    expect(floor).toBeDefined();
+    expect([...TESTING.matchAll(/--floor (\d+)/g)].map((match) => match[1])).toEqual([floor]);
   });
 
   it('describes migration 0002 as triggers only while it still creates them', () => {
