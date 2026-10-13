@@ -148,7 +148,7 @@ problem at once, not only the first), and `2` when it cannot run, for example wh
 | `workers_dev`, `preview_urls` | Either is not exactly `false` (absent counts as not false) | Wrangler defaults `workers_dev` to true, which publishes a second public URL on the account's `workers.dev` subdomain. |
 | `routes` | No `{ "pattern": "<deployed hostname>", "custom_domain": true }` route | The Worker would not be served on its custom domain. |
 | `triggers.crons` | `0 * * * *` is missing | The hourly retention delete would never run. |
-| `observability.enabled` | Not exactly `true` | The `[retention]` and `[mint-sweep]` fault lines would not be kept. |
+| `observability.enabled` | Not exactly `true` | None of the Worker's own fault lines would be kept, the `[retention]` and `[mint-sweep]` lines that show a failed sweep included. |
 | `observability.logs.invocation_logs` | Not exactly `false` (absent counts as not false, since Wrangler fills it in as true) | Every request's URL, which carries the kitchen id, would be logged. |
 | `observability.logs.enabled`, `observability.logs.persist` | Present and not `true` | The Worker's own fault lines would be dropped or kept out of the dashboard. |
 | `head_sampling_rate` on `observability` or `observability.logs` | Present and not `1` | Only a sample of the fault lines would be kept. |
@@ -283,6 +283,9 @@ Cloudflare itself:
   - `[worker]`: a fault outside the MCP handler while serving a request, such as the body read, the
     scope lookup or the mint, and a failed read of a body left unread (`src/server/worker.ts`).
   - `[mcp]`: a fault the MCP handler reports through `onerror` (`src/server/worker.ts`).
+  - `[log_reading]`: a fault inside the `log_reading` tool call, such as a failed store read or
+    write (`createServer()` in `src/server/mcp.ts`). The caller gets the fixed server-fault
+    sentence, never the error's message.
   - `[retention]`: a failed hourly sweep (`scheduled()` in `src/server/worker.ts`).
   - `[mint-sweep]`: a failed sweep round run by a kitchen mint (`src/server/kitchens.ts`). The mint
     still goes ahead.
@@ -293,4 +296,4 @@ Cloudflare itself:
   run can stretch the 24-hour deletion bound by an hour (`docs/adr/0002-storage.md`).
 - **The daily write budget.** Once `dailyRowCap` is spent, minting and writing are refused with
   "The demo is full for today. Try the replay." until 00:00 UTC. Past the account's own D1 limits,
-  every tool call answers with the fixed server-fault sentence.
+  every tool call answers with the fixed server-fault sentence and writes a `[log_reading]` line.

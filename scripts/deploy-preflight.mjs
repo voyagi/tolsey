@@ -6,7 +6,7 @@
 // every tool call with a binding error, a missing hostname in ALLOWED_HOSTNAMES makes the Host
 // check refuse every real request, workers_dev left at its default publishes a second public URL
 // on the account subdomain, a missing cron quietly stops the retention delete, and logging left to
-// the platform's default either drops the sweeps' fault lines or records every request's URL, which
+// the platform's default either drops the Worker's fault lines or records every request's URL, which
 // carries the kitchen id, against the privacy record. This gate refuses all of those before wrangler
 // touches the account.
 //
@@ -133,7 +133,7 @@ function loggingProblems(config) {
   const logs = objectOrEmpty(observability.logs);
   if (observability.enabled !== true) {
     const state = 'enabled' in observability ? JSON.stringify(observability.enabled) : 'absent';
-    problems.push(`observability.enabled is ${state}, not true: the [retention] and [mint-sweep] fault lines would not be kept`);
+    problems.push(`observability.enabled is ${state}, not true: none of the Worker's own fault lines would be kept, the [retention] and [mint-sweep] sweep failures included`);
   }
   if (logs.invocation_logs !== false) {
     const state = 'invocation_logs' in logs ? JSON.stringify(logs.invocation_logs) : 'absent';

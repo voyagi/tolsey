@@ -374,8 +374,10 @@ There is no per-client rate limiter. Writes are bounded by storage budgets from
 | `kitchenLineCap` | 200 stored events per kitchen | Further `log_reading` calls answer `kitchen_full` |
 | `writeWindowHours` | 22.75 hours (less the 120 second retry window) | Further `log_reading` calls answer `kitchen_closed` |
 
-Each mint reserves `kitchen_create` (5) rows and each event between 9 and 11 rows, as measured in
-`data/store/rows-per-write.json`.
+Each mint reserves `kitchen_create` (5) rows. Each event reserves `event_first_of_day` (10) rows,
+plus 2 more when it corrects a line, 1 when it answers a question and 1 when it points at another
+line (a `wrong_number` marker, a receipt, or a line on a digit-repeat chain), so between 10 and 14
+(`expectedRowsFor` in `src/store/port.ts`, figures from `data/store/rows-per-write.json`).
 
 ## Local exploration
 

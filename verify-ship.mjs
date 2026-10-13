@@ -58,13 +58,13 @@ const timeoutOverride = Number(process.env.VERIFY_SHIP_TIMEOUT_MS);
 const STEP_TIMEOUT_MS =
   Number.isFinite(timeoutOverride) && timeoutOverride > 0 ? timeoutOverride : 30 * 60 * 1000;
 
-// The slowest full mutation run measured here: 1608 mutants at concurrency 4 took 220 min 47 s on
-// 2026-09-28. The next one, 1993 mutants on 2026-09-29, took 157 min 50 s, so the time follows how
-// busy the shared machine is more than the mutant count, and the step is sized from the slowest run.
-// It gets twice that, since a fixed 4 hours left only 8 percent. Replace the figure only when a
-// full run is slower; src/server/verify-ship-timeout.test.ts pins the step between two and three
-// times it.
-const MUTATION_FULL_RUN_MS = 13_247_000;
+// The slowest full mutation run measured here: 2129 mutants at concurrency 4 took 275 min 58 s on
+// 2026-10-12. Earlier, 1608 mutants took 220 min 47 s on 2026-09-28 and 1993 took 157 min 50 s on
+// 2026-09-29, so the time follows how busy the shared machine is more than the mutant count, and the
+// step is sized from the slowest run. It gets twice that, since a fixed 4 hours left only 8 percent.
+// Replace the figure only when a full run is slower; src/server/verify-ship-timeout.test.ts pins the
+// step between two and three times it.
+const MUTATION_FULL_RUN_MS = 16_558_000;
 const MUTATION_TIMEOUT_MS = 2 * MUTATION_FULL_RUN_MS;
 
 // The CORE four are unconditional: a missing script exits non-zero, which is the correct
