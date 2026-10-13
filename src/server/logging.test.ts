@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi, t
 import { D1Store } from '../store/d1-store';
 import type { D1Like, KitchenRow, ScreenEvent, Store } from '../store/port';
 import { openTestD1, type TestD1 } from '../test-support/d1';
-import { errorById, sendRaw } from '../test-support/raw-mcp';
+import { byId, errorById, postJsonRpc, sendRaw } from '../test-support/raw-mcp';
 import { createWorker, type WorkerEnv } from './worker';
 
 const KITCHEN_ID = 'fedcba9876543210fedcba9876543210';
@@ -32,6 +32,21 @@ function carryingWords(where: string, words = WORDS): Error {
   const error = new Error(`${where} failed on "${words}" by ${INITIALS}`);
   (error as Error & { code: string }).code = 'STORE_DOWN';
   return error;
+}
+
+// A database that refuses every query, as D1 does once the account reaches its daily limits. Each
+// statement it was asked to prepare, and each batch, is recorded before the refusal.
+function refusingDb(asked: string[] = []): D1Like {
+  return {
+    prepare: (query: string) => {
+      asked.push(query);
+      throw carryingWords('a query');
+    },
+    batch: async () => {
+      asked.push('batch');
+      throw carryingWords('a batch');
+    },
+  } as unknown as D1Like;
 }
 
 function storeWith(overrides: Partial<Store>): Store {
@@ -77,6 +92,15 @@ describe('what a fault leaves in the logs and the reply', () => {
     return spies[0].mock.calls;
   }
 
+  function fetchAsLocalhost(worker: ReturnType<typeof createWorker>, env: WorkerEnv) {
+    return (url: string | URL, init?: RequestInit) => {
+      const request = new Request(url, init);
+      const headers = new Headers(request.headers);
+      headers.set('host', 'localhost');
+      return worker.fetch(new Request(request, { headers }), env);
+    };
+  }
+
   function workerFor(store: Store) {
     const worker = createWorker({ clock: { now: () => Date.UTC(2026, 9, 20, 15, 0) }, storeFor: () => store });
     const env: WorkerEnv = {
@@ -84,13 +108,7 @@ describe('what a fault leaves in the logs and the reply', () => {
       ALLOWED_HOSTNAMES: 'localhost',
       DB: d1.db,
     };
-    const fetchWith = (url: string | URL, init?: RequestInit) => {
-      const request = new Request(url, init);
-      const headers = new Headers(request.headers);
-      headers.set('host', 'localhost');
-      return worker.fetch(new Request(request, { headers }), env);
-    };
-    return { fetchWith };
+    return { fetchWith: fetchAsLocalhost(worker, env) };
   }
 
   async function callWalkIn(
@@ -227,21 +245,48 @@ describe('what a fault leaves in the logs and the reply', () => {
 
   it('fails the hourly retention run with the fixed error and logs name and code only', async () => {
     const worker = createWorker({ clock: { now: () => 0 } });
-    const failingDb = {
-      prepare: () => {
-        throw carryingWords('the sweep');
-      },
-      batch: async () => {
-        throw carryingWords('the sweep');
-      },
-    } as unknown as D1Like;
-    const env: WorkerEnv = { ASSETS: { fetch: async () => new Response('asset') }, ALLOWED_HOSTNAMES: 'localhost', DB: failingDb };
+    const env: WorkerEnv = { ASSETS: { fetch: async () => new Response('asset') }, ALLOWED_HOSTNAMES: 'localhost', DB: refusingDb() };
 
     const run = worker.scheduled({ scheduledTime: Date.UTC(2026, 9, 21, 12, 0), cron: '0 * * * *' }, env);
 
     await expect(run).rejects.toThrow(/^the retention sweep failed$/);
     expectNameAndCodeOnly('[retention]');
     expect(errorCalls()).toContainEqual(['[retention]', { name: 'Error', code: 'STORE_DOWN' }]);
+    expect(logged()).not.toContain('failed on');
+  });
+
+  // Past the account's D1 limits no query runs, and docs/DEPLOYMENT.md says where that surfaces: the
+  // Worker's own adapter over a refusing database fails at the kitchen lookup and the mint's budget
+  // read, before any tool, while nothing the demo kitchen does asks the database for anything.
+  it('answers a database that refuses every query with 500s for a scratch kitchen and a mint, and the demo still answers', async () => {
+    const asked: string[] = [];
+    const worker = createWorker({ clock: { now: () => Date.UTC(2026, 9, 20, 15, 0) } });
+    const env: WorkerEnv = { ASSETS: { fetch: async () => new Response('asset') }, ALLOWED_HOSTNAMES: 'localhost', DB: refusingDb(asked) };
+    const fetchWith = fetchAsLocalhost(worker, env);
+    const walkIn = {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: {
+        name: 'log_reading',
+        arguments: { check_point: 'walk_in', value: 38, initials: INITIALS, screen_id: 'limit-wall', request_id: crypto.randomUUID() },
+      },
+    };
+
+    const demo = byId(await postJsonRpc({ url: new URL('http://localhost/mcp'), fetch: fetchWith }, walkIn), 1) as ToolResult;
+    expect(demo._meta).toEqual({ error: 'demo_read_only' });
+    expect(asked).toEqual([]);
+
+    const scratch = await postJsonRpc({ url: new URL(`http://localhost/mcp/k/${KITCHEN_ID}`), fetch: fetchWith }, walkIn);
+    expect(scratch.status).toBe(500);
+    expect(errorById(scratch, null)).toEqual({ code: -32603, message: 'Internal error' });
+
+    const mint = await fetchWith('http://localhost/api/kitchens', { method: 'POST' });
+    expect(mint.status).toBe(500);
+    expect(await mint.json()).toEqual({ error: 'server_error' });
+
+    expect(asked.length).toBeGreaterThan(0);
+    expect(errorCalls().map((args) => args[0])).toEqual(['[worker]', '[worker]']);
     expect(logged()).not.toContain('failed on');
   });
 
