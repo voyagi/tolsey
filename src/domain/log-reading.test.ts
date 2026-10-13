@@ -56,7 +56,8 @@ describe('the read-back and the structured result', () => {
   });
 
   it.each([38, 45])('speaks walk-in %d with no markdown, no degree sign and never the word fine', (value) => {
-    const { text } = spokenPair(walkIn({ value }));
+    const { text } = spokenPair(walkIn({ value, words: `the walk-in reads ${value}` }));
+    expect(text).toMatch(new RegExp(`^Walk-in, ${value}, `));
     expect(text).not.toMatch(/[*_`#>|°]/);
     expect(text).not.toMatch(/\bfine\b/i);
   });
@@ -172,6 +173,37 @@ describe('the words stored with a reading', () => {
   });
 });
 
+// The host sends both the cook's words and the number it heard in them. When the two disagree, the
+// record cannot tell which is right, so the call is refused and the number asked for again, never
+// logged as a number the cook did not say with the cook's own words rewritten to match.
+describe('a value beside words that name another figure', () => {
+  it.each([
+    ['the walk-in reads 38', 39, 'the walk-in reads 38'],
+    ['the walk-in reads 41', 41.5, 'the walk-in reads 41'],
+    ['the walk-in reads 38.5', 38, 'the walk-in reads 38.5'],
+    ['the walk-in reads 38, 5 minutes ago', 5, 'the walk-in reads 38 5'],
+    ['the walk-in reads 3 8', 39, 'the walk-in reads 3 8'],
+  ])('refuses "%s" beside the value %d and quotes the figures said', (words, value, stored) => {
+    const { event, result } = decided(walkIn({ value, words }));
+    expect(result.structuredContent).toMatchObject({ outcome: 'refused', prompt: { kind: 'number' } });
+    expect(event).toMatchObject({ kind: 'refusal', valueTenths: null, verdict: null, words: stored });
+  });
+
+  it.each([
+    ['the walk-in reads 38.0', 38],
+    ['the walk-in reads 38 and a half', 38.5],
+    ['the walk-in reads thirty eight', 38],
+    ['the walk-in reads 3 8', 38],
+  ])('logs "%s" beside the value %d, a spelling of that same number', (words, value) => {
+    expect(decided(walkIn({ value, words })).event).toMatchObject({ kind: 'reading', valueTenths: value * 10 });
+  });
+
+  it('logs the reach-in two at 38 when the only other digit is the one in its name', () => {
+    const { event } = decided(walkIn({ check_point: 'reach_in_2', value: 38, words: 'the reach-in 2 reads 38' }));
+    expect(event).toMatchObject({ kind: 'reading', checkPointId: 'reach_in_2', valueTenths: 380 });
+  });
+});
+
 describe('the number judged and the number read back', () => {
   // The walk-in air limit, 41 or less, in tenths.
   const WALK_IN_AIR_LIMIT_TENTHS = 410;
@@ -241,12 +273,16 @@ describe('the sign the words give a value', () => {
   );
 
   // "minus zero" is a zero, which takes no sign, so its words never turn another value negative: they
-  // decide exactly as "minus 0" does.
-  it.each([0, 5])('decides the value %d beside "minus zero" as it does beside "minus 0"', (value) => {
+  // decide exactly as "minus 0" does, keeping a 0 beside them and refusing a 5, a figure they never say.
+  it.each([
+    [0, false],
+    [5, true],
+  ])('decides the value %d beside "minus zero" as it does beside "minus 0"', (value, refused) => {
     const said = (words: string) => decided(walkIn({ check_point: 'freezer', value, words })).result.structuredContent;
     const inWords = said('the freezer reads minus zero');
-    expect(inWords).toMatchObject({ value, outcome: said('the freezer reads minus 0').outcome });
-    expect(inWords.outcome).not.toBe('refused');
+    expect(inWords.outcome).toBe(said('the freezer reads minus 0').outcome);
+    expect(inWords.outcome === 'refused').toBe(refused);
+    if (!refused) expect(inWords.value).toBe(value);
   });
 
   // A zero word with another figure after it leaves the sign belonging to either, as "minus 0, 5
@@ -262,12 +298,9 @@ describe('the sign the words give a value', () => {
     expect(event).toMatchObject({ kind: 'refusal', valueTenths: null, promptKind: 'number' });
   });
 
-  it.each([
-    ['the freezer reads minus five, two minutes ago', -50],
-    ['the freezer reads minus zero', 50],
-  ])('stores the value 5 beside "%s" as %d tenths', (words, tenths) => {
-    const { event } = decided(walkIn({ check_point: 'freezer', value: 5, words }));
-    expect(event).toMatchObject({ kind: 'reading', valueTenths: tenths });
+  it('stores the value 5 beside "the freezer reads minus five, two minutes ago" as -50 tenths', () => {
+    const { event } = decided(walkIn({ check_point: 'freezer', value: 5, words: 'the freezer reads minus five, two minutes ago' }));
+    expect(event).toMatchObject({ kind: 'reading', valueTenths: -50 });
   });
 
   // Read as a plain zero, these words would store 0.5 for a freezer the cook said was below zero.

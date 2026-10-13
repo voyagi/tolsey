@@ -143,6 +143,22 @@ describe('a check given without a number, through MCP', () => {
       expect(ofKind(await lines(kitchenId), 'reading')).toHaveLength(0);
     });
 
+    // The host heard 39 where the cook said 38: neither number is stored, and the words stay as said.
+    it('refuses value 39 beside "the walk-in reads 38", stores neither number as a reading and keeps the check open', async () => {
+      const kitchenId = await kitchen();
+      const result = await call(kitchenId, { check_point: 'walk_in', value: 39, words: 'the walk-in reads 38', initials: 'AB' });
+
+      expect(result.isError).not.toBe(true);
+      expect(result.content[0]?.text).toBe('I need the number on the thermometer. What does the walk-in read?');
+      expect(result.structuredContent).toMatchObject({ outcome: 'refused', prompt: { kind: 'number' } });
+      expect(result.structuredContent).not.toHaveProperty('value');
+      const stored = await lines(kitchenId);
+      expect(ofKind(stored, 'reading')).toHaveLength(0);
+      expect(stored.filter((line) => line.valueTenths !== null)).toHaveLength(0);
+      expect(ofKind(stored, 'refusal')[0]?.words).toBe('the walk-in reads 38');
+      expect(await worker.store.openChecks(kitchenId, DAY)).toEqual(['walk_in']);
+    });
+
     // The 130s straddle the hot-holding limit of 135, so a decade must never pass as a hot reading.
     it('refuses value 135 at the soup well said as "in the 130s" and asks for the number', async () => {
       const kitchenId = await kitchen();
@@ -262,6 +278,19 @@ describe('a check given without a number, through MCP', () => {
         expect.objectContaining({ valueTenths: value * 10, promptKind: 'digit_repeat', verdict: null, dayLine: null }),
       ]);
       expect(await worker.store.openChecks(kitchenId, DAY)).toEqual(['walk_in']);
+    });
+
+    // The repeat asks for one digit at a time, so its words spell the number digit by digit.
+    it('logs a held walk-in 15 when the repeat says it one digit at a time, "1 5"', async () => {
+      const kitchenId = await kitchen();
+      const held = await call(kitchenId, { check_point: 'walk_in', value: 15, words: 'the walk-in reads 15', initials: 'AB' });
+      const prompt = held.structuredContent?.prompt as { kind: string; id: string };
+      expect(prompt.kind).toBe('digit_repeat');
+
+      const repeated = await call(kitchenId, { value: 15, words: '1 5', pending_prompt_id: prompt.id });
+
+      expect(repeated.structuredContent).toMatchObject({ outcome: 'in_range', value: 15 });
+      expect(ofKind(await lines(kitchenId), 'reading')).toEqual([expect.objectContaining({ valueTenths: 150, answersId: prompt.id })]);
     });
   });
 });

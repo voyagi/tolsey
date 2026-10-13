@@ -30,6 +30,7 @@ import {
   classifyNumberWords,
   formatValue,
   namesAFigure,
+  namesAnotherFigure,
   rebuildWords,
   saysCorrection,
   tokensOf,
@@ -256,6 +257,15 @@ function unsignedZero(value: number): number {
   return value === 0 ? 0 : value;
 }
 
+// Plain words are held to the figures they say, as a sign is held to its magnitude: one the value is
+// not ("walk-in 38" beside 39) makes the call no reading, so the host's number never replaces the
+// cook's in the record. A figure they say also gives its sign, so a value below zero beside one is not
+// a reading either; only words with no figure leave the value's sign to the host.
+function plainValue(value: number, tokens: readonly string[], profile: KitchenProfile): number | undefined {
+  if (namesAnotherFigure(tokens, profile, value)) return undefined;
+  return value < 0 && namesAFigure(tokens, profile) ? undefined : unsignedZero(value);
+}
+
 // A hedge refuses the call even with a value attached, so a limit or a guess is never stored as the
 // number the host put beside it (N1). "5 below" and "minus 5" make the value negative only when their
 // digits are the value's own; any other pairing of words and value is not a reading. That holds the
@@ -265,9 +275,9 @@ function unsignedZero(value: number): number {
 // in a value too. Zero takes no sign, so words that say a reading below zero refuse a 0 beside them
 // whichever way they say it ("5 below", "minus five"), and a zero said with a sign ("0 below", "minus
 // zero") reaches here as plain words. The contract and a JSON body both carry -0, which is stored as 0.
-function valueAsSaid(value: number, said: NumberWords, figureSaid: boolean): number | undefined {
+function valueAsSaid(value: number, said: NumberWords, tokens: readonly string[], profile: KitchenProfile): number | undefined {
   if (said.kind === 'hedge') return undefined;
-  if (said.kind === 'plain') return value < 0 && figureSaid ? undefined : unsignedZero(value);
+  if (said.kind === 'plain') return plainValue(value, tokens, profile);
   const magnitude = Math.abs(value);
   if (magnitude === 0) return undefined;
   if (said.magnitude !== undefined && said.magnitude !== magnitude) return undefined;
@@ -277,7 +287,7 @@ function valueAsSaid(value: number, said: NumberWords, figureSaid: boolean): num
 function valueFromWords(facts: Facts, ctx: DecisionContext): number | undefined {
   if (facts.value === undefined) return undefined;
   const tokens = tokensOf(facts.words ?? '');
-  return valueAsSaid(facts.value, classifyNumberWords(tokens, ctx.profile), namesAFigure(tokens, ctx.profile));
+  return valueAsSaid(facts.value, classifyNumberWords(tokens, ctx.profile), tokens, ctx.profile);
 }
 
 // A fresh call and an answer run the same decision; an answer only arrives with the prompt's held
@@ -348,12 +358,13 @@ function decideAnswer(input: LogReadingInput, ctx: DecisionContext, answer: Answ
   }
   // An answer to which check or who is logging may say the held number again, with or without a value
   // beside it ("MR, about 38", "MR, 5 below"). A hedge in its words refuses the answer, and so does a
-  // figure said with no sign beside a held number below zero. A sign gives the held number below zero,
-  // still decided for the prompt's check and initials and answering the prompt. Words that say
-  // neither ("MR", "MR, it's fine") leave the held number as it was.
+  // figure that is not the held number ("MR, 39" beside a held 38) or a figure said with no sign beside
+  // a held number below zero. A sign gives the held number below zero, still decided for the prompt's
+  // check and initials and answering the prompt. Words that say neither ("MR", "MR, it's fine") leave
+  // the held number as it was.
   const tokens = tokensOf(input.words ?? '');
   const said = answerNumberWords(tokens, ctx.profile);
-  const value = facts.value === undefined ? undefined : valueAsSaid(facts.value, said, namesAFigure(tokens, ctx.profile));
+  const value = facts.value === undefined ? undefined : valueAsSaid(facts.value, said, tokens, ctx.profile);
   if (value === undefined) return refusalDecision(facts, ctx, links);
   return decideFacts({ ...facts, value }, ctx, { links, valueFromCall: false, supersede });
 }

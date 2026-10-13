@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import demoJson from '../../data/kitchens/demo.json';
 import { KitchenProfileSchema } from './rule';
-import { answerNumberWords, classifyNumberWords, rebuildWords, saysCorrection, tokensOf } from './words';
+import { answerNumberWords, classifyNumberWords, namesAnotherFigure, rebuildWords, saysCorrection, tokensOf } from './words';
 
 const profile = KitchenProfileSchema.parse(demoJson);
 const walkIn = profile.checkPoints.find((point) => point.id === 'walk_in');
@@ -325,6 +325,44 @@ describe('answerNumberWords', () => {
   // Unlike a fresh call, a state word here answers the question and never refuses the held number.
   it.each(['MR', "MR, it's fine", 'the walk-in', 'MR, 38'])('reads "%s" as saying nothing new', (words) => {
     expect(answer(words)).toEqual({ kind: 'plain' });
+  });
+});
+
+// Written to break the comparison: each pair is a spelling of the value that must pass, or a figure
+// beside it that is another number and must not.
+describe('namesAnotherFigure', () => {
+  function another(words: string, value: number): boolean {
+    return namesAnotherFigure(tokensOf(words), profile, value);
+  }
+
+  it.each([
+    ['the walk-in reads 38', 38],
+    ['the walk-in reads 38.0', 38],
+    ['the walk-in reads 38 and a half', 38.5],
+    ['the walk-in reads 1 5', 15],
+    ['1 5', 15],
+    ['the reach-in 2 reads 38', 38],
+    ['the walk-in reads thirty nine', 38],
+    ['the freezer reads zero', 0],
+    ['the freezer reads zero point five', -0.5],
+    ['the walk-in is fine', 38],
+  ])('passes "%s" beside %d', (words, value) => {
+    expect(another(words, value)).toBe(false);
+  });
+
+  it.each([
+    ['the walk-in reads 38', 39],
+    ['the walk-in reads 41', 41.5],
+    ['the walk-in reads 38.5', 38],
+    ['the walk-in reads 38 and a half', 39],
+    ['the walk-in reads 38, 5 minutes ago', 38],
+    ['the walk-in reads 38, 5 minutes ago', 5],
+    ['the walk-in reads 38 5', 385],
+    ['the walk-in reads 1 5', 16],
+    ['1 5', 16],
+    ['the freezer reads minus zero', 5],
+  ])('refuses "%s" beside %d', (words, value) => {
+    expect(another(words, value)).toBe(true);
   });
 });
 

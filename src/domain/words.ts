@@ -284,6 +284,45 @@ export function namesAFigure(tokens: readonly string[], profile: KitchenProfile)
   return partsOf(tokens, profile).some(isFigure);
 }
 
+const SINGLE_DIGIT = /^\d$/;
+
+// Single digits said one at a time ("1 5", as the digit repeat asks for) spell one number, so a run of
+// them is joined before figures are read. A longer figure never joins a run ("38 5" stays two).
+function joinDigits(parts: readonly string[]): string[] {
+  const joined: string[] = [];
+  let inRun = false;
+  for (const part of parts) {
+    const digit = SINGLE_DIGIT.test(part);
+    if (digit && inRun) joined[joined.length - 1] += part;
+    else joined.push(part);
+    inRun = digit;
+  }
+  return joined;
+}
+
+// The value a figure gives where the words alone give one: digits, or the zero word. Every other number
+// word needs the intent layer's grammar ("thirty eight"), so none is read here.
+function figureValue(part: string, hedges: Hedges): number | undefined {
+  if (isNumber(part)) return Number(part);
+  return part === hedges.zero ? 0 : undefined;
+}
+
+// Whether the words name a figure the value is not, once names are taken out, so a value sent beside
+// another number ("walk-in 38" with 39) is never logged as what the cook said. Every figure counts, since
+// two figures are two readings or a reading and a time. A whole figure with more words after it may give
+// only the value's whole degrees, because a fraction said in words ("38 and a half") is the intent
+// layer's to read; with nothing after it ("walk-in 41" with 41.5) it is another number.
+export function namesAnotherFigure(tokens: readonly string[], profile: KitchenProfile, value: number): boolean {
+  const parts = joinDigits(partsOf(tokens, profile));
+  const { hedges } = profile.vocabulary;
+  return parts.some((part, at) => {
+    const figure = figureValue(part, hedges);
+    if (figure === undefined || figure === value) return false;
+    const fractionMayFollow = at < parts.length - 1 && Math.trunc(value) === figure;
+    return !fractionMayFollow;
+  });
+}
+
 // A figure a thermometer could show, kept in a refused line so it quotes "under 41" or "38 or 39" as
 // said. Two are the most a limit or a range needs, so a third figure, and any longer run of digits,
 // never persists: digits said in groups, such as a phone or card number, are never stored whole.
