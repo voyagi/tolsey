@@ -18,7 +18,9 @@ than trust its exit code: a test-count gate, coverage floors and mutation testin
 
 Prerequisites:
 
-- `Node.js >= 24` (`package.json` `engines`). CI uses Node 24.
+- `Node.js >= 24.11` with `npm >= 11.18` (`package.json` `engines`). Node 24.20 and later bundle
+  that npm. An older npm only warns, and its plain `npm install` runs every dependency's install
+  script, so install as below on any version. CI uses Node 24.
 - Dependencies installed from the lockfile. CI installs with scripts off and rebuilds only the two
   packages that need their install step:
 

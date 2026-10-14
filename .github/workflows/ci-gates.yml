@@ -31,9 +31,10 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          # Matches package.json engines.node. Node 24 bundles npm 11, the first line that reads
-          # allowScripts and strict-allow-scripts; Node 22's npm 10 ignores both and would run every
-          # install script silently.
+          # Must satisfy package.json engines (node >=24.11.0, npm >=11.18.0). npm 11.18 closed the
+          # last allowScripts enforcement gaps and added the npm install-scripts command used below,
+          # so an older npm fails that step. Node 24.20 and later bundle npm 11.19, so the newest
+          # Node 24 passes. engine-strict stays off (see .npmrc), so the floor alone only warns.
           node-version: 24
           cache: npm
       # Scripts off for the whole install (--ignore-scripts also overrides strict-allow-scripts),
