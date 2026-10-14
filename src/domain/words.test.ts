@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import demoJson from '../../data/kitchens/demo.json';
 import { KitchenProfileSchema } from './rule';
-import { answerNumberWords, classifyNumberWords, namedInWords, namesAnotherFigure, rebuildWords, saysCorrection, tokensOf } from './words';
+import {
+  answerNumberWords,
+  classifyNumberWords,
+  namedInWords,
+  namesAnotherFigure,
+  namesAnotherMagnitude,
+  rebuildWords,
+  saysCorrection,
+  tokensOf,
+} from './words';
 
 const profile = KitchenProfileSchema.parse(demoJson);
 const walkIn = profile.checkPoints.find((point) => point.id === 'walk_in');
@@ -96,11 +105,14 @@ describe('classifyNumberWords', () => {
     '5 degrees below zero',
     'the freezer is 5 degrees below',
   ])('reads "%s" as 5 below zero', (words) => {
-    expect(classify(words)).toEqual({ kind: 'negative', magnitude: 5 });
+    expect(classify(words)).toEqual({ kind: 'negative' });
+    expect(namesAnotherMagnitude(tokensOf(words), profile, 5)).toBe(false);
+    expect(namesAnotherMagnitude(tokensOf(words), profile, 6)).toBe(true);
   });
 
   it('reads a sign word before a number said in words as below zero, of the magnitude the value gives', () => {
-    expect(classify('the freezer reads minus five')).toEqual({ kind: 'negative', magnitude: undefined });
+    expect(classify('the freezer reads minus five')).toEqual({ kind: 'negative' });
+    expect(namesAnotherMagnitude(tokensOf('the freezer reads minus five'), profile, 7)).toBe(false);
   });
 
   it.each(['0 below', 'minus 0', 'the freezer reads -0', 'minus zero', 'the freezer reads negative zero'])(
@@ -246,7 +258,9 @@ describe('classifyNumberWords against transcript shapes', () => {
     ['the freezer reads -5', 'a hyphen as a minus'],
     ['5 degree below zero', 'the singular unit word'],
   ])('reads "%s" (%s) as 5 below zero', (words) => {
-    expect(classify(words)).toEqual({ kind: 'negative', magnitude: 5 });
+    expect(classify(words)).toEqual({ kind: 'negative' });
+    expect(namesAnotherMagnitude(tokensOf(words), profile, 5)).toBe(false);
+    expect(namesAnotherMagnitude(tokensOf(words), profile, 6)).toBe(true);
   });
 
   it.each([
@@ -315,7 +329,8 @@ describe('answerNumberWords', () => {
   });
 
   it('reads "MR, 5 below" as 5 below zero', () => {
-    expect(answer('MR, 5 below')).toEqual({ kind: 'negative', magnitude: 5 });
+    expect(answer('MR, 5 below')).toEqual({ kind: 'negative' });
+    expect(namesAnotherMagnitude(tokensOf('MR, 5 below'), profile, 5)).toBe(false);
   });
 
   it.each(['MR, minus zero', 'MR, 0 below'])('reads "%s" as a plain zero, since zero takes no sign', (words) => {
@@ -339,12 +354,19 @@ describe('namesAnotherFigure', () => {
     ['the walk-in reads 38', 38],
     ['the walk-in reads 38.0', 38],
     ['the walk-in reads 38 and a half', 38.5],
+    ['the walk-in reads 38 point 5', 38.5],
+    ['the walk-in reads 3 8 point 5', 38.5],
+    ['the walk-in reads 38 point five', 38.5],
+    ['the walk-in reads 38 point 0', 38],
+    ['the walk-in reads 38 point zero', 38],
+    ['the walk-in reads 41 degrees', 41],
     ['the walk-in reads 1 5', 15],
     ['1 5', 15],
     ['the reach-in 2 reads 38', 38],
     ['the walk-in reads thirty nine', 38],
     ['the freezer reads zero', 0],
-    ['the freezer reads zero point five', -0.5],
+    ['the freezer reads zero point 5', 0.5],
+    ['the freezer reads zero point five', 0.5],
     ['the walk-in is fine', 38],
   ])('passes "%s" beside %d', (words, value) => {
     expect(another(words, value)).toBe(false);
@@ -353,23 +375,73 @@ describe('namesAnotherFigure', () => {
   it.each([
     ['the walk-in reads 38', 39],
     ['the walk-in reads 41', 41.5],
+    ['the walk-in reads 41 degrees', 41.9],
     ['the walk-in reads 38.5', 38],
     ['the walk-in reads 38 and a half', 39],
+    ['the walk-in reads 38 and a half', 38.9],
+    ['the walk-in reads 38 and a half', 38],
+    ['the walk-in reads 38 point 5', 38],
+    ['the walk-in reads 38 point 5', 5],
+    ['the walk-in reads 38 point five', 38],
+    ['the walk-in reads 38 point five five', 38.5],
+    ['the walk-in reads 38 point fifty', 38],
+    ['the walk-in reads 38 point', 38],
+    ['the walk-in reads 38.5 and a half', 38.5],
+    ['the walk-in reads 38 and 7', 38.5],
     ['the walk-in reads 38, 5 minutes ago', 38],
     ['the walk-in reads 38, 5 minutes ago', 5],
     ['the walk-in reads 38 5', 385],
     ['the walk-in reads 1 5', 16],
     ['1 5', 16],
+    ['the walk-in shelf 2 reads 38', 38],
     ['the freezer reads minus zero', 5],
+    ['the freezer reads zero point five', -0.5],
   ])('refuses "%s" beside %d', (words, value) => {
     expect(another(words, value)).toBe(true);
   });
 });
 
+// Words that say a reading below zero give the sign apart from the figure, so each figure is held to
+// the value's size: a spelling of that size passes, and any other figure beside it refuses.
+describe('namesAnotherMagnitude', () => {
+  function another(words: string, magnitude: number): boolean {
+    return namesAnotherMagnitude(tokensOf(words), profile, magnitude);
+  }
+
+  it.each([
+    ['the freezer reads minus 5', 5],
+    ['the freezer reads -5', 5],
+    ['the freezer is 5 degrees below zero', 5],
+    ['the freezer is 5 below 0', 5],
+    ['the freezer reads minus five, two minutes ago', 5],
+    ['the freezer reads minus 5 point 5', 5.5],
+    ['the freezer reads -5 point 5', 5.5],
+    ['the freezer reads minus 5 and a half', 5.5],
+    ['the freezer reads minus 1 5', 15],
+    ['the walk-in freezer reads minus 5', 5],
+  ])('passes "%s" beside the size %d', (words, magnitude) => {
+    expect(another(words, magnitude)).toBe(false);
+  });
+
+  it.each([
+    ['the freezer reads minus 5 and 7', 5],
+    ['the freezer reads minus 5, 2 minutes ago', 5],
+    ['the freezer reads -5, 2 minutes ago', 5],
+    ['the freezer reads minus 5 point 5', 5],
+    ['the freezer reads -5 point 5', 5],
+    ['the freezer reads minus 5 and a half', 5],
+    ['the freezer reads minus 1 5', 1],
+    ['the freezer is 5 degrees below zero', 7],
+    ['the freezer is 5 below 0, 2 minutes ago', 5],
+  ])('refuses "%s" beside the size %d', (words, magnitude) => {
+    expect(another(words, magnitude)).toBe(true);
+  });
+});
+
 describe('namedInWords', () => {
-  function named(words: string): { checkPoints: string[]; foods: string[] } {
+  function named(words: string): { checkPoints: string[]; measured: string[] } {
     const found = namedInWords(tokensOf(words), profile);
-    return { checkPoints: [...found.checkPoints].sort(), foods: [...found.foods].sort() };
+    return { checkPoints: [...found.checkPoints].sort(), measured: [...found.measured].sort() };
   }
 
   it.each([
@@ -378,10 +450,13 @@ describe('namedInWords', () => {
     ['the soup well reads 140', ['soup_well'], []],
     ['the chicken soup at the carving station', ['carving_station'], ['chicken_soup']],
     ['the chicken reads 38', [], ['raw_chicken']],
+    ['the chili and chicken soup read 140', [], ['catered_chili', 'chicken_soup']],
     ['reach in one and reach-in 2', ['reach_in_1', 'reach_in_2'], []],
+    ['the walk-in air temperature reads 38', ['walk_in'], ['air']],
+    ['well, the walk-in reads 38', ['walk_in'], []],
     ['it reads 38', [], []],
-  ])('finds in "%s" the check points %j and the foods %j', (words, checkPoints, foods) => {
-    expect(named(words)).toEqual({ checkPoints, foods });
+  ])('finds in "%s" the check points %j and the measured %j', (words, checkPoints, measured) => {
+    expect(named(words)).toEqual({ checkPoints, measured });
   });
 });
 

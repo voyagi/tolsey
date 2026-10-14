@@ -183,6 +183,11 @@ describe('a value beside words that name another figure', () => {
     ['the walk-in reads 38.5', 38, 'the walk-in reads 38.5'],
     ['the walk-in reads 38, 5 minutes ago', 5, 'the walk-in reads 38 5'],
     ['the walk-in reads 3 8', 39, 'the walk-in reads 3 8'],
+    ['the walk-in reads 41 degrees', 41.9, 'the walk-in reads 41 degrees'],
+    ['the walk-in reads 38 and a half', 38.9, 'the walk-in reads 38 a'],
+    ['the walk-in reads 38 and a half', 38, 'the walk-in reads 38 a'],
+    ['the walk-in reads 38 point 5', 38, 'the walk-in reads 38 5'],
+    ['the walk-in shelf 2 reads 38', 38, 'the walk-in 2 reads 38'],
   ])('refuses "%s" beside the value %d and quotes the figures said', (words, value, stored) => {
     const { event, result } = decided(walkIn({ value, words }));
     expect(result.structuredContent).toMatchObject({ outcome: 'refused', prompt: { kind: 'number' } });
@@ -194,8 +199,17 @@ describe('a value beside words that name another figure', () => {
     ['the walk-in reads 38 and a half', 38.5],
     ['the walk-in reads thirty eight', 38],
     ['the walk-in reads 3 8', 38],
+    ['the walk-in reads 38 point 5', 38.5],
+    ['the walk-in reads 3 8 point 5', 38.5],
+    ['the walk-in reads 38 point five', 38.5],
+    ['the walk-in reads 41 degrees', 41],
   ])('logs "%s" beside the value %d, a spelling of that same number', (words, value) => {
     expect(decided(walkIn({ value, words })).event).toMatchObject({ kind: 'reading', valueTenths: value * 10 });
+  });
+
+  it('logs "zero point 5" beside the value 0.5 at the freezer', () => {
+    const { event } = decided(walkIn({ check_point: 'freezer', value: 0.5, words: 'the freezer reads zero point 5' }));
+    expect(event).toMatchObject({ kind: 'reading', valueTenths: 5 });
   });
 
   it('logs the reach-in two at 38 when the only other digit is the one in its name', () => {
@@ -207,13 +221,22 @@ describe('a value beside words that name another figure', () => {
 // The host also sends the check point and the food. Words that name others would have the reading
 // judged by a rule that never applied to what the cook read, so the call is refused like a wrong number.
 describe('a check point or food beside words that name another', () => {
+  const DISPUTE = 'I could not match the check or food you said. Say the check and its number again.';
+
   it.each([
     ['soup_well', undefined, 'walk-in reads 38', 38],
     ['walk_in', undefined, 'the freezer reads 38', 38],
     ['walk_in', 'milk', 'the chicken soup in the walk-in reads 38', 38],
     ['carving_station', undefined, 'the chicken soup at the carving station reads 132', 132],
-  ])('refuses the check point %s with food %s beside "%s"', (check_point, measured, words, value) => {
+    ['soup_well', undefined, 'not the soup well, the walk-in reads 38', 38],
+    ['soup_well', 'chicken_soup', 'the chili and chicken soup read 140', 140],
+    ['walk_in', 'chicken_soup', 'walk-in air temperature reads 38', 38],
+    ['walk_in', undefined, 'the soup in the walk-in reads 38', 38],
+    ['receiving', undefined, 'the raw chicken reads 50', 50],
+    ['receiving', undefined, 'the delivery air reads 50', 50],
+  ])('refuses the check point %s with food %s beside "%s", saying the words do not match', (check_point, measured, words, value) => {
     const { event, result } = decided(walkIn({ check_point, measured, words, value }));
+    expect(result.content[0].text).toBe(DISPUTE);
     expect(result.structuredContent).toMatchObject({ outcome: 'refused', prompt: { kind: 'number' } });
     expect(event).toMatchObject({ kind: 'refusal', checkPointId: check_point, valueTenths: null, verdict: null });
   });
@@ -223,8 +246,19 @@ describe('a check point or food beside words that name another', () => {
     ['freezer', undefined, 'the walk-in freezer reads minus 5', 5, -50],
     ['carving_station', undefined, 'the prime rib reads 132', 132, 1320],
     ['walk_in', 'chicken_soup', 'the soup in the walk-in reads 38', 38, 380],
+    ['walk_in', undefined, 'the walk-in air reads 38', 38, 380],
+    ['walk_in', 'air', 'well, the walk-in reads 38', 38, 380],
+    ['receiving', 'raw_chicken', 'the raw chicken reads 40', 40, 400],
+    ['cooling', undefined, 'the chicken soup cooling reads 70', 70, 700],
   ])('logs the check point %s with food %s beside "%s", which name the same', (check_point, measured, words, value, tenths) => {
     expect(decided(walkIn({ check_point, measured, words, value })).event).toMatchObject({ kind: 'reading', valueTenths: tenths });
+  });
+
+  // Receiving judges each food by its own row, so the words cannot pick one; a delivery said with no
+  // food named stays unjudged, as before.
+  it('keeps a receiving reading whose words name no food unjudged', () => {
+    const { result } = decided(walkIn({ check_point: 'receiving', measured: undefined, words: 'the delivery reads 50', value: 50 }));
+    expect(result.structuredContent.outcome).toBe('not_covered');
   });
 
   it('refuses before asking who is logging, so an answer of initials alone can never log it', () => {
@@ -330,6 +364,29 @@ describe('the sign the words give a value', () => {
   it('stores the value 5 beside "the freezer reads minus five, two minutes ago" as -50 tenths', () => {
     const { event } = decided(walkIn({ check_point: 'freezer', value: 5, words: 'the freezer reads minus five, two minutes ago' }));
     expect(event).toMatchObject({ kind: 'reading', valueTenths: -50 });
+  });
+
+  // Signed words are held to every figure they say, as plain words are: a second figure is a second
+  // reading or a time, and a fraction makes the figure another size.
+  it.each([
+    ['the freezer reads minus 5 and 7', -5],
+    ['the freezer reads minus 5 and 7', 5],
+    ['the freezer reads minus 5, 2 minutes ago', 5],
+    ['the freezer reads minus 5 point 5', 5],
+    ['the freezer reads minus 5 and a half', -5],
+  ])('refuses "%s" beside the value %d, which names another figure', (words, value) => {
+    const { event, result } = decided(walkIn({ check_point: 'freezer', value, words }));
+    expect(result.structuredContent.outcome).toBe('refused');
+    expect(event).toMatchObject({ kind: 'refusal', valueTenths: null });
+  });
+
+  it.each([
+    ['the freezer reads minus 5 point 5', 5.5, -55],
+    ['the freezer reads minus 5 and a half', -5.5, -55],
+    ['the freezer is 5 degrees below zero', 5, -50],
+    ['the freezer reads minus 1 5', 15, -150],
+  ])('stores "%s" beside the value %d as %d tenths', (words, value, tenths) => {
+    expect(decided(walkIn({ check_point: 'freezer', value, words })).event).toMatchObject({ kind: 'reading', valueTenths: tenths });
   });
 
   // Read as a plain zero, these words would store 0.5 for a freezer the cook said was below zero.

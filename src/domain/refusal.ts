@@ -24,8 +24,8 @@ export function refusalReply(checkPoint: CheckPoint | undefined): string {
 
 // The refusal is also the question asking for the number, so it is stored as a prompt when there is
 // a check to ask about. A call naming no check gets a reply that asks nothing, so it stores no
-// prompt and opens no check.
-export function refusalDecision(facts: Facts, ctx: DecisionContext, links: Links): Decision {
+// prompt and opens no check. A refusal for another reason than a missing number says that reason.
+export function refusalDecision(facts: Facts, ctx: DecisionContext, links: Links, text = refusalReply(facts.checkPoint)): Decision {
   const lineId = ctx.newId();
   const { checkPoint } = facts;
   const asks = checkPoint !== undefined;
@@ -42,5 +42,5 @@ export function refusalDecision(facts: Facts, ctx: DecisionContext, links: Links
     lineId,
     ...(asks ? { prompt: { kind: NUMBER_PROMPT, id: lineId } } : {}),
   };
-  return decided(event, refusalReply(checkPoint), structured);
+  return decided(event, text, structured);
 }

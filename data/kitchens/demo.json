@@ -45,7 +45,7 @@
       "name": "Soup well",
       "askAs": "the soup well",
       "kind": "hot",
-      "aliases": ["soup well", "well", "steam well"],
+      "aliases": ["soup well", "steam well"],
       "airRule": "unit_air_hot",
       "foodRule": "hot_holding",
       "defaultMeasured": "chicken_soup"

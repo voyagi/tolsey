@@ -20,7 +20,7 @@ import {
   type PromptKind,
 } from './decision';
 import { onRepeatChain, resolvePrompt, type PromptResolution } from './prompts';
-import { digitRepeatReply, LOG_BY_HAND_REPLY, WHO_IS_LOGGING_REPLY, whichCheckReply } from './questions';
+import { digitRepeatReply, DISPUTE_REPLY, LOG_BY_HAND_REPLY, WHO_IS_LOGGING_REPLY, whichCheckReply } from './questions';
 import { receiptDecision } from './receipt';
 import { refusalDecision } from './refusal';
 import { temperatureRowFrom, type CheckPoint, type CheckPointKind, type KitchenProfile, type RuleRow, type RuleSource, type TemperatureRow } from './rule';
@@ -32,6 +32,7 @@ import {
   namedInWords,
   namesAFigure,
   namesAnotherFigure,
+  namesAnotherMagnitude,
   rebuildWords,
   saysCorrection,
   tokensOf,
@@ -247,10 +248,10 @@ function judgedOrHeld(facts: ReadingFacts, ctx: DecisionContext, answering: Answ
 }
 
 // A call with no number is refused, and on a digit-repeat chain that refusal is a miss like a
-// different number.
-function refusedOrMissed(facts: Facts, ctx: DecisionContext, answering: Answering): Decision {
+// different number. A refusal for another reason carries its own reply.
+function refusedOrMissed(facts: Facts, ctx: DecisionContext, answering: Answering, text?: string): Decision {
   if (endsChain(answering.chain)) return logByHand(facts, ctx, answering);
-  return refusalDecision(facts, ctx, onChain(answering));
+  return refusalDecision(facts, ctx, onChain(answering), text);
 }
 
 // -0 equals 0, so this returns the literal 0 for both.
@@ -268,20 +269,20 @@ function plainValue(value: number, tokens: readonly string[], profile: KitchenPr
 }
 
 // A hedge refuses the call even with a value attached, so a limit or a guess is never stored as the
-// number the host put beside it (N1). "5 below" and "minus 5" make the value negative only when their
-// digits are the value's own; any other pairing of words and value is not a reading. That holds the
-// other way too: a figure said with no sign is above zero, so a negative value beside it would turn
-// a failing freezer into a pass. A sign said before a number in words ("minus five") makes the value
-// negative whatever sign the host gave it, but never below absolute zero, which the contract refuses
-// in a value too. Zero takes no sign, so words that say a reading below zero refuse a 0 beside them
-// whichever way they say it ("5 below", "minus five"), and a zero said with a sign ("0 below", "minus
-// zero") reaches here as plain words. The contract and a JSON body both carry -0, which is stored as 0.
+// number the host put beside it (N1). "5 below" and "minus 5" make the value negative only when every
+// figure they say is the value's own size ("minus 5 point 5" is 5.5, "minus 5 and 7" no reading); any
+// other pairing of words and value is not a reading. That holds the other way too: a figure said with
+// no sign is above zero, so a negative value beside it would turn a failing freezer into a pass. A sign
+// said before a number in words ("minus five") makes the value negative whatever sign the host gave it,
+// but never below absolute zero, which the contract refuses in a value too. Zero takes no sign, so
+// words that say a reading below zero refuse a 0 beside them whichever way they say it ("5 below",
+// "minus five"), and a zero said with a sign ("0 below", "minus zero") reaches here as plain words. The
+// contract and a JSON body both carry -0, which is stored as 0.
 function valueAsSaid(value: number, said: NumberWords, tokens: readonly string[], profile: KitchenProfile): number | undefined {
   if (said.kind === 'hedge') return undefined;
   if (said.kind === 'plain') return plainValue(value, tokens, profile);
   const magnitude = Math.abs(value);
-  if (magnitude === 0) return undefined;
-  if (said.magnitude !== undefined && said.magnitude !== magnitude) return undefined;
+  if (magnitude === 0 || namesAnotherMagnitude(tokens, profile, magnitude)) return undefined;
   return -magnitude >= LOWEST_READING_F ? -magnitude : undefined;
 }
 
@@ -291,14 +292,22 @@ function valueFromWords(facts: Facts, ctx: DecisionContext): number | undefined 
   return valueAsSaid(facts.value, classifyNumberWords(tokens, ctx.profile), tokens, ctx.profile);
 }
 
-// Words that name a check point or a food name the ones the reading is judged by, as plain words name
-// its number: "walk-in reads 38" sent with the soup well would be judged by the hot-holding rule, and
-// "the chicken soup" at the carving station, with no food given, by the roast rule of its default.
-function namesAnotherCheckOrFood(facts: Facts, checkPoint: CheckPoint, profile: KitchenProfile): boolean {
+function namesOtherThan(named: ReadonlySet<string>, id: string): boolean {
+  return [...named].some((other) => other !== id);
+}
+
+// Words that name a check point, a food or the air name the ones the reading is judged by, as plain
+// words name its number: "walk-in reads 38" sent with the soup well would be judged by the hot-holding
+// rule, and "the chicken soup" at the carving station, with no food given, by the roast rule of its
+// default. Any other one named disputes the call, even beside the call's own ("not the soup well, the
+// walk-in reads 38"). A food named where none was given or defaults would leave the reading unjudged,
+// so a failing delivery would open no fix; only a kind phase 1 never judges keeps it.
+function wordsDispute(facts: Facts, checkPoint: CheckPoint, profile: KitchenProfile): boolean {
   const named = namedInWords(tokensOf(facts.words ?? ''), profile);
-  if (named.checkPoints.size > 0 && !named.checkPoints.has(checkPoint.id)) return true;
+  if (namesOtherThan(named.checkPoints, checkPoint.id)) return true;
   const measured = facts.measured ?? checkPoint.defaultMeasured;
-  return measured !== undefined && named.foods.size > 0 && !named.foods.has(measured);
+  if (measured !== undefined) return namesOtherThan(named.measured, measured);
+  return named.measured.size > 0 && !UNJUDGED_KINDS.has(checkPoint.kind);
 }
 
 // A fresh call and an answer run the same decision; an answer only arrives with the prompt's held
@@ -316,7 +325,7 @@ function decideFacts(facts: Facts, ctx: DecisionContext, answering: Answering): 
     return heldDecision({ ...facts, value }, ctx, links, 'which_check', whichCheckReply(value));
   }
   // Before any hold, so an answer that only gives initials can never log a reading its words dispute.
-  if (namesAnotherCheckOrFood(facts, checkPoint, ctx.profile)) return refusedOrMissed(facts, ctx, answering);
+  if (wordsDispute(facts, checkPoint, ctx.profile)) return refusedOrMissed(facts, ctx, answering, DISPUTE_REPLY);
   if (initials === undefined) return heldDecision({ ...facts, value }, ctx, links, 'who_is_logging', WHO_IS_LOGGING_REPLY);
   const reading = { ...facts, value, checkPoint, initials };
   const { repeat } = answering;

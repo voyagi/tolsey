@@ -215,7 +215,7 @@ Defined by `LogReadingInputSchema` in `src/contract/log-reading.ts`:
 | `check_point` | enum | No | One of the demo profile's check points: `walk_in`, `reach_in_1`, `reach_in_2`, `soup_well`, `carving_station`, `receiving`, `freezer`, `cooling`, `reheat` |
 | `value` | number | No | From -459.6 to 1000, at most one decimal place. Leave it out when the cook said no number |
 | `measured` | enum | No | `air` or a food id: `chicken_soup`, `prime_rib`, `raw_chicken`, `catered_chili`, `milk`. When left out, the check point's default (if it has one) is used |
-| `words` | string | No | The cook's words, unchanged, up to 200 characters. They are read beside the other fields: a limit, a range or a guess in them, a figure in digits that is not `value` ("the walk-in reads 38" with `value` 39), or a check point or food they name that is not the one the reading would be judged by ("walk-in reads 38" with `check_point` `soup_well`), refuses the call and asks for the number again |
+| `words` | string | No | The cook's words, unchanged, up to 200 characters. They are read beside the other fields, and the call is refused when they give a limit, a range or a guess; a figure in digits that is not `value` ("the walk-in reads 38" with `value` 39, "41 degrees" with 41.9, a second figure such as a time); or a check point, food or `air` other than the one the reading would be judged by ("walk-in reads 38" with `check_point` `soup_well`, "not the soup well, the walk-in reads 38" too). A fraction said after a whole figure is part of it: "38 point 5", "38 point five" and "38 and a half" are 38.5. Naming a food where no `measured` is given or defaulted (at `receiving`) is refused too, since the reading would be stored unjudged. Number words other than zero are not compared |
 | `initials` | string | No | Up to 8 characters. Every character that is not a letter is dropped. When the rest is plain A to Z it is upper-cased, so `a.b.` reads as `AB`; any other letters are kept as sent, and no roster entry matches them. Must be on the kitchen's roster |
 | `pending_prompt_id` | string | No | Up to 64 characters. The `prompt.id` of the question Tolsey just asked, sent with the cook's answer |
 
@@ -308,7 +308,7 @@ A `held` or `refused` result may carry `prompt.kind` (`PromptKind` in `src/domai
 
 | `prompt.kind` | Asked when | Spoken text |
 |---------------|------------|-------------|
-| `number` | A check point was named with no number | `I need the number on the thermometer. What does the walk-in read?` |
+| `number` | A check point was named with no number, or the words gave none `value` matches | `I need the number on the thermometer. What does the walk-in read?` When the words name another check point or food: `I could not match the check or food you said. Say the check and its number again.` |
 | `which_check` | A number with no check point | `Which check reads 38?` |
 | `who_is_logging` | A number and check point with no initials | `Who is logging?` |
 | `digit_repeat` | The number passes its rule but its commonly misheard twin (fifteen and fifty) would fail, or the number sits outside the check point's coarse band | `Say it one digit at a time. What does the walk-in read?` |

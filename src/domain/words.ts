@@ -110,12 +110,13 @@ export function formatValue(value: number): string {
   return String(value);
 }
 
-// A negative carries the magnitude its words name, or none when the number after the sign was said in
-// words ("minus five"): the value then gives the magnitude and the words only its sign. Either way the
-// magnitude is above zero, since a zero said with a sign ("0 below", "minus zero") is a plain zero.
-export type NumberWords = { kind: 'plain' } | { kind: 'negative'; magnitude: number | undefined } | { kind: 'hedge' };
+// A negative is words that say a reading below zero ("minus 5", "5 below", "minus five"). They give only
+// the sign: the figures they name are held to the value's size apart from it (namesAnotherMagnitude). A
+// zero said with a sign ("0 below", "minus zero") is a plain zero, since zero takes no sign.
+export type NumberWords = { kind: 'plain' } | { kind: 'negative' } | { kind: 'hedge' };
 
 const PLAIN: NumberWords = { kind: 'plain' };
+const NEGATIVE: NumberWords = { kind: 'negative' };
 const HEDGE: NumberWords = { kind: 'hedge' };
 
 const NUMBER_TOKEN = /^-?\d+(\.\d+)?$/;
@@ -218,8 +219,7 @@ export function saysCorrection(words: string | undefined, profile: KitchenProfil
 }
 
 function below(figure: string | undefined): NumberWords | undefined {
-  const magnitude = Number(figure);
-  return magnitude > 0 ? { kind: 'negative', magnitude } : undefined;
+  return Number(figure) > 0 ? NEGATIVE : undefined;
 }
 
 // A zero in digits after a sign ("minus 0", "-0") is a plain zero when it is the last figure said.
@@ -247,7 +247,7 @@ function signedOf(tokens: readonly string[], hedges: Hedges): NumberWords | unde
   if (isNumber(figure)) return signedFigure(tokens, sign + 1);
   if (tokens.some(isNumber)) return HEDGE;
   if (figure === hedges.zero) return tokens.slice(sign + 2).some(isFigure) ? HEDGE : undefined;
-  return { kind: 'negative', magnitude: undefined };
+  return NEGATIVE;
 }
 
 // Names are taken out first, so only what the cook said about the check is judged.
@@ -300,27 +300,97 @@ function joinDigits(parts: readonly string[]): string[] {
   return joined;
 }
 
-// The value a figure gives where the words alone give one: digits, or the zero word. Every other number
-// word needs the intent layer's grammar ("thirty eight"), so none is read here.
-function figureValue(part: string, hedges: Hedges): number | undefined {
-  if (isNumber(part)) return Number(part);
-  return part === hedges.zero ? 0 : undefined;
+// A figure as the digits it is written in, where the words alone give one: digits, or the zero word.
+// Every other number word needs the intent layer's grammar ("thirty eight"), so none is read here.
+function figureDigits(part: string, hedges: Hedges): string | undefined {
+  if (isNumber(part)) return part;
+  return part === hedges.zero ? '0' : undefined;
+}
+
+const DIGIT_RUN = /^\d+$/;
+const POINT = 'point';
+// The one fraction read in words. Any other ("38 and a quarter") is the intent layer's to read, so the
+// whole figure before it is compared as said.
+const AND_A_HALF: readonly string[] = ['and', 'a', 'half'];
+// The digits after a point said one word at a time ("point five").
+const DIGIT_OF_WORD: ReadonlyMap<string, string> = new Map(
+  ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'].map((word, digit) => [word, String(digit)]),
+);
+
+// Past the last part the lookup finds nothing, which ends the run.
+function digitWordsAt(parts: readonly string[], at: number): string {
+  let digits = '';
+  let digit = DIGIT_OF_WORD.get(parts[at]);
+  while (digit !== undefined) {
+    digits += digit;
+    digit = DIGIT_OF_WORD.get(parts[at + digits.length]);
+  }
+  return digits;
+}
+
+interface Fraction {
+  // The digits after the point, or undefined for a point no digits follow ("38 point fifty").
+  digits: string | undefined;
+  length: number;
+}
+
+// The fraction said at `at`, right after a whole figure: "and a half", or "point" and its digits, said
+// as one run ("point 5", and "point 2 5" once single digits are joined) or as digit words ("point five").
+function fractionAt(parts: readonly string[], at: number): Fraction | undefined {
+  if (AND_A_HALF.every((word, offset) => parts[at + offset] === word)) return { digits: '5', length: AND_A_HALF.length };
+  if (parts[at] !== POINT) return undefined;
+  // A point at the very end tests the text "undefined", which is no run of digits.
+  const run = parts[at + 1];
+  if (DIGIT_RUN.test(run)) return { digits: run, length: 2 };
+  const words = digitWordsAt(parts, at + 1);
+  return { digits: words === '' ? undefined : words, length: 1 + words.length };
+}
+
+interface FigureAt {
+  figure: number | undefined;
+  length: number;
+}
+
+// The figure at `at` with a fraction said after it read in, so "38 point 5" and "38 and a half" are both
+// 38.5. A fraction that cannot be read gives NaN, which equals no value: a point no digits follow, or a
+// fraction said after a figure that has one already ("38.5 and a half").
+function figureAt(parts: readonly string[], at: number, hedges: Hedges): FigureAt {
+  const digits = figureDigits(parts[at], hedges);
+  if (digits === undefined) return { figure: undefined, length: 1 };
+  const fraction = fractionAt(parts, at + 1);
+  if (fraction === undefined) return { figure: Number(digits), length: 1 };
+  const figure = fraction.digits === undefined ? Number.NaN : Number(`${digits}.${fraction.digits}`);
+  return { figure, length: 1 + fraction.length };
+}
+
+// Every figure in the parts, single digits said one at a time joined first, so "3 8 point 5" is 38.5.
+function figuresSaid(parts: readonly string[], hedges: Hedges): number[] {
+  const joined = joinDigits(parts);
+  const figures: number[] = [];
+  let at = 0;
+  while (at < joined.length) {
+    const { figure, length } = figureAt(joined, at, hedges);
+    if (figure !== undefined) figures.push(figure);
+    at += length;
+  }
+  return figures;
 }
 
 // Whether the words name a figure the value is not, once names are taken out, so a value sent beside
 // another number ("walk-in 38" with 39) is never logged as what the cook said. Every figure counts, since
-// two figures are two readings or a reading and a time. A whole figure with more words after it may give
-// only the value's whole degrees, because a fraction said in words ("38 and a half") is the intent
-// layer's to read; with nothing after it ("walk-in 41" with 41.5) it is another number.
+// two figures are two readings or a reading and a time, and each is compared whole: "41 degrees" is not
+// 41.9, and "38 and a half" is 38.5, never 38.9 or 38.
 export function namesAnotherFigure(tokens: readonly string[], profile: KitchenProfile, value: number): boolean {
-  const parts = joinDigits(partsOf(tokens, profile));
+  return figuresSaid(partsOf(tokens, profile), profile.vocabulary.hedges).some((figure) => figure !== value);
+}
+
+// The same for words that say a reading below zero, whose sign stands apart from the figure ("minus 5",
+// "-5", "5 below"): each figure is held to the value's size, so "minus 5 and 7" is no -5. The zero a sign
+// "below" ends on ("5 degrees below zero") is part of the sign, never a figure.
+export function namesAnotherMagnitude(tokens: readonly string[], profile: KitchenProfile, magnitude: number): boolean {
   const { hedges } = profile.vocabulary;
-  return parts.some((part, at) => {
-    const figure = figureValue(part, hedges);
-    if (figure === undefined || figure === value) return false;
-    const fractionMayFollow = at < parts.length - 1 && Math.trunc(value) === figure;
-    return !fractionMayFollow;
-  });
+  const parts = partsOf(tokens, profile).filter((_, at, all) => !isSignBelow(all, at - 1, hedges));
+  return figuresSaid(parts, hedges).some((figure) => Math.abs(figure) !== magnitude);
 }
 
 interface Named {
@@ -353,24 +423,29 @@ function namedOf(profile: KitchenProfile): readonly Named[] {
   return named;
 }
 
+// The measured id the contract gives a unit's air, said as the word itself.
+const AIR = 'air';
+
 export interface NamedInWords {
   checkPoints: ReadonlySet<string>;
-  foods: ReadonlySet<string>;
+  // What the reading was taken of: the foods named, and the air when the word is said outside a name.
+  measured: ReadonlySet<string>;
 }
 
-// The check points and foods the words name, each found longest first, so "walk-in freezer" names the
-// freezer and "soup well" the check point, never the walk-in or the soup.
+// The check points and the measured the words name, each name found longest first, so "walk-in freezer"
+// names the freezer and "soup well" the check point, never the walk-in or the soup.
 export function namedInWords(tokens: readonly string[], profile: KitchenProfile): NamedInWords {
   const named = namedOf(profile);
   const checkPoints = new Set<string>();
-  const foods = new Set<string>();
+  const measured = new Set<string>();
   let at = 0;
   while (at < tokens.length) {
     const name = named.find((candidate) => candidate.tokens.every((item, offset) => tokens[at + offset] === item));
-    if (name) (name.kind === 'checkPoint' ? checkPoints : foods).add(name.id);
+    if (name) (name.kind === 'checkPoint' ? checkPoints : measured).add(name.id);
+    else if (tokens[at] === AIR) measured.add(AIR);
     at += name ? name.tokens.length : 1;
   }
-  return { checkPoints, foods };
+  return { checkPoints, measured };
 }
 
 // A figure a thermometer could show, kept in a refused line so it quotes "under 41" or "38 or 39" as

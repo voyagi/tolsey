@@ -231,6 +231,19 @@ describe('pending prompts answered in separate requests, and initials from the r
       expect(ofKind(await lines(kitchenId), 'reading')).toHaveLength(0);
     });
 
+    // The host's check point and the cook's words answer the same question; when they disagree the
+    // record cannot tell which check read 39.
+    it('refuses an answer whose words name another check point than the one sent', async () => {
+      const kitchenId = await kitchen();
+      const prompt = promptOf(await say(kitchenId, { value: 39, initials: 'AB' }));
+
+      const refused = await say(kitchenId, { check_point: 'walk_in', words: 'the soup well', pending_prompt_id: prompt.id });
+
+      expect(refused.content[0]?.text).toBe('I could not match the check or food you said. Say the check and its number again.');
+      expect(refused.structuredContent).toMatchObject({ outcome: 'refused', checkPoint: { id: 'walk_in' } });
+      expect(ofKind(await lines(kitchenId), 'reading')).toHaveLength(0);
+    });
+
     it('asks which check first, then who is logging, and logs after both answers', async () => {
       const kitchenId = await kitchen();
       const first = await say(kitchenId, { value: 39 });

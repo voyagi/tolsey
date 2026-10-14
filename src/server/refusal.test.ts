@@ -159,18 +159,56 @@ describe('a check given without a number, through MCP', () => {
       expect(await worker.store.openChecks(kitchenId, DAY)).toEqual(['walk_in']);
     });
 
-    // Judged at the soup well, a walk-in 38 would fail hot holding: the call is refused instead.
-    it('refuses "walk-in reads 38" sent with the soup well, judges nothing and asks about the soup well', async () => {
+    // Judged at the soup well, a walk-in 38 would fail hot holding: the call is refused instead, and the
+    // reply asks for the whole reading again, since the soup well's number would settle nothing.
+    it.each([
+      ['soup_well', undefined, 'walk-in reads 38', 38],
+      ['soup_well', undefined, 'not the soup well, the walk-in reads 38', 38],
+      ['walk_in', 'chicken_soup', 'walk-in air temperature reads 38', 38],
+    ])('refuses the check point %s with food %s beside "%s", judges nothing and says the words do not match', async (check_point, measured, words, value) => {
       const kitchenId = await kitchen();
-      const result = await call(kitchenId, { check_point: 'soup_well', value: 38, words: 'walk-in reads 38', initials: 'AB' });
+      const result = await call(kitchenId, { check_point, measured, value, words, initials: 'AB' });
 
       expect(result.isError).not.toBe(true);
-      expect(result.content[0]?.text).toBe('I need the number on the thermometer. What does the soup well read?');
+      expect(result.content[0]?.text).toBe('I could not match the check or food you said. Say the check and its number again.');
       expect(result.structuredContent).toMatchObject({ outcome: 'refused', prompt: { kind: 'number' } });
       expect(result.structuredContent).not.toHaveProperty('rule');
       const stored = await lines(kitchenId);
       expect(ofKind(stored, 'reading')).toHaveLength(0);
       expect(stored.filter((line) => line.valueTenths !== null || line.verdict !== null)).toHaveLength(0);
+    });
+
+    // Receiving judges each food by its own row: logged with no food, a failing delivery would be stored
+    // unjudged and open no fix.
+    it('refuses a raw chicken delivery at 45 sent with no food, and stores no unjudged reading', async () => {
+      const kitchenId = await kitchen();
+      const result = await call(kitchenId, { check_point: 'receiving', value: 45, words: 'the raw chicken reads 45', initials: 'AB' });
+
+      expect(result.structuredContent).toMatchObject({ outcome: 'refused', prompt: { kind: 'number' } });
+      expect(ofKind(await lines(kitchenId), 'reading')).toHaveLength(0);
+
+      const judged = await call(kitchenId, { check_point: 'receiving', measured: 'raw_chicken', value: 45, words: 'the raw chicken reads 45', initials: 'AB' });
+      expect(judged.structuredContent).toMatchObject({ outcome: 'out_of_range', rule: { id: 'receiving_cold' } });
+    });
+
+    it.each([
+      ['the walk-in reads 41 degrees', 41.9],
+      ['the walk-in reads 38 and a half', 38.9],
+      ['the walk-in shelf 2 reads 38', 38],
+    ])('refuses "%s" beside the value %d, a number the words never say', async (words, value) => {
+      const kitchenId = await kitchen();
+      const result = await call(kitchenId, { check_point: 'walk_in', value, words, initials: 'AB' });
+
+      expect(result.structuredContent).toMatchObject({ outcome: 'refused', prompt: { kind: 'number' } });
+      expect(ofKind(await lines(kitchenId), 'reading')).toHaveLength(0);
+    });
+
+    it('logs "the walk-in reads 38 point 5" beside the value 38.5', async () => {
+      const kitchenId = await kitchen();
+      const result = await call(kitchenId, { check_point: 'walk_in', value: 38.5, words: 'the walk-in reads 38 point 5', initials: 'AB' });
+
+      expect(result.structuredContent).toMatchObject({ outcome: 'in_range', value: 38.5 });
+      expect(ofKind(await lines(kitchenId), 'reading')).toEqual([expect.objectContaining({ valueTenths: 385 })]);
     });
 
     // The 130s straddle the hot-holding limit of 135, so a decade must never pass as a hot reading.
@@ -206,7 +244,9 @@ describe('a check given without a number, through MCP', () => {
     it.each([
       [-5, 'the freezer reads 5'],
       [-5, 'the freezer reads five'],
-    ])('refuses value %d beside "%s", a figure said with no sign', async (value, words) => {
+      [-5, 'the freezer reads minus 5 and 7'],
+      [5, 'the freezer reads minus 5, 2 minutes ago'],
+    ])('refuses value %d beside "%s", a figure said with no sign or a second figure', async (value, words) => {
       const kitchenId = await kitchen();
       const result = await call(kitchenId, { check_point: 'freezer', value, words, initials: 'AB' });
 

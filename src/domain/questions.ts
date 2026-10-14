@@ -7,6 +7,10 @@ export const WHO_IS_LOGGING_REPLY = 'Who is logging?';
 // number" about one line (READ-05) and a third digit-repeat miss (READ-07).
 export const LOG_BY_HAND_REPLY = 'Log it by hand.';
 
+// Words naming another check point or food than the call's: asking that check point's number again could
+// never settle which one the cook read, so the whole reading is asked for again.
+export const DISPUTE_REPLY = 'I could not match the check or food you said. Say the check and its number again.';
+
 export function askAgainReply(checkPoint: CheckPoint): string {
   return `What does ${checkPoint.askAs} read?`;
 }
