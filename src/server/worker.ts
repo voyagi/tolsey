@@ -171,11 +171,12 @@ export function createWorker({ clock, storeFor = (env) => new D1Store(env.DB) }:
       }
     },
 
-    // The Cron Trigger's own instant is the sweep's clock, so a late run deletes by the hour it was
-    // scheduled for. A failure is rethrown without its message, so the run still reads as failed.
+    // The Cron Trigger's own instant decides what has expired, so a late run deletes by the hour it was
+    // scheduled for, and the Worker's clock dates the budget charge, so its deletes count on the day
+    // they ran. A failure is rethrown without its message, so the run still reads as failed.
     async scheduled(controller: ScheduledRun, env: WorkerEnv): Promise<void> {
       try {
-        await runScheduledSweep(env.DB, controller.scheduledTime, STORE_LIMITS, ROWS_PER_WRITE);
+        await runScheduledSweep(env.DB, controller.scheduledTime, STORE_LIMITS, ROWS_PER_WRITE, () => clock.now());
       } catch (error) {
         logFault('[retention]', error);
         throw new Error('the retention sweep failed');

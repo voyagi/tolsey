@@ -1,5 +1,5 @@
 import { createTestHarness } from 'wrangler';
-import { createWorker, type WorkerEnv } from '../server/worker';
+import { createWorker, type ScheduledRun, type WorkerEnv } from '../server/worker';
 import { D1Store } from '../store/d1-store';
 import type { D1Like, StoredLine } from '../store/port';
 import { openTestD1 } from './d1';
@@ -39,6 +39,7 @@ export interface MintedKitchen {
 export interface InProcessWorker {
   baseUrl: URL;
   fetch: FetchLike;
+  scheduled(run: ScheduledRun): Promise<void>;
   clock: TestClock;
   db: D1Like;
   store: D1Store;
@@ -104,6 +105,7 @@ export async function openInProcessWorker(): Promise<InProcessWorker> {
   return {
     baseUrl: new URL(IN_PROCESS_BASE),
     fetch: fetchInProcess,
+    scheduled: (run) => worker.scheduled(run, env),
     clock,
     db: d1.db,
     store: new D1Store(d1.db),

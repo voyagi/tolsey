@@ -30,13 +30,16 @@ export const DELETE_EXPIRED_LINE_COUNTS = `DELETE FROM kitchen_lines WHERE kitch
 
 // One bounded round. The budget add is a second call because no statement inside the batch can see
 // the batch's rows written; the budget is a counter, not the record, so a crash between the two calls
-// leaves one sweep uncounted rather than any line undeleted.
+// leaves one sweep uncounted rather than any line undeleted. `now` decides what has expired, and the
+// rows are charged to the UTC date `chargedAt` reads once the batch has run, because the allowance
+// counts a write on the day it happens. A mint's round runs at its own instant, so the two are one.
 export async function expireKitchens(
   db: D1Like,
   now: number,
   limits: StoreLimits,
   rowsPerWrite: RowsPerWrite,
   roundSize: number,
+  chargedAt: () => number = () => now,
 ): Promise<SweepRound> {
   const cutoff = now - limits.retentionAgeHours * HOUR_MS;
   const expired = await db.prepare(SELECT_EXPIRED).bind(cutoff, roundSize).all<{ id: string }>();
@@ -56,25 +59,28 @@ export async function expireKitchens(
   if (rowsDeleted === 0) return { kitchensRead, kitchensDeleted: 0, rowsCounted: 0 };
 
   const rowsCounted = rowsDeleted + rowsPerWrite.budget_add;
-  await addToBudget(db, utcDate(now), rowsCounted);
+  await addToBudget(db, utcDate(chargedAt()), rowsCounted);
   return { kitchensRead, kitchensDeleted: kitchens.meta.changes, rowsCounted };
 }
 
 // The hourly Cron Trigger's run: rounds until one reads a short page or the round cap is reached, which
 // keeps a run under the per-invocation query limit while still clearing every kitchen a day can mint.
 // A round that deleted less than it read lost part of its page to a concurrent round; older kitchens
-// can still be waiting, so only a short read ends the run.
+// can still be waiting, so only a short read ends the run. `now` is the trigger's scheduled instant and
+// `chargedAt` the Worker's clock: a run that starts late, past 00:00 UTC, deletes by the hour it was
+// scheduled for and charges the day it ran on.
 export async function runScheduledSweep(
   db: D1Like,
   now: number,
   limits: StoreLimits,
   rowsPerWrite: RowsPerWrite,
+  chargedAt: () => number,
 ): Promise<SweepRun> {
   let rounds = 0;
   let kitchensDeleted = 0;
   while (rounds < limits.maxSweepRounds) {
     rounds += 1;
-    const round = await expireKitchens(db, now, limits, rowsPerWrite, limits.cronSweepBatchLimit);
+    const round = await expireKitchens(db, now, limits, rowsPerWrite, limits.cronSweepBatchLimit, chargedAt);
     kitchensDeleted += round.kitchensDeleted;
     if (round.kitchensRead < limits.cronSweepBatchLimit) break;
   }

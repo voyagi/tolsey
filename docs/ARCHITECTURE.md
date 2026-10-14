@@ -96,7 +96,9 @@ answered 201 with `id`, `mcpPath` (`/mcp/k/<id>`), `closesAt` (end of the write 
 ### Retention
 
 The Worker's `scheduled` handler runs `runScheduledSweep` (`src/server/retention.ts`) on the hourly
-schedule `0 * * * *`, using the trigger's `scheduledTime` as its clock. Each round selects expired
+schedule `0 * * * *`. The trigger's `scheduledTime` decides which kitchens have expired, and the
+Worker's clock dates each round's budget charge, so a run that starts late still counts its deletes on
+the UTC day they were written. Each round selects expired
 scratch kitchens through the `kitchens_expiry` index and deletes the kitchens, their events and their
 line counters in one batch of three statements; these are the only DELETE statements in the
 codebase. The limits (`retentionAgeHours`, `sweepBatchLimit`, `cronSweepBatchLimit`,

@@ -42,8 +42,10 @@ was minted (`writeWindowMs` in `src/server/kitchens.ts`, reported to the visitor
 hourly Cron Trigger deletes each kitchen aged 22 hours 45 minutes or more together with all its lines,
 so while the hourly runs succeed and each starts within 15 minutes of the hour it was scheduled for,
 nothing a visitor wrote outlives 24 hours. The 15 minutes are an allowance, not a measurement: a run
-is handed the instant it was scheduled for (`scheduledTime`, which the sweep uses as its clock) and
-Cloudflare documents no guarantee of how soon after it the run starts. A test in
+is handed the instant it was scheduled for (`scheduledTime`, which decides what the sweep deletes) and
+Cloudflare documents no guarantee of how soon after it the run starts. The budget is charged by the
+Worker's own clock, read after each round's deletes, so a late run that starts after 00:00 UTC counts
+its deletes on the day they were written. A test in
 `src/server/budget.test.ts` holds the retention age, the hourly cadence and that allowance inside 24
 hours (PRIV-03), and the mint reports the same bound to the visitor as `expiresAt`
 (`deletionBoundMs` in `src/server/kitchens.ts`). A run that fails is recorded as failed in the Cron

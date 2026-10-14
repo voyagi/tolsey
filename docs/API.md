@@ -388,7 +388,8 @@ line (a `wrong_number` marker, a receipt, or a line on a digit-repeat chain), so
 (`expectedRowsFor` in `src/store/port.ts`, figures from `data/store/rows-per-write.json`).
 
 Retention spends the same daily total. Each sweep round, hourly or run by a mint, adds the rows it
-deleted plus `budget_add` (2) after the delete, and is never refused (`expireKitchens` in
+deleted plus `budget_add` (2) after the delete, to the UTC date the delete ran on, and is never
+refused (`expireKitchens` in
 `src/server/retention.ts`). A day's deletions can therefore push the total past `dailyRowCap` and
 leave fewer rows for mints and lines than the cap alone suggests.
 

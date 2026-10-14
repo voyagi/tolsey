@@ -7,7 +7,6 @@ const MINUTE_MS = 60_000;
 const LINES_EACH = 3;
 // 16:00 UTC on 2026-10-21: the hourly Cron Trigger's own instant.
 const SCHEDULED_AT = Date.UTC(2026, 9, 21, 16, 0);
-const SCHEDULED_DATE = '2026-10-21';
 
 describe('the hourly retention sweep in the built Worker (workerd)', () => {
   let harness: ReturnType<typeof builtWorkerHarness>;
@@ -29,8 +28,10 @@ describe('the hourly retention sweep in the built Worker (workerd)', () => {
     return (await db.prepare(query).bind(...values).first<{ n: number }>())?.n ?? -1;
   }
 
+  // The built Worker charges the sweep to the UTC date its own clock reads when the deletes run, not to
+  // the scheduled instant's date, so the count is taken over every date.
   async function budgetRows(): Promise<number> {
-    return (await db.prepare('SELECT rows FROM budget WHERE utc_date = ?1').bind(SCHEDULED_DATE).first<{ rows: number }>())?.rows ?? 0;
+    return (await db.prepare('SELECT COALESCE(SUM(rows), 0) AS n FROM budget').first<{ n: number }>())?.n ?? 0;
   }
 
   it('deletes kitchens at retention age and at 24 hours with all their lines, keeps a younger one and the demo row, and counts the deletes (E29)', async () => {

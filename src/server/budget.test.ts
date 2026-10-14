@@ -659,7 +659,7 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       await mintDirectly(worker.db);
       expect(await scratchKitchens()).toBe(2 + 1);
 
-      const run = await runScheduledSweep(worker.db, T0, limits, rowsPerWrite);
+      const run = await runScheduledSweep(worker.db, T0, limits, rowsPerWrite, () => T0);
       expect(run.kitchensDeleted).toBe(2);
       expect(await scratchKitchens()).toBe(1);
     });
@@ -668,15 +668,15 @@ describe('the daily row budget, the kitchen caps and retention', () => {
       const small: StoreLimits = { ...limits, cronSweepBatchLimit: 2, maxSweepRounds: 3 };
       await insertScratchKitchens(worker.db, [T0 - 24 * HOUR_MS]);
 
-      expect(await runScheduledSweep(worker.db, T0, small, rowsPerWrite)).toEqual({ rounds: 1, kitchensDeleted: 1 });
+      expect(await runScheduledSweep(worker.db, T0, small, rowsPerWrite, () => T0)).toEqual({ rounds: 1, kitchensDeleted: 1 });
     });
 
     it('runs rounds of cronSweepBatchLimit until maxSweepRounds, then leaves the rest to the next run', async () => {
       const small: StoreLimits = { ...limits, cronSweepBatchLimit: 2, maxSweepRounds: 3 };
       await insertScratchKitchens(worker.db, Array.from({ length: 10 }, (_, index) => T0 - 24 * HOUR_MS - index));
 
-      expect(await runScheduledSweep(worker.db, T0, small, rowsPerWrite)).toEqual({ rounds: 3, kitchensDeleted: 6 });
-      expect((await runScheduledSweep(worker.db, T0, small, rowsPerWrite)).kitchensDeleted).toBe(4);
+      expect(await runScheduledSweep(worker.db, T0, small, rowsPerWrite, () => T0)).toEqual({ rounds: 3, kitchensDeleted: 6 });
+      expect((await runScheduledSweep(worker.db, T0, small, rowsPerWrite, () => T0)).kitchensDeleted).toBe(4);
       expect(await scratchKitchens()).toBe(0);
     });
 
@@ -692,7 +692,7 @@ describe('the daily row budget, the kitchen caps and retention', () => {
         return selects === 1 ? [{ id: 'taken-a' }, { id: 'taken-b' }] : undefined;
       });
 
-      const run = await runScheduledSweep(raced.db, T0, small, rowsPerWrite);
+      const run = await runScheduledSweep(raced.db, T0, small, rowsPerWrite, () => T0);
 
       expect(run).toEqual({ rounds: 3, kitchensDeleted: 3 });
       for (const id of expired) expect(await kitchenExists(id)).toBe(false);
@@ -703,6 +703,42 @@ describe('the daily row budget, the kitchen caps and retention', () => {
         Math.floor(limits.dailyRowCap / rowsPerWrite.kitchen_create),
       );
       expect(STATEMENTS_PER_ROUND * limits.maxSweepRounds).toBeLessThanOrEqual(D1_QUERIES_PER_INVOCATION);
+    });
+  });
+
+  // The allowance resets at 00:00 UTC and counts a write on the day it happens, so a 23:00 run that
+  // starts after midnight spends the new day, whatever hour it was scheduled for.
+  describe('an hourly run that starts after 00:00 UTC', () => {
+    const SCHEDULED = Date.UTC(2026, 9, 20, 23, 0);
+    const STARTED = Date.UTC(2026, 9, 21, 0, 10);
+
+    it('deletes by the hour it was scheduled for and charges its deletes to the UTC date it ran on', async () => {
+      const retentionAge = limits.retentionAgeHours * HOUR_MS;
+      const expired = await expiredKitchenWithLines(3, SCHEDULED - retentionAge);
+      // Old enough by the hour the run started, not by the hour it was scheduled for.
+      const [younger] = await insertScratchKitchens(worker.db, [SCHEDULED - retentionAge + MINUTE_MS]);
+      worker.clock.set(STARTED);
+
+      await worker.scheduled({ scheduledTime: SCHEDULED, cron: '0 * * * *' });
+
+      expect(await kitchenExists(expired)).toBe(false);
+      expect(await kitchenExists(younger)).toBe(true);
+      expect(await budgetRows('2026-10-20')).toBe(0);
+      expect(await budgetRows('2026-10-21')).toBeGreaterThanOrEqual(1 + 3 + rowsPerWrite.budget_add);
+    });
+
+    it('reads the clock after each round, so a run that crosses 00:00 UTC charges each round to its own day', async () => {
+      const small: StoreLimits = { ...limits, cronSweepBatchLimit: 2, maxSweepRounds: 3 };
+      await insertScratchKitchens(worker.db, [0, 1, 2].map((index) => SCHEDULED - 24 * HOUR_MS - index));
+      const beforeMidnight = Date.UTC(2026, 9, 20, 23, 59);
+      let reads = 0;
+
+      const run = await runScheduledSweep(worker.db, SCHEDULED, small, rowsPerWrite, () => (reads++ === 0 ? beforeMidnight : STARTED));
+
+      expect(run).toEqual({ rounds: 2, kitchensDeleted: 3 });
+      expect(reads).toBe(2);
+      expect(await budgetRows('2026-10-20')).toBe(2 + rowsPerWrite.budget_add);
+      expect(await budgetRows('2026-10-21')).toBe(1 + rowsPerWrite.budget_add);
     });
   });
 
