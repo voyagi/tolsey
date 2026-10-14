@@ -125,17 +125,19 @@ describe('selectRule', () => {
 });
 
 describe('the initials a call gives', () => {
-  it.each(['', '  '])('asks who is logging when the initials are %j, never refusing them as off the roster', (initials) => {
+  it.each(['', '  ', '...', '--', '. .'])('asks who is logging when the initials are %j, never refusing them as off the roster', (initials) => {
     expect(decideLogReading(walkIn({ initials }), ctx)).toMatchObject({
       status: 'decided',
       result: { structuredContent: { outcome: 'held', prompt: { kind: 'who_is_logging' } } },
     });
   });
 
-  // A dotless i upper-cases to I, so a roster holding MI would otherwise take "mı" as its own entry.
+  // A dotless i upper-cases to I, so a roster holding MI would otherwise take "mı" as its own entry, and
+  // one holding IM "ım": the letter outside A to Z is refused first or last.
   it('refuses initials holding a letter outside A to Z, never upper-casing it into a roster entry', () => {
-    const withMi: DecisionContext = { ...ctx, profile: KitchenProfileSchema.parse({ ...demoJson, roster: [...demoJson.roster, 'MI'] }) };
+    const withMi: DecisionContext = { ...ctx, profile: KitchenProfileSchema.parse({ ...demoJson, roster: [...demoJson.roster, 'MI', 'IM'] }) };
     expect(decideLogReading(walkIn({ initials: 'mı' }), withMi)).toEqual({ status: 'rejected', code: 'initials_not_on_roster' });
+    expect(decideLogReading(walkIn({ initials: 'ım' }), withMi)).toEqual({ status: 'rejected', code: 'initials_not_on_roster' });
     expect(decideLogReading(walkIn({ initials: 'mi' }), withMi)).toMatchObject({ status: 'decided', event: { initials: 'MI' } });
   });
 });

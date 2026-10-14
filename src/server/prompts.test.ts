@@ -556,6 +556,19 @@ describe('pending prompts answered in separate requests, and initials from the r
       expect(await lines(kitchenId)).toHaveLength(0);
     });
 
+    // A transcript of a cook who said no letters can arrive as punctuation alone: it names nobody, so
+    // the reading is held for its initials rather than refused as someone off the roster.
+    it.each(['...', '--'])('asks who is logging when the initials are only "%s", and stores none', async (initials) => {
+      const kitchenId = await kitchen();
+      const held = await say(kitchenId, { check_point: 'walk_in', value: 38, initials });
+
+      expect(held.isError).toBeFalsy();
+      expect(held.content[0]?.text).toBe('Who is logging?');
+      expect(promptOf(held).kind).toBe('who_is_logging');
+      const stored = await lines(kitchenId);
+      expect(stored.map((line) => [line.kind, line.initials])).toEqual([['held', null]]);
+    });
+
     it.each(['ab', 'A.B.', 'a b'])('logs initials sent as "%s" in the roster form AB', async (initials) => {
       const kitchenId = await kitchen();
       const result = await say(kitchenId, { check_point: 'walk_in', value: 38, initials });

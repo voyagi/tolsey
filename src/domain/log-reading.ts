@@ -106,11 +106,13 @@ function ruleOfTarget(target: SupersedeTarget): TemperatureRow | undefined {
 // A host transcribing spelled letters sends "ab", "A.B." or "a b"; a stored line carries the
 // roster's own form. Only what is not a letter is dropped: a letter outside A to Z stays, and is never
 // upper-cased into one (a dotless i would become I), so an accented E before AB is refused, never AB.
-// Blank initials are no initials, so the reading is asked "Who is logging?".
+// Initials with no letter in them, blank or only the dots and dashes a transcript can leave, are no
+// initials, so the reading is asked "Who is logging?".
 function rosterInitials(initials: string | undefined): string | undefined {
-  if (initials === undefined || initials.trim() === '') return undefined;
+  if (initials === undefined) return undefined;
   const letters = initials.replace(/[^\p{L}]/gu, '');
-  return /^[A-Za-z]*$/.test(letters) ? letters.toUpperCase() : letters;
+  if (letters === '') return undefined;
+  return /^[A-Za-z]+$/.test(letters) ? letters.toUpperCase() : letters;
 }
 
 interface Judged {
