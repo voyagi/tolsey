@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/knip/schema-jsonc.json",
+  "entry": [
+    // Gate harnesses and their mutant harnesses are run directly with node, never imported.
+    "scripts/*.mjs",
+    // The probe Worker is named only in intl-probe.wrangler.jsonc, which the Intl parity e2e test starts.
+    "src/test-support/intl-probe.worker.ts"
+  ],
+  // Reference mockups are loaded by HTML pages, which knip does not follow.
+  "ignoreFiles": ["design/mockups/**"],
+  "ignoreDependencies": [
+    // The launch page's structured-data types arrive in phase 3.
+    "schema-dts",
+    // The cards register through it in phase 2; pinned now in lockstep with server and client.
+    "@modelcontextprotocol/ext-apps",
+    // knip reads "testRunner": "command" as a package, but the command runner ships inside
+    // @stryker-mutator/core.
+    "@stryker-mutator/command-runner"
+  ]
+}

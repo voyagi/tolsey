@@ -10,19 +10,24 @@
 //
 // WHAT IT CHECKS in docs/ai-act.md:
 //   - one section heading per paragraph, all four of 50(1) 50(2) 50(3) 50(4)
-//   - each section carries a verdict: APPLIES, DOES NOT APPLY, or FALLS ON <third party>
+//   - each section carries a verdict after its heading's last colon or on a Verdict: line, never
+//     in the heading's topic or in body prose: APPLIES, DOES NOT APPLY, or falls on <a named third
+//     party> (not empty, tbd, todo, ?), exactly one of them
 //   - every APPLIES section names at least one backticked repo path that EXISTS (the mechanism)
 //     and at least one backticked path that is a TEST file and exists (what pins it)
+//   - every backticked repo path anywhere in the file exists, whatever the verdict beside it: a
+//     determination citing a file that moved or was deleted has lost its evidence
 //
 // An ABSENT file prints SKIPPED and exits 0: whether a product is AI-facing is decided
 // before release, where the Determinations table in docs/privacy-accountability.md demands the
 // verdict. This gate makes a
-// WRITTEN determination mechanically honest; it cannot detect an unwritten one.
+// WRITTEN determination mechanically honest; it cannot detect an unwritten one. A repository that
+// has decided it needs the document passes --require, and then an absent file exits 1.
 //
-// Exit codes: 0 determined (or absent, SKIPPED), 1 missing/undetermined/unbacked sections,
-// 2 could not run.
+// Exit codes: 0 determined (or absent without --require, SKIPPED), 1 missing/undetermined/unbacked
+// sections, a cited file that does not exist, or absent with --require, 2 could not run.
 //
-// Usage: node scripts/check-ai-act.mjs [path] [--selftest]
+// Usage: node scripts/check-ai-act.mjs [path] [--require] [--selftest]
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -31,10 +36,48 @@ import { fileURLToPath } from 'node:url';
 
 const PARAGRAPHS = ['1', '2', '3', '4'];
 const TEST_PATH_RE = /\.(test|spec)\.[\w.]+$|(^|\/)tests?\//i;
+// "Verdict: X", "**Verdict**: X" and "**Verdict:** X", each pinned by its own selftest case.
+const VERDICT_LINE_RE = /^\**Verdict\**:\**[ \t]*(.*)$/im;
+const PLACEHOLDER_PARTY_RE = /^(tbd|todo|\?+)$/i;
 
-function run(cwd, explicitPath) {
+// A repository path as a document cites it: relative, inside at least one folder, a file name with an
+// extension, no parent step. A media type (`text/html`) or an address (`ui://...`) is not one.
+function isRepoPath(token) {
+  return /^[\w.-]+(\/[\w.-]+)+$/.test(token) && /\.\w+$/.test(token) && !token.split('/').includes('..');
+}
+
+// A verdict is read only where one is written: after the heading's last colon and on a Verdict line.
+// A phrase in the heading's topic ("marking, which falls on providers") or in the body prose ("this
+// DOES NOT APPLY to us, we think") is never a verdict.
+function verdictOf(section) {
+  const heading = section.split('\n', 1)[0];
+  const colon = heading.lastIndexOf(':');
+  const places = colon === -1 ? [] : [heading.slice(colon + 1)];
+  const line = VERDICT_LINE_RE.exec(section);
+  if (line) places.push(line[1]);
+  let applies = false;
+  let notApply = false;
+  let unnamedParty = false;
+  for (const text of places) {
+    if (/\bAPPLIES\b/i.test(text)) applies = true;
+    if (/\b(DOES NOT APPLY|NOT APPLICABLE)\b/i.test(text)) notApply = true;
+    const fallsOn = /\bfalls on\b(.*)$/i.exec(text);
+    if (fallsOn) {
+      const party = fallsOn[1].replace(/[*_`]/g, '').replace(/^[\s:,.-]+|[\s,.;]+$/g, '');
+      if (party === '' || PLACEHOLDER_PARTY_RE.test(party)) unnamedParty = true;
+      else notApply = true;
+    }
+  }
+  return { applies, notApply, unnamedParty };
+}
+
+function run(cwd, explicitPath, required) {
   const file = explicitPath || join(cwd, 'docs', 'ai-act.md');
   if (!existsSync(file)) {
+    if (required) {
+      console.error(`[ai-act] MISSING: ${explicitPath || 'docs/ai-act.md'} is required here (--require). This repository decided it needs a written Article 50 determination.`);
+      return 1;
+    }
     console.log(`[ai-act] SKIPPED: no ${explicitPath || 'docs/ai-act.md'}. An AI-facing product without a written Article 50 determination is refused at sign-off, not here.`);
     return 0;
   }
@@ -56,10 +99,17 @@ function run(cwd, explicitPath) {
     const rest = body.slice(head.index);
     const end = rest.slice(head[0].length).search(/^##\s/m);
     const section = end === -1 ? rest : rest.slice(0, head[0].length + end);
-    const applies = /\bAPPLIES\b/i.test(section.split('\n', 1)[0]) || /^\*\*?Verdict\*\*?:?\s*APPLIES/im.test(section);
-    const notApply = /\b(DOES NOT APPLY|NOT APPLICABLE)\b/i.test(section) || /falls on\b/i.test(section.split('\n', 1)[0]) || /:\s*falls on/i.test(section);
+    const { applies, notApply, unnamedParty } = verdictOf(section);
+    if (unnamedParty) {
+      problems.push(`Article 50(${p}): "falls on" names no party - write who the obligation falls on`);
+      continue;
+    }
     if (!applies && !notApply) {
       problems.push(`Article 50(${p}): no verdict found - the heading or a Verdict line must say APPLIES, DOES NOT APPLY, or falls on <the third party>`);
+      continue;
+    }
+    if (applies && notApply) {
+      problems.push(`Article 50(${p}): the verdict says both APPLIES and DOES NOT APPLY (or falls on a third party) - write one`);
       continue;
     }
     if (applies) {
@@ -74,6 +124,12 @@ function run(cwd, explicitPath) {
       if (tests.length === 0) {
         problems.push(`Article 50(${p}) APPLIES but names no existing test file in backticks - an unpinned marking disappears in the next refactor`);
       }
+    }
+  }
+  const cited = new Set([...body.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]).filter(isRepoPath));
+  for (const path of cited) {
+    if (!existsSync(join(cwd, path))) {
+      problems.push(`cites \`${path}\`, which does not exist - a determination pointing at a moved or deleted file is no longer evidence`);
     }
   }
   if (problems.length) {
@@ -104,9 +160,9 @@ function selftest() {
     }
     return root;
   };
-  const runCli = (cwd) => {
+  const runCli = (cwd, args = []) => {
     try {
-      const out = execFileSync(process.execPath, [self], { cwd, encoding: 'utf8', windowsHide: true, stdio: 'pipe' });
+      const out = execFileSync(process.execPath, [self, ...args], { cwd, encoding: 'utf8', windowsHide: true, stdio: 'pipe' });
       return { code: 0, out };
     } catch (e) {
       return { code: e.status == null ? -1 : e.status, out: String((e && e.stdout) || '') + String((e && e.stderr) || '') };
@@ -140,7 +196,59 @@ function selftest() {
     check('APPLIES naming a path that does not exist fails', runCli(fixture(
       '# AI Act\n\n## Article 50(1), interaction: APPLIES\n\nSee `src/gone.ts` and `src/gone.test.ts`.\n\n' + OTHERS)), 1, /names no existing mechanism path/);
     check('a falls-on verdict needs no mechanism here', runCli(fixture(
-      '# AI Act\n\n## Article 50(1), interaction: DOES NOT APPLY\n\ntext\n\n' + OTHERS)), 0, /determined/);
+      '# AI Act\n\n## Article 50(1), interaction: falls on the host platform\n\ntext\n\n' + OTHERS)), 0, /determined/);
+    check('a heading whose topic says "applies" in lower case reads only its DOES NOT APPLY verdict', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: DOES NOT APPLY\n\ntext\n\n' +
+      '## Article 50(2), marking: falls on the speech vendor\n\ntext\n\n' +
+      '## Article 50(3), what applies to emotion recognition: DOES NOT APPLY\n\ntext\n\n' +
+      '## Article 50(4), deepfakes: DOES NOT APPLY\n\ntext\n')), 0, /determined: all four/);
+    check('a heading whose topic says "falls on" reads only the APPLIES after its last colon', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: DOES NOT APPLY\n\ntext\n\n' +
+      '## Article 50(2), marking, which falls on providers: APPLIES\n\nThe marking is `src/domain/brief.ts`, pinned by `src/domain/brief.test.ts`.\n\n' +
+      '## Article 50(3), emotion recognition: DOES NOT APPLY\n\ntext\n\n' +
+      '## Article 50(4), deepfakes: DOES NOT APPLY\n\ntext\n',
+      MECH)), 0, /determined: all four/);
+    check('a heading with two verdicts after its colon fails as contradictory', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: APPLIES, DOES NOT APPLY\n\n`src/domain/brief.ts`, `src/domain/brief.test.ts`\n\n' + OTHERS,
+      MECH)), 1, /Article 50\(1\): the verdict says both APPLIES and DOES NOT APPLY/);
+    check('a section that says both APPLIES and DOES NOT APPLY fails as contradictory', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: APPLIES\n\nVerdict: DOES NOT APPLY\n\n`src/domain/brief.ts`, `src/domain/brief.test.ts`\n\n' + OTHERS,
+      MECH)), 1, /Article 50\(1\): the verdict says both APPLIES and DOES NOT APPLY/);
+    check('APPLIES beside a falls-on verdict fails as contradictory', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: APPLIES\n\nVerdict: falls on the host platform\n\n`src/domain/brief.ts`, `src/domain/brief.test.ts`\n\n' + OTHERS,
+      MECH)), 1, /Article 50\(1\): the verdict says both APPLIES and DOES NOT APPLY/);
+    check('an absent file with --require exits 1 naming the missing document', runCli(fixture(null), ['--require']),
+      1, /MISSING: docs\/ai-act\.md is required here \(--require\)/);
+    check('a present, determined file with --require exits 0', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: DOES NOT APPLY\n\ntext\n\n' + OTHERS), ['--require']), 0, /determined/);
+    check('DOES NOT APPLY written only in body prose, under a heading with no verdict, fails with no verdict', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction\n\nThis paragraph DOES NOT APPLY to us, we think.\n\n' + OTHERS)), 1, /Article 50\(1\): no verdict/);
+    check('a heading verdict "falls on" with no party fails', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: falls on\n\ntext\n\n' + OTHERS)), 1, /Article 50\(1\): "falls on" names no party/);
+    check('"Verdict: falls on" with no party fails', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction\n\nVerdict: falls on\n\n' + OTHERS)), 1, /Article 50\(1\): "falls on" names no party/);
+    check('"falls on tbd" is not a named party and fails', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: falls on tbd\n\ntext\n\n' + OTHERS)), 1, /Article 50\(1\): "falls on" names no party/);
+    check('a "Verdict: DOES NOT APPLY" line passes', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction\n\nVerdict: DOES NOT APPLY\n\n' + OTHERS)), 0, /determined/);
+    check('a "**Verdict:** DOES NOT APPLY" line passes', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction\n\n**Verdict:** DOES NOT APPLY\n\n' + OTHERS)), 0, /determined/);
+    check('a "**Verdict**: DOES NOT APPLY" line passes', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction\n\n**Verdict**: DOES NOT APPLY\n\n' + OTHERS)), 0, /determined/);
+    check('a DOES NOT APPLY section citing a file that does not exist fails naming the path', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: DOES NOT APPLY\n\nThe sentence waits in `src/domain/gone.ts`.\n\n' + OTHERS)),
+      1, /cites `src\/domain\/gone\.ts`, which does not exist/);
+    check('a DOES NOT APPLY section citing files that exist passes', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: DOES NOT APPLY\n\nThe sentence waits in `src/domain/brief.ts`, pinned by `src/domain/brief.test.ts`.\n\n' + OTHERS,
+      MECH)), 0, /determined/);
+    check('a cited media type or ui address is not read as a path', runCli(fixture(
+      '# AI Act\n\n## Article 50(1), interaction: DOES NOT APPLY\n\nCards are `text/html` served as `ui://tolsey/reading.html`.\n\n' + OTHERS)),
+      0, /determined/);
+    check('the four sections in the order 50(4), 50(2), 50(1), 50(3) pass', runCli(fixture(
+      '# AI Act\n\n## Article 50(4), deepfakes: DOES NOT APPLY\n\ntext\n\n' +
+      '## Article 50(2), marking: falls on the speech vendor\n\ntext\n\n' +
+      '## Article 50(1), interaction: DOES NOT APPLY\n\ntext\n\n' +
+      '## Article 50(3), emotion recognition: DOES NOT APPLY\n\ntext\n')), 0, /determined: all four/);
   } finally {
     for (const r of roots) { try { rmSync(r, { recursive: true, force: true }); } catch {} }
   }
@@ -154,4 +262,4 @@ function selftest() {
 
 if (process.argv.includes('--selftest')) process.exit(selftest());
 const pathArg = process.argv.slice(2).find((a) => !a.startsWith('-'));
-process.exit(run(process.cwd(), pathArg));
+process.exit(run(process.cwd(), pathArg, process.argv.includes('--require')));

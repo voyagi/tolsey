@@ -1,0 +1,22 @@
+# Text is stored and checked out with LF on every platform, so a Windows checkout matches CI.
+* text=auto eol=lf
+
+# These binary types are never normalized or diffed as text. A binary file of any other type is
+# left to git's own content check under text=auto, so give its extension a line here when it arrives.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.avif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.mp4 binary
+*.webm binary
+*.wasm binary
+*.zip binary

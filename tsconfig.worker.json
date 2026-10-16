@@ -5,6 +5,6 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["src/server"],
-  "exclude": ["src/**/*.test.ts"]
+  "include": ["src/contract", "src/domain", "src/store", "src/server"],
+  "exclude": ["src/**/*.test.ts", "src/test-support"]
 }

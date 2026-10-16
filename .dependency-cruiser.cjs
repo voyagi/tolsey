@@ -20,6 +20,33 @@ module.exports = {
       to: { path: '^src/server' },
     },
     {
+      name: 'domain-is-pure',
+      severity: 'error',
+      comment:
+        'The domain decides from its arguments alone: it never reaches into storage or the Worker, so the same ' +
+        'decision runs in any test, host or replay. Type-only imports are erased before this check sees them.',
+      from: { path: '^src/domain', pathNot: '\\.test\\.ts$' },
+      to: { path: '^src/(store|server)' },
+    },
+    {
+      name: 'domain-reads-no-data',
+      severity: 'error',
+      comment:
+        'Rule rows and the kitchen profile reach the domain as arguments from src/server/data.ts, never by ' +
+        'import, so a limit is always the one the server loaded and validated (RULE-01). Tests may read the data.',
+      from: { path: '^src/domain', pathNot: '\\.test\\.ts$' },
+      to: { path: '^data/' },
+    },
+    {
+      name: 'judge-never-reads-rules',
+      severity: 'error',
+      comment:
+        'The judge compares a reading with the limit it is handed and nothing else. It stays blind to the rule ' +
+        'table, the loaded data and how sources are shown even if the domain-wide data rule is ever relaxed.',
+      from: { path: '^src/domain/judge', pathNot: '\\.test\\.ts$' },
+      to: { path: '^(data/|src/(server/data|domain/citation))' },
+    },
+    {
       name: 'no-circular',
       severity: 'error',
       comment: 'Circular dependencies make code hard to reason about, test, and tree-shake.',

@@ -1,0 +1,46 @@
+import {
+  baseEvent,
+  baseOutput,
+  decided,
+  promptExpiry,
+  type Decision,
+  type DecisionContext,
+  type Facts,
+  type Links,
+  type PromptKind,
+} from './decision';
+import { askAgainReply } from './questions';
+import type { CheckPoint } from './rule';
+import { rebuildWords } from './words';
+
+const NO_CHECK_REPLY = 'I need a check and the number on the thermometer.';
+const NUMBER_PROMPT: PromptKind = 'number';
+
+/** @public The question asked back for a check given without a number. */
+export function refusalReply(checkPoint: CheckPoint | undefined): string {
+  if (checkPoint === undefined) return NO_CHECK_REPLY;
+  return `I need the number on the thermometer. ${askAgainReply(checkPoint)}`;
+}
+
+// The refusal is also the question asking for the number, so it is stored as a prompt when there is
+// a check to ask about. A call naming no check gets a reply that asks nothing, so it stores no
+// prompt and opens no check. A refusal for another reason than a missing number says that reason.
+export function refusalDecision(facts: Facts, ctx: DecisionContext, links: Links, text = refusalReply(facts.checkPoint)): Decision {
+  const lineId = ctx.newId();
+  const { checkPoint } = facts;
+  const asks = checkPoint !== undefined;
+  const event = {
+    ...baseEvent(ctx, facts, 'refusal', lineId, links),
+    words: rebuildWords(facts.words, ctx.profile, undefined, checkPoint),
+    outcome: 'refused',
+    rulesVersion: ctx.rulesVersion,
+    promptKind: asks ? NUMBER_PROMPT : null,
+    expiresAt: asks ? promptExpiry(ctx) : null,
+  };
+  const structured = {
+    ...baseOutput(ctx, facts, 'refused'),
+    lineId,
+    ...(asks ? { prompt: { kind: NUMBER_PROMPT, id: lineId } } : {}),
+  };
+  return decided(event, text, structured);
+}

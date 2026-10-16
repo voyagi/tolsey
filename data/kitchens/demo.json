@@ -1,0 +1,189 @@
+{
+  "timeZone": "America/Chicago",
+  "dayStart": "04:00",
+  "roster": ["AB", "MR", "JT", "KL"],
+  "foods": [
+    { "id": "chicken_soup", "name": "Chicken soup", "aliases": ["soup", "chicken soup"] },
+    { "id": "prime_rib", "name": "Prime rib", "aliases": ["prime rib", "rib", "roast"], "roast": true },
+    { "id": "raw_chicken", "name": "Raw chicken", "aliases": ["raw chicken", "chicken"] },
+    { "id": "catered_chili", "name": "Catered chili", "aliases": ["catered chili", "chili"] },
+    { "id": "milk", "name": "Milk", "aliases": ["milk", "dairy"] }
+  ],
+  "checkPoints": [
+    {
+      "id": "walk_in",
+      "name": "Walk-in",
+      "askAs": "the walk-in",
+      "kind": "cold",
+      "aliases": ["walk-in", "walk in", "walk-in cooler"],
+      "airRule": "unit_air_cold",
+      "foodRule": "cold_holding",
+      "defaultMeasured": "air"
+    },
+    {
+      "id": "reach_in_1",
+      "name": "Reach-in one",
+      "askAs": "reach-in one",
+      "kind": "cold",
+      "aliases": ["reach-in one", "reach in one", "reach-in 1", "first reach-in"],
+      "airRule": "unit_air_cold",
+      "foodRule": "cold_holding",
+      "defaultMeasured": "air"
+    },
+    {
+      "id": "reach_in_2",
+      "name": "Reach-in two",
+      "askAs": "reach-in two",
+      "kind": "cold",
+      "aliases": ["reach-in two", "reach in two", "reach-in 2", "second reach-in"],
+      "airRule": "unit_air_cold",
+      "foodRule": "cold_holding",
+      "defaultMeasured": "air"
+    },
+    {
+      "id": "soup_well",
+      "name": "Soup well",
+      "askAs": "the soup well",
+      "kind": "hot",
+      "aliases": ["soup well", "steam well"],
+      "airRule": "unit_air_hot",
+      "foodRule": "hot_holding",
+      "defaultMeasured": "chicken_soup"
+    },
+    {
+      "id": "carving_station",
+      "name": "Carving station",
+      "askAs": "the carving station",
+      "kind": "hot",
+      "aliases": ["carving station", "carving", "carvery"],
+      "airRule": "unit_air_hot",
+      "foodRule": "hot_holding",
+      "roastRule": "hot_holding_roast",
+      "defaultMeasured": "prime_rib"
+    },
+    {
+      "id": "receiving",
+      "name": "Receiving",
+      "askAs": "the delivery",
+      "kind": "receiving",
+      "aliases": ["receiving", "delivery", "back door"],
+      "foodRules": {
+        "raw_chicken": "receiving_cold",
+        "catered_chili": "receiving_hot",
+        "milk": "receiving_law_milk"
+      }
+    },
+    {
+      "id": "freezer",
+      "name": "Freezer",
+      "askAs": "the freezer",
+      "kind": "freezer",
+      "aliases": ["freezer", "walk-in freezer"],
+      "airRule": "freezer_limit",
+      "defaultMeasured": "air"
+    },
+    {
+      "id": "cooling",
+      "name": "Cooling",
+      "askAs": "the cooling pan",
+      "kind": "cooling",
+      "aliases": ["cooling", "cool down", "cooling pan"]
+    },
+    {
+      "id": "reheat",
+      "name": "Reheat",
+      "askAs": "the reheat",
+      "kind": "reheat",
+      "aliases": ["reheat", "reheating"]
+    }
+  ],
+  "schedule": [
+    {
+      "id": "walk_in_cold_holding",
+      "checkPoint": "walk_in",
+      "check": "cold_holding",
+      "times": ["07:00", "10:00", "13:00", "16:00", "19:00", "22:00"],
+      "intervalRule": "cold_holding_check_interval",
+      "graceMinutes": 10
+    },
+    {
+      "id": "reach_in_1_cold_holding",
+      "checkPoint": "reach_in_1",
+      "check": "cold_holding",
+      "times": ["07:00", "10:00", "13:00", "16:00", "19:00", "22:00"],
+      "intervalRule": "cold_holding_check_interval",
+      "graceMinutes": 10
+    },
+    {
+      "id": "reach_in_2_cold_holding",
+      "checkPoint": "reach_in_2",
+      "check": "cold_holding",
+      "times": ["07:00", "10:00", "13:00", "16:00", "19:00", "22:00"],
+      "intervalRule": "cold_holding_check_interval",
+      "graceMinutes": 10
+    },
+    {
+      "id": "soup_well_hot_holding",
+      "checkPoint": "soup_well",
+      "check": "hot_holding",
+      "times": ["11:00", "13:00", "15:00", "17:00", "19:00", "21:00"],
+      "intervalRule": "hot_holding_check_interval",
+      "graceMinutes": 10
+    },
+    {
+      "id": "carving_station_hot_holding",
+      "checkPoint": "carving_station",
+      "check": "hot_holding",
+      "times": ["11:00", "13:00", "15:00", "17:00", "19:00", "21:00"],
+      "intervalRule": "hot_holding_check_interval",
+      "graceMinutes": 10
+    }
+  ],
+  "checklist": {
+    "opening": [
+      { "id": "probe_sanitized", "text": "Probe thermometer cleaned and sanitized" },
+      { "id": "units_on", "text": "Walk-in, reach-ins and freezer running and closed" },
+      { "id": "wells_filled", "text": "Soup well filled and heating before service" }
+    ],
+    "closing": [
+      { "id": "hot_food_out", "text": "Hot-held food cooled or discarded" },
+      { "id": "units_closed", "text": "Every unit door shut and running" },
+      { "id": "open_fixes_handed_over", "text": "Open fixes handed to the person in charge" }
+    ]
+  },
+  "noTimeAsPublicHealthControl": "Every hot and cold held food in this kitchen is held by temperature; none is held under time as a public health control (3-501.19).",
+  "correctionWindowSeconds": 120,
+  "promptExpirySeconds": 120,
+  "coarseBands": {
+    "cold": { "lowF": 20, "highF": 60 },
+    "hot": { "lowF": 100, "highF": 212 },
+    "receiving": { "lowF": -20, "highF": 212 },
+    "freezer": { "lowF": -30, "highF": 40 },
+    "cooling": { "lowF": 20, "highF": 212 },
+    "reheat": { "lowF": 20, "highF": 212 }
+  },
+  "vocabulary": {
+    "verbs": ["reads", "is", "at", "reading", "came", "in"],
+    "articles": ["the", "a", "its"],
+    "nouns": ["air", "degrees", "delivery", "temp", "temperature"],
+    "states": ["fine", "good", "ok", "okay", "normal", "cold", "cool", "warm", "hot", "everything", "all"],
+    "corrections": ["wrong number", "that's wrong", "wrong reading"],
+    "hedges": {
+      "limits": ["under", "over", "below", "above", "less", "more", "max", "maximum", "min", "minimum", "tops", "between"],
+      "below": "below",
+      "zero": "zero",
+      "signs": ["minus", "negative"],
+      "approximations": [
+        "about", "around", "roughly", "approximately", "approx", "approximate", "nearly", "almost", "near", "maybe",
+        "probably", "guess", "think", "like", "ish", "something", "same"
+      ],
+      "decades": ["high", "mid", "low", "upper", "lower"],
+      "tens": ["teens", "twenties", "thirties", "forties", "fifties", "sixties", "seventies", "eighties", "nineties"],
+      "ranges": ["or", "to", "through", "thru"],
+      "phrases": [
+        "same as before", "same as last time", "as usual", "at most", "at least", "up to", "or so", "or lower",
+        "or higher", "lower than", "higher than", "give or take", "close to", "or thereabouts"
+      ]
+    }
+  }
+}

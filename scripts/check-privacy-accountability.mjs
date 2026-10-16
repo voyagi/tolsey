@@ -13,12 +13,18 @@
 //
 // An ABSENT file prints SKIPPED and exits 0: the release checklist decides
 // WHICH products must carry the file; this gate only refuses to call a carried file settled
-// while a row is OPEN. A file WITHOUT the table fails: it predates the standard shape, and the
-// fix is adding the Determinations section in the shape shown above.
+// while a row is OPEN. A repository that has decided it carries the file passes --require, and
+// then an absent file exits 1. A file WITHOUT the table fails: it predates the standard shape,
+// and the fix is adding the Determinations section in the shape shown above. A reason that is
+// only tbd, todo or ? is refused like OPEN.
 //
-// Exit codes: 0 settled or absent (SKIPPED), 1 OPEN or malformed rows, 2 could not run.
+// Exit codes: 0 settled (or absent without --require, SKIPPED), 1 OPEN, placeholder or malformed
+// rows, a cited file that does not exist, or absent with --require, 2 could not run.
 //
-// Usage: node scripts/check-privacy-accountability.mjs [path] [--selftest]
+// A backticked repository path anywhere in the file ("Storage is in `docs/adr/0002-storage.md`") must
+// exist: the register's claims rest on it, and a file that moved takes that evidence with it.
+//
+// Usage: node scripts/check-privacy-accountability.mjs [path] [--require] [--selftest]
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -26,10 +32,22 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const VERDICT_RE = /^(OPEN\b|APPLIES\s*-\s*\S|N-A\s*-\s*\S)/i;
+// A reason that is only a marker to come back later is not a decision.
+const PLACEHOLDER_REASON_RE = /^(tbd|todo|\?+)$/i;
 
-function run(cwd, explicitPath) {
+// A repository path as a document cites it: relative, inside at least one folder, a file name with an
+// extension, no parent step. A media type (`text/html`) or an address (`ui://...`) is not one.
+function isRepoPath(token) {
+  return /^[\w.-]+(\/[\w.-]+)+$/.test(token) && /\.\w+$/.test(token) && !token.split('/').includes('..');
+}
+
+function run(cwd, explicitPath, required) {
   const file = explicitPath || join(cwd, 'docs', 'privacy-accountability.md');
   if (!existsSync(file)) {
+    if (required) {
+      console.error(`[privacy-accountability] MISSING: ${explicitPath || 'docs/privacy-accountability.md'} is required here (--require). This repository decided it carries a privacy register.`);
+      return 1;
+    }
     console.log(`[privacy-accountability] SKIPPED: no ${explicitPath || 'docs/privacy-accountability.md'}. Whether this product needs one is the sign-off rubric's question, not this gate's.`);
     return 0;
   }
@@ -45,10 +63,14 @@ function run(cwd, explicitPath) {
     console.error('[privacy-accountability] FAIL: the file has no "## Determinations" section. It predates the standard shape; add a Determinations table in the shape shown at the top of this script and decide each row.');
     return 1;
   }
-  const rows = section[1].split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l.startsWith('|') && !/^\|\s*-|^\|\s*Determination/i.test(l))
-    .map((l) => l.split('|').map((c) => c.trim()).filter((c, i, arr) => i > 0 && i < arr.length - 1));
+  // The header is the standard one, "| Determination | ...", on the line its separator follows. A row
+  // is never skipped for what its name says ("Determination of ...") or for a stray separator after
+  // it, and a colon-aligned separator is never read as a row.
+  const cellsOf = (l) => l.split('|').map((c) => c.trim()).filter((c, i, arr) => i > 0 && i < arr.length - 1);
+  const tableLines = section[1].split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith('|'));
+  const isSeparator = (l) => /^\|[\s:|-]*-[\s:|-]*$/.test(l);
+  const isHeader = (l, i) => isSeparator(tableLines[i + 1] ?? '') && /^determination$/i.test(cellsOf(l)[0] ?? '');
+  const rows = tableLines.filter((l, i) => !isSeparator(l) && !isHeader(l, i)).map(cellsOf);
   if (rows.length === 0) {
     console.error('[privacy-accountability] FAIL: the Determinations section holds no table rows. Every deferred decision needs a row, even if its verdict is OPEN.');
     return 1;
@@ -56,15 +78,27 @@ function run(cwd, explicitPath) {
   const problems = [];
   for (const cells of rows) {
     const [name, verdict] = cells;
-    if (!name) continue;
-    if (!verdict || !VERDICT_RE.test(verdict)) {
+    if (!name) {
+      problems.push(`a row with no determination name (verdict "${verdict || ''}") - name what is decided`);
+    } else if (!verdict || !VERDICT_RE.test(verdict)) {
       problems.push(`"${name}": verdict "${verdict || ''}" is not OPEN, "APPLIES - <what ships>", or "N-A - <reason>"`);
     } else if (/^OPEN\b/i.test(verdict)) {
       problems.push(`"${name}" is still OPEN - decide it, date it, and point at the evidence`);
+    } else {
+      const reason = verdict.replace(/^(APPLIES|N-A)\s*-\s*/i, '').trim();
+      if (reason === '' || PLACEHOLDER_REASON_RE.test(reason)) {
+        problems.push(`"${name}": the reason "${reason}" is a placeholder - write what ships, or why it does not apply`);
+      }
+    }
+  }
+  const cited = new Set([...body.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]).filter(isRepoPath));
+  for (const path of cited) {
+    if (!existsSync(join(cwd, path))) {
+      problems.push(`cites \`${path}\`, which does not exist - a claim resting on a moved or deleted file has lost its evidence`);
     }
   }
   if (problems.length) {
-    console.error(`[privacy-accountability] ${problems.length} undetermined row(s) in ${file}:`);
+    console.error(`[privacy-accountability] ${problems.length} problem(s) in ${file}:`);
     for (const p of problems) console.error(`  ${p}`);
     return 1;
   }
@@ -86,9 +120,9 @@ function selftest() {
     }
     return root;
   };
-  const runCli = (cwd) => {
+  const runCli = (cwd, args = []) => {
     try {
-      const out = execFileSync(process.execPath, [self], { cwd, encoding: 'utf8', windowsHide: true, stdio: 'pipe' });
+      const out = execFileSync(process.execPath, [self, ...args], { cwd, encoding: 'utf8', windowsHide: true, stdio: 'pipe' });
       return { code: 0, out };
     } catch (e) {
       return { code: e.status == null ? -1 : e.status, out: String((e && e.stdout) || '') + String((e && e.stderr) || '') };
@@ -116,6 +150,38 @@ function selftest() {
     check('an empty section fails', runCli(fixture('# x\n\n## Determinations\n\nnothing here\n')), 1, /holds no table rows/);
     check('a section followed by another heading is bounded correctly', runCli(fixture(HEAD +
       '| DPIA required | N-A - static site, no personal data stored | 2026-08-29 | register |\n\n## Retention\n\n| not | a determination |\n')), 0, /settled: 1 determination/);
+    check('an absent file with --require exits 1 naming the missing document', runCli(fixture(null), ['--require']),
+      1, /MISSING: docs\/privacy-accountability\.md is required here \(--require\)/);
+    check('a present, determined file with --require exits 0', runCli(fixture(HEAD +
+      '| DPIA required | N-A - static site, no personal data stored | 2026-08-29 | register |\n'), ['--require']), 0, /settled: 1 determination/);
+    check('"N-A - tbd" is a placeholder reason and fails naming the row', runCli(fixture(HEAD +
+      '| DPIA required | N-A - tbd | 2026-08-29 | register |\n')), 1, /"DPIA required": the reason "tbd" is a placeholder/);
+    check('"APPLIES - todo" is a placeholder reason and fails naming the row', runCli(fixture(HEAD +
+      '| AI Act Article 50 | APPLIES - todo | 2026-08-29 | docs/ai-act.md |\n')), 1, /"AI Act Article 50": the reason "todo" is a placeholder/);
+    check('"N-A - ?" is a placeholder reason and fails naming the row', runCli(fixture(HEAD +
+      '| DPIA required | N-A - ? | 2026-08-29 | register |\n')), 1, /"DPIA required": the reason "\?" is a placeholder/);
+    check('"N-A - " with nothing after it fails naming the row', runCli(fixture(HEAD +
+      '| DPIA required | N-A - | 2026-08-29 | register |\n')), 1, /"DPIA required": verdict "N-A -" is not OPEN/);
+    check('an OPEN row whose name starts with "Determination" is a row, never the header, and fails naming it', runCli(fixture(HEAD +
+      '| Determination of the DPIA need | OPEN | | |\n')), 1, /"Determination of the DPIA need" is still OPEN/);
+    check('an OPEN row with no name fails', runCli(fixture(HEAD +
+      '|  | OPEN | | |\n')), 1, /a row with no determination name/);
+    check('an OPEN row followed by a stray separator is still a row and fails naming it', runCli(fixture(HEAD +
+      '| DPIA required | N-A - static site, no personal data stored | 2026-08-29 | register |\n' +
+      '| AI Act Article 50 | OPEN | | |\n| --- | --- | --- | --- |\n')), 1, /"AI Act Article 50" is still OPEN/);
+    const SETTLED_ROW = '| DPIA required | N-A - static site, no personal data stored | 2026-08-29 | register |\n';
+    check('prose citing a file that does not exist fails naming the path', runCli(fixture(
+      '# Privacy Accountability\n\nStorage is in `docs/adr/gone.md`.\n\n## Determinations\n\n| Determination | Verdict | Date | Evidence |\n| --- | --- | --- | --- |\n' + SETTLED_ROW)),
+      1, /cites `docs\/adr\/gone\.md`, which does not exist/);
+    check('prose citing a file that exists passes', runCli(fixture(
+      '# Privacy Accountability\n\nThis register is `docs/privacy-accountability.md`.\n\n## Determinations\n\n| Determination | Verdict | Date | Evidence |\n| --- | --- | --- | --- |\n' + SETTLED_ROW)),
+      0, /settled: 1 determination/);
+    check('a cited media type or ui address is not read as a path', runCli(fixture(
+      '# Privacy Accountability\n\nCards are `text/html` served as `ui://tolsey/reading.html`.\n\n## Determinations\n\n| Determination | Verdict | Date | Evidence |\n| --- | --- | --- | --- |\n' + SETTLED_ROW)),
+      0, /settled: 1 determination/);
+    check('a colon-aligned separator row is not read as a row', runCli(fixture(
+      '# x\n\n## Determinations\n\n| Determination | Verdict | Date | Evidence |\n| :--- | :---: | ---: | --- |\n' +
+      '| DPIA required | N-A - static site, no personal data stored | 2026-08-29 | register |\n')), 0, /settled: 1 determination/);
   } finally {
     for (const r of roots) { try { rmSync(r, { recursive: true, force: true }); } catch {} }
   }
@@ -129,4 +195,4 @@ function selftest() {
 
 if (process.argv.includes('--selftest')) process.exit(selftest());
 const pathArg = process.argv.slice(2).find((a) => !a.startsWith('-'));
-process.exit(run(process.cwd(), pathArg));
+process.exit(run(process.cwd(), pathArg, process.argv.includes('--require')));

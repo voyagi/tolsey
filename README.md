@@ -11,13 +11,19 @@ Status: early development. Nothing here is deployed yet.
 
 ## Setup
 
-Requirements: Node.js 22 or newer, npm.
+Requirements: Node.js 24.11 or newer with npm 11.18 or newer (Node 24.20 and later bundle it).
 
 ```sh
-npm install
+npm ci --ignore-scripts
+npm rebuild esbuild workerd
 cp .env.example .dev.vars
 npm run dev
 ```
+
+The install runs with scripts off, then builds only the two packages that need their install step,
+so no other dependency's install script runs, whatever the npm version. With npm 11.18 or newer a
+plain `npm install` is held to the same two by `allowScripts` in `package.json`. An older npm only
+warns about its version there and runs every install script.
 
 ## Checks
 

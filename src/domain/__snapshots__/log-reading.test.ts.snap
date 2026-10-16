@@ -1,0 +1,59 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the read-back and the structured result > pins the in_range pair for walk-in 38 1`] = `
+{
+  "structuredContent": {
+    "businessDay": "2026-10-20",
+    "checkPoint": {
+      "id": "walk_in",
+      "name": "Walk-in",
+    },
+    "contractVersion": 1,
+    "initials": "AB",
+    "lineId": "line-1",
+    "outcome": "in_range",
+    "rule": {
+      "comparator": "at_most",
+      "id": "unit_air_cold",
+      "limit": 41,
+      "sourceKind": "house_rule",
+      "unit": "F",
+    },
+    "serverTime": "2026-10-21T04:30:00.000Z",
+    "timeZone": "America/Chicago",
+    "unit": "F",
+    "value": 38,
+    "verdict": "in range",
+  },
+  "text": "Walk-in, 38, in range, AB",
+}
+`;
+
+exports[`the read-back and the structured result > pins the out_of_range pair for walk-in 45 1`] = `
+{
+  "structuredContent": {
+    "businessDay": "2026-10-20",
+    "checkPoint": {
+      "id": "walk_in",
+      "name": "Walk-in",
+    },
+    "contractVersion": 1,
+    "initials": "AB",
+    "lineId": "line-1",
+    "outcome": "out_of_range",
+    "rule": {
+      "comparator": "at_most",
+      "id": "unit_air_cold",
+      "limit": 41,
+      "sourceKind": "house_rule",
+      "unit": "F",
+    },
+    "serverTime": "2026-10-21T04:30:00.000Z",
+    "timeZone": "America/Chicago",
+    "unit": "F",
+    "value": 45,
+    "verdict": "out of range",
+  },
+  "text": "Walk-in, 45, out of range, AB",
+}
+`;

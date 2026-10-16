@@ -1,0 +1,765 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { D1Store, LATEST_BY_SCREEN, PENDING_PROMPT } from '../store/d1-store';
+import { SUPERSEDE_WALK_LINKS, type D1Like, type KitchenRow, type NewEvent } from '../store/port';
+import { countingD1, HANDFUL_OF_ROWS, type CountingD1 } from '../test-support/counting-d1';
+import {
+  appendInput,
+  HOUR_MS,
+  insertEvents,
+  insertLines,
+  insertScratchKitchens,
+  kitchenInput,
+  readLimits,
+  readRowsPerWrite,
+  scratchKitchen,
+  testEvent,
+  type StoreLimits,
+} from '../test-support/events';
+import { callLogReading, walkInArguments, type ToolResult } from '../test-support/mcp-client';
+import { mintThroughRoute, openInProcessWorker, type InProcessWorker } from '../test-support/target';
+import { addToBudget } from './budget';
+import { DEMO_PROFILE } from './data';
+import { DEMO_FULL, deletionBoundMs, handleKitchensRoute, writeWindowMs } from './kitchens';
+import {
+  DELETE_EXPIRED_EVENTS,
+  DELETE_EXPIRED_KITCHENS,
+  DELETE_EXPIRED_LINE_COUNTS,
+  expireKitchens,
+  runScheduledSweep,
+} from './retention';
+
+// 10:00 CDT on 2026-10-20; its UTC date is the budget row every write in these tests counts against.
+const T0 = Date.UTC(2026, 9, 20, 15, 0);
+const T0_DATE = '2026-10-20';
+const MINUTE_MS = 60_000;
+const D1_QUERIES_PER_INVOCATION = 50;
+// The expired read, the three deletes of its batch and the budget add.
+const STATEMENTS_PER_ROUND = 5;
+// Around its sweep round a mint runs the budget read and its kitchen insert's batch of two.
+const MINT_STATEMENTS_BESIDE_ROUND = 3;
+const SCREEN = 'budget-wall';
+// One short of the 200-line kitchen cap, and a run of 150 events on one chain or one head.
+const BUSY_SCREEN = 199;
+const LONG_RUN = 150;
+// The prompt and the line said wrong, plus the walk back to the wrong_number event, which local D1
+// measured at about two rows per link (16 rows with the event at the last link, 18 past the bound,
+// 2026-10-10). A few more than a handful, and fixed by the bound whatever the kitchen holds.
+const WALK_ROWS = 2 + 2 * SUPERSEDE_WALK_LINKS;
+const KITCHEN_FULL = 'This kitchen is full. Start a new kitchen to keep logging.';
+const KITCHEN_CLOSED = 'This kitchen has closed. Start a new kitchen to keep logging.';
+
+// How many values a query binds: its distinct ?N placeholders must be exactly ?1 to ?N, with N no
+// more than the values on hand, or a value would land on the wrong placeholder and the plan read
+// would describe a query the store never runs.
+function placeholderCount(sql: string, available: number): number {
+  const numbers = [...new Set([...sql.matchAll(/\?(\d+)/g)].map((match) => Number(match[1])))].sort((a, b) => a - b);
+  if (numbers.some((number, index) => number !== index + 1) || numbers.length > available) {
+    const error = new Error(`the query's placeholders are ${numbers.map((number) => `?${number}`).join(', ')}, not ?1 to ?N with N at most ${available}`);
+    error.name = 'PlaceholderMismatch';
+    throw error;
+  }
+  return numbers.length;
+}
+
+describe('the daily row budget, the kitchen caps and retention', () => {
+  let worker: InProcessWorker;
+  const limits: StoreLimits = readLimits();
+  const rowsPerWrite = readRowsPerWrite();
+
+  beforeEach(async () => {
+    worker = await openInProcessWorker();
+    worker.clock.set(T0);
+  });
+
+  afterEach(async () => {
+    await worker?.dispose();
+  });
+
+  async function budgetRows(utcDate = T0_DATE): Promise<number> {
+    const row = await worker.db.prepare('SELECT rows FROM budget WHERE utc_date = ?1').bind(utcDate).first<{ rows: number }>();
+    return row?.rows ?? 0;
+  }
+
+  async function setBudget(rows: number, utcDate = T0_DATE): Promise<void> {
+    await worker.db
+      .prepare('INSERT INTO budget (utc_date, rows) VALUES (?1, ?2) ON CONFLICT (utc_date) DO UPDATE SET rows = excluded.rows')
+      .bind(utcDate, rows)
+      .run();
+  }
+
+  async function count(query: string, ...values: unknown[]): Promise<number> {
+    const row = await worker.db.prepare(query).bind(...values).first<{ n: number }>();
+    return row?.n ?? -1;
+  }
+
+  const eventsOf = (kitchenId: string) => count('SELECT COUNT(*) AS n FROM events WHERE kitchen_id = ?1', kitchenId);
+  const kitchenExists = async (kitchenId: string) =>
+    (await count('SELECT COUNT(*) AS n FROM kitchens WHERE id = ?1', kitchenId)) === 1;
+  const scratchKitchens = () => count("SELECT COUNT(*) AS n FROM kitchens WHERE kind = 'scratch'");
+
+  async function logAt(instant: number, mcpPath: string, args = walkInArguments()): Promise<ToolResult> {
+    worker.clock.set(instant);
+    return callLogReading(worker.fetch, new URL(mcpPath, worker.baseUrl), args);
+  }
+
+  function kitchensDeps(db: D1Like) {
+    const settings = { timeZone: DEMO_PROFILE.timeZone, dayStart: DEMO_PROFILE.dayStart };
+    return { store: new D1Store(db), db, clock: worker.clock, limits, rowsPerWrite, settings };
+  }
+
+  async function mintDirectly(db: D1Like): Promise<Response> {
+    return handleKitchensRoute('POST', { kind: 'json', value: {} }, kitchensDeps(db));
+  }
+
+  async function expiredKitchenWithLines(lines: number, createdAt = T0 - 24 * HOUR_MS): Promise<string> {
+    const [id] = await insertScratchKitchens(worker.db, [createdAt]);
+    await insertLines(worker.db, id, lines, createdAt + MINUTE_MS);
+    return id;
+  }
+
+  function deleteBatchRows(counted: CountingD1): number {
+    const batch = counted.batches.find((each) => each.queries.some((query) => query.includes('DELETE')));
+    return batch ? batch.results.reduce((sum, result) => sum + result.meta.rows_written, 0) : 0;
+  }
+
+  async function rowsReadBy<T>(read: (store: D1Store) => Promise<T>): Promise<{ value: T; rowsRead: number }> {
+    const counted = countingD1(worker.db);
+    const value = await read(new D1Store(counted.db));
+    return { value, rowsRead: counted.totals().rowsRead };
+  }
+
+  // The plans of the screen read and the pending prompt read, each with a pattern naming a scan of
+  // events under any alias the query gives it.
+  async function queryPlans(): Promise<{ details: string; scan: RegExp }[]> {
+    const plans = await Promise.all(
+      [LATEST_BY_SCREEN, PENDING_PROMPT].map(async (sql) => {
+        const bindable = ['kitchen', 'id', SUPERSEDE_WALK_LINKS];
+        const values = bindable.slice(0, placeholderCount(sql, bindable.length));
+        const rows = await worker.db.prepare('EXPLAIN QUERY PLAN ' + sql).bind(...values).all<{ detail: string }>();
+        const aliases = ['events', ...[...sql.matchAll(/\bevents AS (\w+)/g)].map((match) => match[1])];
+        return { details: rows.results.map((row) => row.detail).join(' / '), scan: new RegExp(`SCAN (${aliases.join('|')})\\b`) };
+      }),
+    );
+    console.log(`query plans\nlatest by screen: ${plans[0].details}\npending prompt: ${plans[1].details}`);
+    return plans;
+  }
+
+  // A search on kitchen_id alone walks every event the kitchen holds, and a scan walks the table. Each
+  // broken expectation is named, so a failure says which plan went wrong and how.
+  function boundedPlanProblems(plans: { details: string; scan: RegExp }[]): string[] {
+    const required: [number, RegExp][] = [
+      [0, /USING INDEX events_screen \(kitchen_id=\? AND screen_id=\?\)/],
+      [0, /USING INDEX events_root \(root_id=\?\)/],
+      [1, /USING INDEX events_ref \(ref_id=\? AND kind=\?\)/],
+    ];
+    const walks = plans.flatMap((plan, index) => [
+      ...(/USING (COVERING )?INDEX \w+ \(kitchen_id=\?\)/.test(plan.details) ? [`plan ${index} walks a kitchen`] : []),
+      ...(plan.scan.test(plan.details) ? [`plan ${index} scans events`] : []),
+    ]);
+    const missing = required.filter(([index, pattern]) => !pattern.test(plans[index].details));
+    return [...walks, ...missing.map(([index, pattern]) => `plan ${index} lacks ${pattern.source}`)];
+  }
+
+  // A kitchen written first, then one busier with lines that a read wandering past its own kitchen
+  // would count.
+  async function kitchenWithBusierNeighbour(): Promise<KitchenRow> {
+    const kitchen = scratchKitchen();
+    await worker.store.createKitchen(kitchenInput(kitchen, limits));
+    const [busier] = await insertScratchKitchens(worker.db, [kitchen.createdAt]);
+    await insertLines(worker.db, busier, 1000, kitchen.createdAt + MINUTE_MS);
+    return kitchen;
+  }
+
+  function screenReadings(kitchenId: string, count: number, from: number): NewEvent[] {
+    return Array.from({ length: count }, (_, index) => testEvent(kitchenId, { screenId: SCREEN, occurredAt: from + index }));
+  }
+
+  const prompting = { valueTenths: null, unit: null, verdict: null, ruleId: null, expiresAt: T0 + HOUR_MS } as const;
+
+  function held(kitchenId: string, overrides: Partial<NewEvent>): NewEvent {
+    return testEvent(kitchenId, { ...prompting, kind: 'held', outcome: 'held', unit: 'F', ...overrides });
+  }
+
+  function refusalOf(kitchenId: string, overrides: Partial<NewEvent>): NewEvent {
+    return testEvent(kitchenId, { ...prompting, kind: 'refusal', outcome: 'refused', promptKind: 'number', ...overrides });
+  }
+
+  function receiptOf(kitchenId: string, overrides: Partial<NewEvent>): NewEvent {
+    return testEvent(kitchenId, { ...prompting, kind: 'receipt', outcome: 'held', expiresAt: null, ...overrides });
+  }
+
+  // A line, the wrong_number event that said it wrong, then `refusals` numberless answers, each a
+  // refusal answering the one before it.
+  function correctionChain(kitchenId: string, refusals: number): { line: NewEvent; last: NewEvent; events: NewEvent[] } {
+    const line = testEvent(kitchenId, { screenId: SCREEN });
+    const said = testEvent(kitchenId, {
+      ...prompting,
+      screenId: SCREEN,
+      kind: 'wrong_number',
+      outcome: 'held',
+      promptKind: 'number_after_wrong',
+      refId: line.id,
+    });
+    const events = [line, said];
+    for (let index = 0; index < refusals; index++) {
+      events.push(refusalOf(kitchenId, { screenId: SCREEN, answersId: events[events.length - 1].id }));
+    }
+    return { line, last: events[events.length - 1], events };
+  }
+
+  describe('the daily budget and the kitchen caps', () => {
+    it('refuses a reading that would take the day past 40,000 rows with the spoken reason and writes nothing (E28)', async () => {
+      const minted = await mintThroughRoute(worker.fetch, worker.baseUrl);
+      await setBudget(limits.dailyRowCap - (rowsPerWrite.event_first_of_day - 1));
+
+      const result = await logAt(T0, minted.mcpPath);
+
+      expect(result.isError).toBe(true);
+      expect(result.content).toEqual([{ type: 'text', text: DEMO_FULL }]);
+      // The same public code POST /api/kitchens gives at the cap, never the store's internal reason.
+      expect(result).toMatchObject({ _meta: { error: 'demo_full' } });
+      expect(await eventsOf(minted.id)).toBe(0);
+      expect(await budgetRows()).toBe(limits.dailyRowCap - (rowsPerWrite.event_first_of_day - 1));
+    });
+
+    it('answers POST /api/kitchens at the cap with 503 demo_full and inserts nothing', async () => {
+      await setBudget(limits.dailyRowCap);
+      const before = await scratchKitchens();
+
+      const response = await worker.fetch(new URL('/api/kitchens', worker.baseUrl), { method: 'POST' });
+
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ error: 'demo_full', message: DEMO_FULL });
+      expect(await scratchKitchens()).toBe(before);
+      expect(await budgetRows()).toBe(limits.dailyRowCap);
+    });
+
+    it('keeps the counted day at or under the cap when two concurrent writes would together pass it', async () => {
+      const minted = await mintThroughRoute(worker.fetch, worker.baseUrl);
+      await setBudget(limits.dailyRowCap - 2 * rowsPerWrite.event_first_of_day + 1);
+
+      const results = await Promise.all([logAt(T0, minted.mcpPath), logAt(T0, minted.mcpPath)]);
+
+      expect(results.filter((result) => result.isError).length).toBeGreaterThanOrEqual(1);
+      expect(await budgetRows()).toBeLessThanOrEqual(limits.dailyRowCap);
+    });
+
+    it('refuses the next write to a kitchen holding kitchenLineCap lines, saying the kitchen is full', async () => {
+      const minted = await mintThroughRoute(worker.fetch, worker.baseUrl);
+      await insertLines(worker.db, minted.id, limits.kitchenLineCap, T0);
+
+      const result = await logAt(T0, minted.mcpPath);
+
+      expect(result.isError).toBe(true);
+      expect(result.content).toEqual([{ type: 'text', text: KITCHEN_FULL }]);
+      expect(await eventsOf(minted.id)).toBe(limits.kitchenLineCap);
+    });
+
+    // Reads are not budgeted, so their cost per call is held here (ADR 0002, rows read). The line cap
+    // reads the kitchen's counter row, where counting its events walked every line (159 rows at 150
+    // lines on local D1), and the next line number comes from the day-line index, never from a walk
+    // over the day.
+    it('reads a handful of rows for an accepted reading, however many lines the kitchen holds', async () => {
+      const kitchen = scratchKitchen();
+      await worker.store.createKitchen(kitchenInput(kitchen, limits));
+      const lines = 150;
+      await insertLines(worker.db, kitchen.id, lines, kitchen.createdAt + MINUTE_MS);
+      const counted = countingD1(worker.db);
+
+      const outcome = await new D1Store(counted.db).append(appendInput(testEvent(kitchen.id), limits));
+
+      expect(outcome.status).toBe('appended');
+      expect(counted.totals().rowsRead).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
+    });
+
+    // Every answer reads its pending prompt first. Only a prompt on a digit-repeat chain (a hold, or a
+    // refusal stored on it) needs its chain counted, and that count reads only the chain's holds and
+    // refusals. Any other question is one indexed read.
+    it('reads one row for a pending question and a handful for a prompt on a digit-repeat chain', async () => {
+      const minted = await mintThroughRoute(worker.fetch, worker.baseUrl);
+      const lines = 150;
+      await insertLines(worker.db, minted.id, lines, T0);
+      const url = new URL(minted.mcpPath, worker.baseUrl);
+      const ask = async (args: Record<string, unknown>): Promise<string> => {
+        const result = await callLogReading(worker.fetch, url, { screen_id: SCREEN, request_id: crypto.randomUUID(), ...args });
+        return (result.structuredContent?.prompt as { id: string }).id;
+      };
+      const whoIsLogging = await ask({ check_point: 'walk_in', value: 38 });
+      const digitRepeat = await ask({ check_point: 'walk_in', value: 15, initials: 'AB' });
+      const readsFor = async (promptId: string): Promise<number> => {
+        const { value, rowsRead } = await rowsReadBy((store) => store.pendingPrompt(minted.id, promptId));
+        expect(value).not.toBeNull();
+        return rowsRead;
+      };
+
+      expect(await readsFor(whoIsLogging)).toBeLessThanOrEqual(2);
+      expect(await readsFor(digitRepeat)).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
+    });
+
+    // A digit-repeat hold is named in ref_id by every "wrong number" receipt that asked its question
+    // again, and those receipts are not misses: the count reads the chain's holds and refusals only.
+    it('reads a handful of rows for a digit-repeat prompt whose head 150 receipts name', async () => {
+      const kitchen = await kitchenWithBusierNeighbour();
+      const head = held(kitchen.id, { promptKind: 'digit_repeat', valueTenths: 150 });
+      const asked = Array.from({ length: LONG_RUN }, () => receiptOf(kitchen.id, { refId: head.id }));
+      const second = held(kitchen.id, { promptKind: 'digit_repeat', valueTenths: 510, refId: head.id, answersId: head.id });
+      const missed = refusalOf(kitchen.id, { refId: head.id, answersId: second.id });
+      await insertEvents(worker.db, [head, ...asked, second, missed]);
+
+      const atHead = await rowsReadBy((store) => store.pendingPrompt(kitchen.id, head.id));
+      const atRefusal = await rowsReadBy((store) => store.pendingPrompt(kitchen.id, missed.id));
+
+      expect(atHead.value).toMatchObject({ id: head.id, repeats: 2, supersedes: null });
+      expect(atRefusal.value).toMatchObject({ id: missed.id, repeats: 2, supersedes: null });
+      expect(atHead.rowsRead).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
+      expect(atRefusal.rowsRead).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
+    });
+
+    // A numberless answer to a correction's question stores a refusal answering it, and so on with no
+    // limit, so the walk back to the wrong_number event stops after SUPERSEDE_WALK_LINKS links.
+    it('reads a bounded handful of rows for the last prompt of a 150-link numberless chain', async () => {
+      const kitchen = await kitchenWithBusierNeighbour();
+      const chain = correctionChain(kitchen.id, LONG_RUN);
+      await insertEvents(worker.db, chain.events);
+
+      const { value, rowsRead } = await rowsReadBy((store) => store.pendingPrompt(kitchen.id, chain.last.id));
+
+      expect(value).toMatchObject({ id: chain.last.id, repeats: 0, supersedes: null });
+      expect(rowsRead).toBeLessThanOrEqual(WALK_ROWS);
+    });
+
+    it('reads a bounded handful of rows for a correction chain within the walk bound, and finds its line', async () => {
+      const kitchen = await kitchenWithBusierNeighbour();
+      const chain = correctionChain(kitchen.id, SUPERSEDE_WALK_LINKS - 1);
+      await insertEvents(worker.db, chain.events);
+
+      const { value, rowsRead } = await rowsReadBy((store) => store.pendingPrompt(kitchen.id, chain.last.id));
+
+      expect(value?.supersedes).toMatchObject({ lineId: chain.line.id, superseded: false });
+      expect(rowsRead).toBeLessThanOrEqual(WALK_ROWS);
+    });
+
+    // "Wrong number" reads the screen's newest event and, for a reading, counts the corrections along
+    // its chain. Measured on local D1 before the screen index (2026-10-10): 40 rows at 10 readings on
+    // the screen, 2,600 at 50 and 39,999 at 199, since the corrections count ran for every candidate
+    // before the newest was picked.
+    it('reads a handful of rows for "wrong number" on a screen holding 199 readings, beside a busier kitchen', async () => {
+      const kitchen = scratchKitchen();
+      await worker.store.createKitchen(kitchenInput(kitchen, limits));
+      const readings = screenReadings(kitchen.id, BUSY_SCREEN, kitchen.createdAt + MINUTE_MS);
+      await insertEvents(worker.db, readings);
+      const [busier] = await insertScratchKitchens(worker.db, [kitchen.createdAt]);
+      await insertEvents(worker.db, screenReadings(busier, BUSY_SCREEN, kitchen.createdAt + MINUTE_MS));
+      await insertLines(worker.db, busier, 1000, kitchen.createdAt + MINUTE_MS);
+
+      const { value, rowsRead } = await rowsReadBy((store) => store.latestByScreen(kitchen.id, SCREEN, kitchen.createdAt));
+
+      expect(value).toMatchObject({ id: readings[readings.length - 1].id, kind: 'reading', corrections: 0 });
+      expect(rowsRead).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
+    });
+
+    it('reads a handful of rows for "wrong number" when every event on the screen is older than the window', async () => {
+      const kitchen = await kitchenWithBusierNeighbour();
+      await insertEvents(worker.db, screenReadings(kitchen.id, BUSY_SCREEN, kitchen.createdAt + MINUTE_MS));
+
+      const { value, rowsRead } = await rowsReadBy((store) => store.latestByScreen(kitchen.id, SCREEN, kitchen.createdAt + HOUR_MS));
+
+      expect(value).toBeNull();
+      expect(rowsRead).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
+    });
+
+    // The most a reading's corrections count meets: READ-05 lets a line be corrected twice, so the newest
+    // reading closes a chain of three whose first two lines were said wrong. Only this shape counts
+    // corrections over rows that exist, through events_ref and events_root.
+    it('reads a handful of rows for "wrong number" after a reading corrected twice, on a busy screen', async () => {
+      const kitchen = await kitchenWithBusierNeighbour();
+      const readings = screenReadings(kitchen.id, BUSY_SCREEN - 4, kitchen.createdAt + MINUTE_MS);
+      const root = readings[readings.length - 1];
+      const saidWrong = (line: NewEvent): NewEvent =>
+        testEvent(kitchen.id, { ...prompting, screenId: SCREEN, kind: 'wrong_number', outcome: 'held', promptKind: 'number_after_wrong', refId: line.id });
+      const first = testEvent(kitchen.id, { screenId: SCREEN, supersedesId: root.id, rootId: root.id });
+      const second = testEvent(kitchen.id, { screenId: SCREEN, supersedesId: first.id, rootId: root.id });
+      await insertEvents(worker.db, [...readings, saidWrong(root), first, saidWrong(first), second]);
+
+      const { value, rowsRead } = await rowsReadBy((store) => store.latestByScreen(kitchen.id, SCREEN, kitchen.createdAt));
+
+      console.log(`wrong number after two corrections: ${rowsRead} rows read`);
+      expect(value).toMatchObject({ id: second.id, kind: 'reading', corrections: 2 });
+      expect(rowsRead).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
+    });
+
+    it('plans the screen read and the pending prompt read with no walk of a kitchen and no scan of events', async () => {
+      expect(boundedPlanProblems(await queryPlans())).toEqual([]);
+    });
+
+    // D1 keeps no table statistics until ANALYZE runs, and its docs recommend PRAGMA optimize, which
+    // runs it, after an index is created. Statistics can move the planner to another index, so both
+    // plans and their handful of rows must hold on a busy table that has them.
+    it('keeps both plans and their handful of rows once ANALYZE has gathered statistics on a busy table', async () => {
+      const kitchen = await kitchenWithBusierNeighbour();
+      await insertEvents(worker.db, screenReadings(kitchen.id, BUSY_SCREEN, kitchen.createdAt + MINUTE_MS));
+      const chain = correctionChain(kitchen.id, SUPERSEDE_WALK_LINKS - 1);
+      await insertEvents(worker.db, chain.events);
+      await worker.db.prepare('ANALYZE').run();
+
+      // The control: statistics exist for the events table and its indexes, so the plans below were
+      // chosen with them.
+      expect(await count("SELECT COUNT(*) AS n FROM sqlite_stat1 WHERE tbl = 'events'")).toBeGreaterThan(1);
+      expect(boundedPlanProblems(await queryPlans())).toEqual([]);
+      const latest = await rowsReadBy((store) => store.latestByScreen(kitchen.id, SCREEN, kitchen.createdAt));
+      const prompt = await rowsReadBy((store) => store.pendingPrompt(kitchen.id, chain.last.id));
+      expect(latest.rowsRead).toBeLessThanOrEqual(HANDFUL_OF_ROWS);
+      expect(prompt.value?.supersedes).toMatchObject({ lineId: chain.line.id });
+      expect(prompt.rowsRead).toBeLessThanOrEqual(WALK_ROWS);
+    });
+
+    it('accepts a write 1 ms inside the write window and refuses one at its end, saying the kitchen has closed', async () => {
+      const minted = await mintThroughRoute(worker.fetch, worker.baseUrl);
+
+      const inside = await logAt(T0 + writeWindowMs(limits) - 1, minted.mcpPath);
+      const atEnd = await logAt(T0 + writeWindowMs(limits), minted.mcpPath);
+
+      expect(inside.isError).toBeFalsy();
+      expect(atEnd.isError).toBe(true);
+      expect(atEnd.content).toEqual([{ type: 'text', text: KITCHEN_CLOSED }]);
+      expect(await eventsOf(minted.id)).toBe(1);
+    });
+
+    it('closes writes early enough that the retry window of the last write ends before retention age', () => {
+      expect(writeWindowMs(limits) + limits.retryWindowSeconds * 1000).toBeLessThanOrEqual(
+        limits.retentionAgeHours * HOUR_MS,
+      );
+    });
+
+    // PRIV-03 promises deletion within 24 hours. A kitchen past retention age waits for the next hourly
+    // run, and that run can start after the hour it was scheduled for: the platform hands it the
+    // scheduled instant and documents no start guarantee, so the age leaves room for a late start.
+    // The mint reports this same bound as expiresAt, so it must count the whole wait.
+    it('deletes every scratch kitchen within 24 hours even when the hourly run starts 15 minutes late (PRIV-03)', () => {
+      const lateStartAllowanceMs = 15 * MINUTE_MS;
+      expect(deletionBoundMs(limits)).toBeGreaterThanOrEqual(
+        limits.retentionAgeHours * HOUR_MS + HOUR_MS + lateStartAllowanceMs,
+      );
+      expect(deletionBoundMs(limits)).toBeLessThanOrEqual(24 * HOUR_MS);
+    });
+  });
+
+  describe('a sweep round', () => {
+    it('deletes an expired kitchen with its lines and adds exactly its delete batch rows plus budget_add', async () => {
+      const kitchenId = await expiredKitchenWithLines(4);
+      const counted = countingD1(worker.db);
+      const before = await budgetRows();
+
+      const round = await expireKitchens(counted.db, T0, limits, rowsPerWrite, limits.sweepBatchLimit);
+
+      expect(deleteBatchRows(counted)).toBeGreaterThanOrEqual(5);
+      expect(round).toEqual({
+        kitchensRead: 1,
+        kitchensDeleted: 1,
+        rowsCounted: deleteBatchRows(counted) + rowsPerWrite.budget_add,
+      });
+      expect(await budgetRows()).toBe(before + round.rowsCounted);
+      expect(await kitchenExists(kitchenId)).toBe(false);
+      expect(await eventsOf(kitchenId)).toBe(0);
+      expect(await count('SELECT COUNT(*) AS n FROM kitchen_lines WHERE kitchen_id = ?1', kitchenId)).toBe(0);
+    });
+
+    // ADR 0002 derives retention's daily ceiling from this figure: one row per deleted kitchen, one for
+    // its line counter and one per deleted line, whatever indexes the line filled when it was written.
+    // Ten readings through the reference client took 6.1 s on a loaded machine, past the 5 s default.
+    it('counts one row per deleted kitchen, its line counter and per deleted reading, plus budget_add', { timeout: 30_000 }, async () => {
+      const minted = await mintThroughRoute(worker.fetch, worker.baseUrl);
+      const readings = 10;
+      for (let index = 0; index < readings; index++) {
+        expect((await logAt(T0, minted.mcpPath)).isError).toBeFalsy();
+      }
+
+      const round = await expireKitchens(worker.db, T0 + 24 * HOUR_MS, limits, rowsPerWrite, limits.sweepBatchLimit);
+
+      expect(round.kitchensDeleted).toBe(1);
+      expect(round.rowsCounted).toBe(2 + readings + rowsPerWrite.budget_add);
+    });
+
+    // Every admitted mint runs a round, so its search must seek the kitchens past their age through
+    // kitchens_expiry: a walk of the live kitchens would read them all on every mint of a busy day.
+    it('runs one read of a row or two and no write when nothing has expired, however many kitchens are live', async () => {
+      await insertScratchKitchens(worker.db, Array.from({ length: 500 }, (_, index) => T0 - HOUR_MS + index));
+      const counted = countingD1(worker.db);
+
+      const round = await expireKitchens(counted.db, T0, limits, rowsPerWrite, limits.sweepBatchLimit);
+
+      expect(round).toEqual({ kitchensRead: 0, kitchensDeleted: 0, rowsCounted: 0 });
+      expect(counted.statements).toHaveLength(1);
+      expect(counted.totals().rowsRead).toBeLessThanOrEqual(2);
+      expect(counted.totals().rowsWritten).toBe(0);
+      expect(await budgetRows()).toBe(0);
+    });
+
+    it('reads fewer rows than a live kitchen of 150 lines holds while deleting an expired kitchen beside it', async () => {
+      const [live] = await insertScratchKitchens(worker.db, [T0 - HOUR_MS]);
+      await insertLines(worker.db, live, 150, T0 - HOUR_MS + MINUTE_MS);
+      const expired = await expiredKitchenWithLines(3);
+      const counted = countingD1(worker.db);
+
+      const round = await expireKitchens(counted.db, T0, limits, rowsPerWrite, limits.sweepBatchLimit);
+
+      expect(round.kitchensDeleted).toBe(1);
+      expect(await kitchenExists(expired)).toBe(false);
+      expect(await eventsOf(live)).toBe(150);
+      expect(counted.totals().rowsRead).toBeLessThan(150);
+    });
+
+    it('deletes nothing and writes no budget row when a concurrent round already took the kitchens it read', async () => {
+      const taken = await expiredKitchenWithLines(2);
+      await expireKitchens(worker.db, T0, limits, rowsPerWrite, limits.sweepBatchLimit);
+      const before = await budgetRows();
+      const stale = countingD1(worker.db, (query) => (query.includes('SELECT id FROM kitchens') ? [{ id: taken }] : undefined));
+
+      const round = await expireKitchens(stale.db, T0, limits, rowsPerWrite, limits.sweepBatchLimit);
+
+      expect(round).toEqual({ kitchensRead: 1, kitchensDeleted: 0, rowsCounted: 0 });
+      expect(stale.statements.map((statement) => statement.via)).toEqual(['all', 'batch', 'batch', 'batch']);
+      expect(await budgetRows()).toBe(before);
+    });
+
+    it.each([1, 25, 60])('runs at most five statements over %i expired kitchens', async (expired) => {
+      await insertScratchKitchens(worker.db, Array.from({ length: expired }, (_, index) => T0 - 24 * HOUR_MS - index));
+      const counted = countingD1(worker.db);
+
+      const round = await expireKitchens(counted.db, T0, limits, rowsPerWrite, 60);
+
+      expect(round.kitchensDeleted).toBe(expired);
+      expect(counted.statements.length).toBeLessThanOrEqual(STATEMENTS_PER_ROUND);
+    });
+
+    it('shows an index search, never a scan of events, in the query plans of every delete', async () => {
+      const plans = await Promise.all(
+        [DELETE_EXPIRED_KITCHENS, DELETE_EXPIRED_EVENTS, DELETE_EXPIRED_LINE_COUNTS].map(async (sql) => {
+          const explain = 'EXPLAIN QUERY PLAN ' + sql;
+          const rows = await worker.db.prepare(explain).bind('["a"]').all<{ detail: string }>();
+          return rows.results.map((row) => row.detail).join(' / ');
+        }),
+      );
+      console.log(`query plans\nkitchens: ${plans[0]}\nevents: ${plans[1]}\nkitchen_lines: ${plans[2]}`);
+
+      expect(plans[0]).toMatch(/SEARCH kitchens USING (COVERING )?INDEX/);
+      expect(plans[1]).toMatch(/SEARCH events USING (COVERING )?INDEX/);
+      // kitchen_lines is WITHOUT ROWID: its key is the table, so the search names no separate index.
+      expect(plans[2]).toMatch(/SEARCH kitchen_lines USING PRIMARY KEY/);
+      expect(plans.join(' ')).not.toMatch(/SCAN (events|kitchens|kitchen_lines)\b/);
+    });
+
+    it('measures the rows the sweep budget add writes as the first write of a UTC date equal to budget_add', async () => {
+      const counted = countingD1(worker.db);
+
+      await addToBudget(counted.db, '2031-01-01', 5);
+
+      expect(counted.totals().rowsWritten).toBe(rowsPerWrite.budget_add);
+    });
+  });
+
+  describe('minting and the sweep', () => {
+    it('runs exactly one statement, the budget read, for a mint refused at that read, and writes nothing', async () => {
+      await expiredKitchenWithLines(3);
+      await setBudget(limits.dailyRowCap);
+      const counted = countingD1(worker.db);
+
+      const response = await mintDirectly(counted.db);
+
+      expect(response.status).toBe(503);
+      expect(counted.statements).toHaveLength(1);
+      expect(counted.totals().rowsRead).toBeLessThanOrEqual(2);
+      expect(counted.totals().rowsWritten).toBe(0);
+      expect(await scratchKitchens()).toBe(1);
+    });
+
+    // The sweep on a mint is best effort: the hourly run deletes what it leaves, so its fault must not
+    // turn the visitor's mint into a 500.
+    it('mints a kitchen when its sweep round fails, logging the fault by name and code only', async () => {
+      await expiredKitchenWithLines(2);
+      const sweepFails: D1Like = {
+        prepare: (query) => {
+          if (query.includes('SELECT id FROM kitchens')) {
+            throw Object.assign(new Error('D1_ERROR: the cook said AB 38'), { code: 'SQLITE_BUSY' });
+          }
+          return worker.db.prepare(query);
+        },
+        batch: (statements) => worker.db.batch(statements),
+      };
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const response = await mintDirectly(sweepFails);
+
+        expect(response.status).toBe(201);
+        expect(logged).toHaveBeenCalledWith('[mint-sweep]', { name: 'Error', code: 'SQLITE_BUSY' });
+        expect(JSON.stringify(logged.mock.calls)).not.toContain('the cook said');
+      } finally {
+        logged.mockRestore();
+      }
+      expect(await scratchKitchens()).toBe(2);
+    });
+
+    it('mints a kitchen in the zone and day start of the profile it copies, never a second default', async () => {
+      const deps = { ...kitchensDeps(worker.db), settings: { timeZone: 'Europe/Amsterdam', dayStart: '05:00' } };
+
+      const response = await handleKitchensRoute('POST', { kind: 'json', value: {} }, deps);
+
+      const { id } = (await response.json()) as { id: string };
+      const row = await worker.db
+        .prepare('SELECT time_zone, day_start FROM kitchens WHERE id = ?1')
+        .bind(id)
+        .first<{ time_zone: string; day_start: string }>();
+      expect(row).toEqual({ time_zone: 'Europe/Amsterdam', day_start: '05:00' });
+    });
+
+    it('adds exactly the kitchen_create figure to the budget for an accepted mint with nothing expired', async () => {
+      const counted = countingD1(worker.db);
+
+      const response = await mintDirectly(counted.db);
+
+      expect(response.status).toBe(201);
+      expect(await budgetRows()).toBe(rowsPerWrite.kitchen_create);
+      expect(counted.statements).toHaveLength(4);
+    });
+
+    it('sweeps three expired kitchens of five lines on an accepted mint and leaves the live one', async () => {
+      const expired = await Promise.all([1, 2, 3].map(() => expiredKitchenWithLines(5)));
+      const [live] = await insertScratchKitchens(worker.db, [T0 - HOUR_MS]);
+      const counted = countingD1(worker.db);
+
+      const response = await mintDirectly(counted.db);
+
+      expect(response.status).toBe(201);
+      for (const id of expired) expect(await kitchenExists(id)).toBe(false);
+      expect(await kitchenExists(live)).toBe(true);
+      expect(counted.statements.length).toBeLessThanOrEqual(MINT_STATEMENTS_BESIDE_ROUND + STATEMENTS_PER_ROUND);
+    });
+
+    it('refuses a mint its own sweep pushed past the cap, counting that sweep and inserting no kitchen', async () => {
+      await expiredKitchenWithLines(3);
+      await setBudget(limits.dailyRowCap - rowsPerWrite.kitchen_create);
+      const counted = countingD1(worker.db);
+
+      const response = await mintDirectly(counted.db);
+
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ error: 'demo_full', message: DEMO_FULL });
+      expect(await scratchKitchens()).toBe(0);
+      expect(await budgetRows()).toBe(
+        limits.dailyRowCap - rowsPerWrite.kitchen_create + deleteBatchRows(counted) + rowsPerWrite.budget_add,
+      );
+    });
+
+    it('sweeps sweepBatchLimit kitchens on one mint and leaves the rest to the hourly handler', async () => {
+      await insertScratchKitchens(
+        worker.db,
+        Array.from({ length: limits.sweepBatchLimit + 2 }, (_, index) => T0 - 24 * HOUR_MS - index),
+      );
+
+      await mintDirectly(worker.db);
+      expect(await scratchKitchens()).toBe(2 + 1);
+
+      const run = await runScheduledSweep(worker.db, T0, limits, rowsPerWrite, () => T0);
+      expect(run.kitchensDeleted).toBe(2);
+      expect(await scratchKitchens()).toBe(1);
+    });
+
+    it('ends a run at the first page that comes back short of a full round', async () => {
+      const small: StoreLimits = { ...limits, cronSweepBatchLimit: 2, maxSweepRounds: 3 };
+      await insertScratchKitchens(worker.db, [T0 - 24 * HOUR_MS]);
+
+      expect(await runScheduledSweep(worker.db, T0, small, rowsPerWrite, () => T0)).toEqual({ rounds: 1, kitchensDeleted: 1 });
+    });
+
+    it('runs rounds of cronSweepBatchLimit until maxSweepRounds, then leaves the rest to the next run', async () => {
+      const small: StoreLimits = { ...limits, cronSweepBatchLimit: 2, maxSweepRounds: 3 };
+      await insertScratchKitchens(worker.db, Array.from({ length: 10 }, (_, index) => T0 - 24 * HOUR_MS - index));
+
+      expect(await runScheduledSweep(worker.db, T0, small, rowsPerWrite, () => T0)).toEqual({ rounds: 3, kitchensDeleted: 6 });
+      expect((await runScheduledSweep(worker.db, T0, small, rowsPerWrite, () => T0)).kitchensDeleted).toBe(4);
+      expect(await scratchKitchens()).toBe(0);
+    });
+
+    // A mint's own round can delete the page the hourly run just read, so that round deletes less
+    // than it read; only a short page means nothing older is left.
+    it('keeps sweeping after a round whose full page a concurrent round took, until a page comes back short', async () => {
+      const small: StoreLimits = { ...limits, cronSweepBatchLimit: 2, maxSweepRounds: 3 };
+      const expired = await insertScratchKitchens(worker.db, [0, 1, 2].map((index) => T0 - 24 * HOUR_MS - index));
+      let selects = 0;
+      const raced = countingD1(worker.db, (query) => {
+        if (!query.includes('SELECT id FROM kitchens')) return undefined;
+        selects += 1;
+        return selects === 1 ? [{ id: 'taken-a' }, { id: 'taken-b' }] : undefined;
+      });
+
+      const run = await runScheduledSweep(raced.db, T0, small, rowsPerWrite, () => T0);
+
+      expect(run).toEqual({ rounds: 3, kitchensDeleted: 3 });
+      for (const id of expired) expect(await kitchenExists(id)).toBe(false);
+    });
+
+    it('lets one hourly run delete every kitchen the daily budget can mint, within the per-invocation query limit', () => {
+      expect(limits.maxSweepRounds * limits.cronSweepBatchLimit).toBeGreaterThanOrEqual(
+        Math.floor(limits.dailyRowCap / rowsPerWrite.kitchen_create),
+      );
+      expect(STATEMENTS_PER_ROUND * limits.maxSweepRounds).toBeLessThanOrEqual(D1_QUERIES_PER_INVOCATION);
+    });
+  });
+
+  // The allowance resets at 00:00 UTC and counts a write on the day it happens, so a 23:00 run that
+  // starts after midnight spends the new day, whatever hour it was scheduled for.
+  describe('an hourly run that starts after 00:00 UTC', () => {
+    const SCHEDULED = Date.UTC(2026, 9, 20, 23, 0);
+    const STARTED = Date.UTC(2026, 9, 21, 0, 10);
+
+    it('deletes by the hour it was scheduled for and charges its deletes to the UTC date it ran on', async () => {
+      const retentionAge = limits.retentionAgeHours * HOUR_MS;
+      const expired = await expiredKitchenWithLines(3, SCHEDULED - retentionAge);
+      // Old enough by the hour the run started, not by the hour it was scheduled for.
+      const [younger] = await insertScratchKitchens(worker.db, [SCHEDULED - retentionAge + MINUTE_MS]);
+      worker.clock.set(STARTED);
+
+      await worker.scheduled({ scheduledTime: SCHEDULED, cron: '0 * * * *' });
+
+      expect(await kitchenExists(expired)).toBe(false);
+      expect(await kitchenExists(younger)).toBe(true);
+      expect(await budgetRows('2026-10-20')).toBe(0);
+      expect(await budgetRows('2026-10-21')).toBeGreaterThanOrEqual(1 + 3 + rowsPerWrite.budget_add);
+    });
+
+    it('reads the clock after each round, so a run that crosses 00:00 UTC charges each round to its own day', async () => {
+      const small: StoreLimits = { ...limits, cronSweepBatchLimit: 2, maxSweepRounds: 3 };
+      await insertScratchKitchens(worker.db, [0, 1, 2].map((index) => SCHEDULED - 24 * HOUR_MS - index));
+      const beforeMidnight = Date.UTC(2026, 9, 20, 23, 59);
+      let reads = 0;
+
+      const run = await runScheduledSweep(worker.db, SCHEDULED, small, rowsPerWrite, () => (reads++ === 0 ? beforeMidnight : STARTED));
+
+      expect(run).toEqual({ rounds: 2, kitchensDeleted: 3 });
+      expect(reads).toBe(2);
+      expect(await budgetRows('2026-10-20')).toBe(2 + rowsPerWrite.budget_add);
+      expect(await budgetRows('2026-10-21')).toBe(1 + rowsPerWrite.budget_add);
+    });
+  });
+
+  describe('the retry window against the sweep', () => {
+    it('keeps the last accepted write retryable until its window ends, and the retention-age sweep deletes it after', async () => {
+      const minted = await mintThroughRoute(worker.fetch, worker.baseUrl);
+      const args = walkInArguments();
+      const lastAccepted = await logAt(T0 + writeWindowMs(limits) - 1, minted.mcpPath, args);
+      expect(lastAccepted.isError).toBeFalsy();
+
+      const lastRetryInstant = T0 + limits.retentionAgeHours * HOUR_MS - 1;
+      await expireKitchens(worker.db, lastRetryInstant, limits, rowsPerWrite, limits.sweepBatchLimit);
+      expect(await kitchenExists(minted.id)).toBe(true);
+      expect(await eventsOf(minted.id)).toBe(1);
+
+      const retried = await logAt(lastRetryInstant, minted.mcpPath, args);
+      expect(JSON.stringify(retried)).toBe(JSON.stringify(lastAccepted));
+
+      await expireKitchens(worker.db, T0 + limits.retentionAgeHours * HOUR_MS, limits, rowsPerWrite, limits.sweepBatchLimit);
+      expect(await kitchenExists(minted.id)).toBe(false);
+      expect(await eventsOf(minted.id)).toBe(0);
+    });
+  });
+});

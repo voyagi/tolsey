@@ -12,3 +12,4 @@ worker-configuration.d.ts
 .dev.vars.*
 *.log
 .DS_Store
+Thumbs.db
