@@ -276,6 +276,47 @@ describe('the status region is written once per logged reading or refusal and by
   });
 });
 
+describe('the open checks, as the record lists them', () => {
+  const REACH_IN_TWO = [{ id: 'reach_in_2', name: 'Reach-in two' }];
+  const loaded = (openChecks: readonly { id: string; name: string }[]): WallEvent => ({ type: 'openChecksLoaded', openChecks });
+
+  it('is null until the first answer, so no list is shown before the record says anything', () => {
+    expect(initialWallState(WALL_PROFILE).openChecks).toBeNull();
+    expect(READY.openChecks).toBeNull();
+  });
+
+  it.fails('takes the list exactly as given, in its order', () => {
+    const list = [
+      { id: 'walk_in', name: 'Walk-in' },
+      { id: 'soup_well', name: 'Soup well' },
+    ];
+    expect(reduce(READY, loaded(list)).openChecks).toEqual(list);
+    expect(reduce(READY, loaded(list), loaded([])).openChecks).toEqual([]);
+  });
+
+  it('openChecksLoaded adds 0 status writes and leaves the announcement as it was', () => {
+    const after = reduce(WITH_PASS, loaded(REACH_IN_TWO));
+    expect(statusWrites([loaded(REACH_IN_TWO)], WITH_PASS)).toBe(0);
+    expect(after.announcement).toBe(WITH_PASS.announcement);
+  });
+
+  it.fails('across a refusal and the list refresh after it, the status count rises by exactly 1', () => {
+    const events: WallEvent[] = [
+      { type: 'sent', said: 'reach-in two is fine' },
+      { type: 'resultReceived', said: 'reach-in two is fine', result: resultOf('refused') },
+      loaded(REACH_IN_TWO),
+    ];
+    expect(statusWrites(events, READY)).toBe(1);
+    expect(reduce(READY, ...events).openChecks).toEqual(REACH_IN_TWO);
+  });
+
+  it('a call that did not land leaves the list unchanged', () => {
+    const listed = reduce(READY, loaded(REACH_IN_TWO));
+    const after = reduce(listed, { type: 'sent', said: SAID }, failed('Tolsey did not answer in time.'));
+    expect(after.openChecks).toBe(listed.openChecks);
+  });
+});
+
 describe('controlsEnabled', () => {
   it('is false while starting', () => {
     expect(controlsEnabled(initialWallState(WALL_PROFILE))).toBe(false);

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { openMcpSession } from '../client/mcp-client';
 import { messagesIn } from '../client/messages';
 import { businessDay } from '../domain/business-day';
 import { D1Store } from '../store/d1-store';
@@ -21,7 +22,17 @@ interface ToolCall {
 interface SentBody {
   id?: number | string;
   method?: string;
-  params?: { arguments?: Record<string, unknown> };
+  params?: { name?: string; arguments?: Record<string, unknown> };
+}
+
+// The wall also calls due_now after every answered call; only the log_reading calls are what these
+// tests count and hold back.
+function isLogReadingCall(sent: SentBody | undefined): boolean {
+  return sent?.method === 'tools/call' && sent.params?.name === 'log_reading';
+}
+
+function openNames(session: WallSession): string[] | undefined {
+  return session.getState().openChecks?.map((check) => check.name);
 }
 
 // The day is worked out here from the clock, never taken from the session or the server, so a line
@@ -36,7 +47,7 @@ function recordingFetch(calls: ToolCall[]): FetchLike {
   return async (url, init) => {
     const response = await fetch(url, init);
     const sent = typeof init?.body === 'string' ? (JSON.parse(init.body) as SentBody) : undefined;
-    if (sent?.method === 'tools/call') {
+    if (sent !== undefined && isLogReadingCall(sent)) {
       const text = await response.clone().text();
       const answer = messagesIn(response.headers.get('content-type'), text).find((message) => message.id === sent.id);
       const result = answer?.result as { structuredContent?: Record<string, unknown> } | undefined;
@@ -73,14 +84,16 @@ describe('the wall session against the built Worker in workerd, lines read strai
       return store.linesForDay(kitchenId, day);
     }
 
-    it('starts ready at protocol 2025-11-25 with log_reading listed', async () => {
+    it('starts ready at protocol 2025-11-25 with log_reading and due_now listed', async () => {
       session = createWallSession({ baseUrl, profile: WALL_PROFILE, fetch: recordingFetch(calls) });
       await session.start();
 
       expect(session.getState().phase).toBe('ready');
       expect(session.protocolVersion).toBe('2025-11-25');
       expect(session.toolNames).toContain('log_reading');
+      expect(session.toolNames).toContain('due_now');
       expect(session.kitchenId).toMatch(/^[0-9a-f]{32}$/);
+      expect(session.getState().openChecks).toEqual([]);
     });
 
     it('stores "the walk-in reads 38" as one in-range walk-in line by AB, the words sent unchanged', async () => {
@@ -169,6 +182,59 @@ describe('the wall session against the built Worker in workerd, lines read strai
     });
   });
 
+  describe('the open checks, as the record lists them (R4)', () => {
+    async function startedSession(): Promise<WallSession> {
+      const session = createWallSession({ baseUrl, profile: WALL_PROFILE, fetch: recordingFetch([]) });
+      await session.start();
+      return session;
+    }
+
+    it('puts Reach-in two on the list after "reach-in two is fine"', async () => {
+      const session = await startedSession();
+      await session.say(REACH_IN_TWO);
+
+      expect(openNames(session)).toEqual(['Reach-in two']);
+    });
+
+    it('takes Reach-in two off the list once "reach-in two reads 38" is logged', async () => {
+      const session = await startedSession();
+      await session.say(REACH_IN_TWO);
+      expect(openNames(session)).toEqual(['Reach-in two']);
+
+      await session.say('reach-in two reads 38');
+
+      expect(session.getState().pass).toMatchObject({ checkPoint: { id: 'reach_in_2' }, value: 38 });
+      expect(openNames(session)).toEqual([]);
+    });
+
+    it('keeps the Walk-in on the list while "walk-in 15" waits for a digit repeat', async () => {
+      const session = await startedSession();
+      await session.say('walk-in 15');
+
+      expect(session.getState().openPrompt).toMatchObject({ kind: 'digit_repeat' });
+      expect(openNames(session)).toEqual(['Walk-in']);
+    });
+
+    it("shows a second client's refusal on the same kitchen after the wall's next call", async () => {
+      const session = await startedSession();
+      const kitchenId = session.kitchenId as string;
+      const second = await openMcpSession(new URL(`/mcp/k/${kitchenId}`, baseUrl), fetch);
+      const refused = await second.callTool('log_reading', {
+        check_point: 'soup_well',
+        words: 'the soup well is fine',
+        initials: 'MR',
+        screen_id: 'second-client',
+        request_id: crypto.randomUUID(),
+      });
+      expect(refused.structuredContent).toMatchObject({ outcome: 'refused' });
+      expect(openNames(session)).toEqual([]);
+
+      await session.say(WALK_IN);
+
+      expect(openNames(session)).toEqual(['Soup well']);
+    });
+  });
+
   describe('who is logging and a call answered too late (R5, R6)', () => {
     it('a switch from AB to MR puts MR on the next stored line', async () => {
       const day = chicagoBusinessDay();
@@ -196,7 +262,7 @@ describe('the wall session against the built Worker in workerd, lines read strai
       // session gives up, as a dropped connection would.
       const answeredTooLate: FetchLike = async (url, init) => {
         const sent = typeof init?.body === 'string' ? (JSON.parse(init.body) as SentBody) : undefined;
-        if (sent?.method !== 'tools/call' || held) return recording(url, init);
+        if (!isLogReadingCall(sent) || held) return recording(url, init);
         held = true;
         const { signal, ...unsignalled }: RequestInit = init ?? {};
         await recording(url, unsignalled);

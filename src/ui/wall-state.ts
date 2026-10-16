@@ -1,4 +1,5 @@
 import type { ToolCallResult } from '../client/mcp-client';
+import type { DueNowOutput } from '../contract/due-now';
 import type { LogReadingOutput, Outcome } from '../contract/log-reading';
 import type { KitchenProfile } from '../domain/rule';
 import type { OpenPrompt } from './intent';
@@ -18,6 +19,8 @@ type PassField = 'lineId' | 'recordCode' | 'checkPoint' | 'value' | 'unit' | 've
 
 type Pass = Partial<Pick<LogReadingOutput, PassField>> & { outcome: LoggedOutcome };
 
+type OpenCheck = DueNowOutput['openChecks'][number];
+
 export interface WallState {
   phase: WallPhase;
   startError: string | null;
@@ -33,9 +36,11 @@ export interface WallState {
   roster: readonly string[];
   announcement: string;
   announcementSeq: number;
+  openChecks: readonly OpenCheck[] | null;
 }
 
 export type WallEvent =
+  | { type: 'openChecksLoaded'; openChecks: readonly OpenCheck[] }
   | { type: 'cookSelected'; initials: string }
   | { type: 'callFailed'; said: string; reason: string; requestId: string; initials: string }
   | { type: 'kitchenReplaced'; said: string }
@@ -67,6 +72,7 @@ export function initialWallState(profile: KitchenProfile): WallState {
     roster: profile.roster,
     announcement: '',
     announcementSeq: 0,
+    openChecks: null,
   };
 }
 
@@ -150,5 +156,7 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
       return { ...state, phase: 'stopped', stopMessage: event.message, inFlight: false };
     case 'cookSelected':
       return state.roster.includes(event.initials) ? { ...state, cook: event.initials } : state;
+    case 'openChecksLoaded':
+      return state;
   }
 }

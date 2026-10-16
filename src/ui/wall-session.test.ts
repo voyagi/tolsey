@@ -522,3 +522,217 @@ describe('demo_full stops the wall at once', () => {
     expect(worker.mintCount()).toBe(2);
   });
 });
+
+interface OpenCheck {
+  id: string;
+  name: string;
+}
+
+const REACH_IN_TWO_OPEN: OpenCheck[] = [{ id: 'reach_in_2', name: 'Reach-in two' }];
+const LISTS_BOTH: Route = (body) => answer(body, { tools: [{ name: 'log_reading' }, { name: 'due_now' }] });
+
+function dueNowResult(openChecks: OpenCheck[]) {
+  const names = openChecks.map((check) => check.name).join(', ');
+  return {
+    content: [{ type: 'text', text: openChecks.length === 0 ? 'No checks are open.' : `Open checks: ${names}.` }],
+    structuredContent: { contractVersion: 1, businessDay: '2026-10-16', timeZone: 'America/Chicago', openChecks },
+  };
+}
+
+function loggedResult(outcome: string, text: string, extra: Record<string, unknown> = {}) {
+  return { content: [{ type: 'text', text }], structuredContent: { outcome, verdict: outcome, ...extra } };
+}
+
+// A Worker that lists due_now: it answers the list the test keeps in `record.open`, unless the test
+// swaps `record.dueNow` for a failing or held-back route, and log_reading answers `record.logReading`.
+function recordWorker() {
+  const record: { open: OpenCheck[]; dueNow: Route | null; logReading: Route } = {
+    open: [],
+    dueNow: null,
+    logReading: (body) => answer(body, IN_RANGE),
+  };
+  const listed: Route = (body) => answer(body, dueNowResult(record.open));
+  const worker = fakeWorker({
+    toolsList: LISTS_BOTH,
+    toolsCall: (body) => (body.params?.name === 'due_now' ? (record.dueNow ?? listed)(body) : record.logReading(body)),
+  });
+  const dueNowCalls = () => worker.sent.filter((request) => request.body?.params?.name === 'due_now');
+  return { worker, record, dueNowCalls };
+}
+
+describe('the open checks come from due_now at load and after every answered call', () => {
+  it.fails('loads the list once after start when tools/list lists due_now', async () => {
+    const { worker, record, dueNowCalls } = recordWorker();
+    record.open = REACH_IN_TWO_OPEN;
+    const session = sessionOn(worker);
+    await session.start();
+
+    expect(dueNowCalls().length).toBe(1);
+    expect(session.getState().openChecks).toEqual(REACH_IN_TWO_OPEN);
+  });
+
+  it('makes no due_now call and keeps the list null when tools/list does not list due_now', async () => {
+    const worker = fakeWorker();
+    const session = sessionOn(worker);
+    await session.start();
+    await session.say(WALK_IN);
+
+    expect(worker.sent.filter((request) => request.body?.params?.name === 'due_now')).toEqual([]);
+    expect(session.getState().openChecks).toBeNull();
+  });
+
+  it.fails.each([
+    ['in_range', loggedResult('in_range', 'Walk-in, 38, in range, AB', { value: 38 })],
+    ['refused', loggedResult('refused', 'I need the number on the thermometer. What does reach-in two read?')],
+    ['held', loggedResult('held', 'Say it one digit at a time. What does the walk-in read?', { prompt: { kind: 'digit_repeat', id: 'p-1' } })],
+    ['nothing_to_fix', loggedResult('nothing_to_fix', 'There is nothing to fix.')],
+  ])('follows a %s result with one due_now call', async (_outcome, result) => {
+    const { worker, record, dueNowCalls } = recordWorker();
+    const session = sessionOn(worker);
+    await session.start();
+    record.logReading = (body) => answer(body, result);
+    record.open = REACH_IN_TWO_OPEN;
+
+    await session.say(WALK_IN);
+
+    expect(dueNowCalls()).toHaveLength(2);
+    expect(session.getState().openChecks).toEqual(REACH_IN_TWO_OPEN);
+  });
+
+  it.fails('makes no due_now call after a local reply', async () => {
+    const { worker, dueNowCalls } = recordWorker();
+    const session = sessionOn(worker);
+    await session.start();
+
+    await session.say('hello');
+
+    expect(session.getState().exchange?.source).toBe('wall');
+    expect(dueNowCalls()).toHaveLength(1);
+  });
+
+  it.fails('makes no due_now call after a NOT LOGGED failure, and the list stays as it was', async () => {
+    const { worker, record, dueNowCalls } = recordWorker();
+    record.open = REACH_IN_TWO_OPEN;
+    const session = sessionOn(worker);
+    await session.start();
+    const listBefore = session.getState().openChecks;
+    record.logReading = () => asJson({ error: 'internal' }, 500);
+    record.open = [];
+
+    await session.say(WALK_IN);
+
+    expect(session.getState().notLogged).not.toBeNull();
+    expect(dueNowCalls()).toHaveLength(1);
+    expect(session.getState().openChecks).toBe(listBefore);
+  });
+
+  it.fails('makes no due_now call once the wall has stopped', async () => {
+    const { worker, record, dueNowCalls } = recordWorker();
+    const session = sessionOn(worker);
+    await session.start();
+    record.logReading = toolError('demo_full', 'The demo is full for today.');
+
+    await session.say(WALK_IN);
+
+    expect(session.getState().phase).toBe('stopped');
+    expect(dueNowCalls()).toHaveLength(1);
+  });
+
+  it.each<[string, Route]>([
+    ['an HTTP 500', () => asJson({ error: 'internal' }, 500)],
+    ['an isError answer', toolError('server_fault', 'Tolsey could not log that. Try again.')],
+    ['no answer before the timeout', NEVER_ANSWERS],
+  ])('leaves the list unchanged and says nothing when the refresh gets %s', async (_failure, route) => {
+    const { worker, record } = recordWorker();
+    record.open = REACH_IN_TWO_OPEN;
+    const session = sessionOn(worker);
+    await session.start();
+    const before = session.getState();
+    record.dueNow = route;
+
+    await session.say(WALK_IN);
+
+    const after = session.getState();
+    expect(after.openChecks).toBe(before.openChecks);
+    expect(after.notLogged).toBeNull();
+    expect(after.pass).toMatchObject({ outcome: 'in_range', value: 38 });
+    expect(after.announcementSeq - before.announcementSeq).toBe(1);
+  });
+
+  it.fails('shows the reply and the pass before the list answers', async () => {
+    const { worker, record } = recordWorker();
+    const session = sessionOn(worker);
+    await session.start();
+    const list = heldBack<undefined>();
+    record.dueNow = async (body) => {
+      await list.promise;
+      return answer(body, dueNowResult(REACH_IN_TWO_OPEN));
+    };
+
+    const saying = session.say(WALK_IN);
+    await settle();
+
+    expect(session.getState().exchange?.reply).toBe('Walk-in, 38, in range, AB');
+    expect(session.getState().pass).toMatchObject({ value: 38 });
+    expect(controlsEnabled(session.getState())).toBe(true);
+    expect(session.getState().openChecks).toEqual([]);
+
+    list.release(undefined);
+    await saying;
+    expect(session.getState().openChecks).toEqual(REACH_IN_TWO_OPEN);
+  });
+
+  it.fails('a refresh after a refusal never writes the status region', async () => {
+    const { worker, record } = recordWorker();
+    const session = sessionOn(worker);
+    await session.start();
+    record.logReading = (body) => answer(body, loggedResult('refused', 'I need the number on the thermometer. What does reach-in two read?'));
+    record.open = REACH_IN_TWO_OPEN;
+    const seqBefore = session.getState().announcementSeq;
+
+    await session.say('reach-in two is fine');
+
+    expect(session.getState().openChecks).toEqual(REACH_IN_TWO_OPEN);
+    expect(session.getState().announcementSeq - seqBefore).toBe(1);
+  });
+
+  it.fails('never lets an older refresh that answers late replace a newer list', async () => {
+    const { worker, record } = recordWorker();
+    const first = heldBack<undefined>();
+    let refreshes = 0;
+    record.dueNow = async (body) => {
+      refreshes += 1;
+      if (refreshes === 1) {
+        await first.promise;
+        return answer(body, dueNowResult([]));
+      }
+      return answer(body, dueNowResult(REACH_IN_TWO_OPEN));
+    };
+    const session = sessionOn(worker);
+    const starting = session.start();
+    await settle();
+    expect(session.getState().phase).toBe('ready');
+
+    await session.say('reach-in two is fine');
+    first.release(undefined);
+    await starting;
+
+    expect(refreshes).toBe(2);
+    expect(session.getState().openChecks).toEqual(REACH_IN_TWO_OPEN);
+  });
+
+  it.fails("loads the new kitchen's list after a closed kitchen is replaced", async () => {
+    const { worker, record, dueNowCalls } = recordWorker();
+    record.open = REACH_IN_TWO_OPEN;
+    const session = sessionOn(worker);
+    await session.start();
+    record.logReading = KITCHEN_CLOSED;
+    record.open = [];
+
+    await session.say(WALK_IN);
+
+    expect(session.getState().exchange?.reply).toBe(NEW_KITCHEN_SENTENCE);
+    expect(dueNowCalls().map((request) => request.path)).toEqual([MINTED[0].mcpPath, MINTED[1].mcpPath]);
+    expect(session.getState().openChecks).toEqual([]);
+  });
+});

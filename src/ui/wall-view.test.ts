@@ -316,6 +316,8 @@ describe('markup the page CSP and the static look allow', () => {
     failed,
     wallReducer(initialWallState(WALL_PROFILE), { type: 'startFailed', error: 'Could not open the MCP session (status 500).' }),
     wallReducer(READY, { type: 'stopped', message: 'The demo is full for today. Try again tomorrow.' }),
+    { ...READY, openChecks: [{ id: 'reach_in_2', name: 'Reach-in two' }] },
+    { ...READY, openChecks: [] },
   ];
   const markups = states.map((state) => renderToStaticMarkup(createElement(DeviceFrame, null, createElement(WallView, { state, actions: ACTIONS }))));
 
@@ -327,6 +329,57 @@ describe('markup the page CSP and the static look allow', () => {
     for (const markup of markups) {
       for (const [, classes] of markup.matchAll(/class="([^"]*)"/g)) expect(classes).not.toContain('flap');
     }
+  });
+});
+
+describe('the open-checks board shows what the record lists', () => {
+  const BOARD = /<section\b[^>]*aria-labelledby="open-checks-head"[^>]*>/;
+  const TWO_OPEN = [
+    { id: 'walk_in', name: 'Walk-in' },
+    { id: 'soup_well', name: 'Soup well' },
+  ];
+
+  function boardOf(markup: string): string {
+    const [from, to] = spanOf(markup, new RegExp(BOARD.source), 'section');
+    return markup.slice(from, to);
+  }
+
+  it('is not rendered until the record has answered', () => {
+    expect(render(READY)).not.toMatch(BOARD);
+    expect(textOf(render(READY))).not.toContain('Open checks');
+  });
+
+  it.fails('lists the names in the order given, never the ids, under the heading Open checks', () => {
+    const board = boardOf(render({ ...READY, openChecks: TWO_OPEN }));
+    const text = textOf(board);
+
+    expect(text).toContain('Open checks');
+    expect(text.indexOf('Walk-in')).toBeGreaterThan(-1);
+    expect(text.indexOf('Walk-in')).toBeLessThan(text.indexOf('Soup well'));
+    expect(board).not.toContain('walk_in');
+    expect(board).not.toContain('soup_well');
+  });
+
+  it.fails('marks every row with the word Open on a status tile, never by colour alone', () => {
+    const board = boardOf(render({ ...READY, openChecks: TWO_OPEN }));
+    const tiles = board.match(/<span class="status[^"]*">Open<\/span>/g) ?? [];
+
+    expect(tiles).toHaveLength(2);
+  });
+
+  it.fails('shows the designed empty sentence when nothing is open', () => {
+    const board = boardOf(render({ ...READY, openChecks: [] }));
+
+    expect(textOf(board)).toContain('No checks are open.');
+    expect(board).not.toContain('<li');
+  });
+
+  it.fails('keeps the one status region outside the board', () => {
+    const markup = render({ ...READY, openChecks: TWO_OPEN });
+    const status = markup.search(STATUS_REGION);
+
+    expect(markup.match(/role="status"/g)).toHaveLength(1);
+    expect(inside(status, spanOf(markup, new RegExp(BOARD.source), 'section'))).toBe(false);
   });
 });
 
