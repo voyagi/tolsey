@@ -2,7 +2,16 @@ import type { RuleResult } from '../contract/log-reading';
 import { formatValue } from '../domain/words';
 import { ScanBand } from './ScanBand';
 import { ThemeSwitch } from './ThemeSwitch';
-import { CHIPS, EXAMPLE_PHRASE, HINT, NOT_LOGGED, SPEAKER_LABEL } from './wall-copy';
+import {
+  CHIPS,
+  EXAMPLE_PHRASE,
+  HINT,
+  NO_CHECKS_OPEN,
+  NOT_LOGGED,
+  OPEN_CHECKS_HEADING,
+  OPEN_TILE,
+  SPEAKER_LABEL,
+} from './wall-copy';
 import { controlsEnabled, type WallState } from './wall-state';
 
 interface WallActions {
@@ -177,6 +186,33 @@ function StatusRegion({ state }: { state: WallState }) {
   );
 }
 
+const OPEN_CHECKS_HEAD_ID = 'open-checks-head';
+
+// The board shows what due_now answered, in its order and by name, and nothing the page worked out:
+// a refused check stays here until the record says a number closed it. Open is said in a word on its
+// tile, never by colour alone.
+function OpenChecksBoard({ openChecks }: { openChecks: NonNullable<WallState['openChecks']> }) {
+  return (
+    <section className="board" aria-labelledby={OPEN_CHECKS_HEAD_ID}>
+      <h2 id={OPEN_CHECKS_HEAD_ID} className="board-head">
+        {OPEN_CHECKS_HEADING}
+      </h2>
+      {openChecks.length === 0 ? (
+        <p className="board-empty">{NO_CHECKS_OPEN}</p>
+      ) : (
+        <ul className="board-rows">
+          {openChecks.map((check) => (
+            <li key={check.id} className="board-row">
+              <span className="board-name">{check.name}</span>
+              <span className="status status--open">{OPEN_TILE}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 const NOT_LOGGED_ID = 'not-logged';
 
 function Notices({ state, actions }: { state: WallState; actions: WallActions }) {
@@ -277,6 +313,7 @@ export function WallView({ state, actions }: { state: WallState; actions: WallAc
             ))}
           </ul>
         </div>
+        {state.openChecks === null ? null : <OpenChecksBoard openChecks={state.openChecks} />}
         <StatusRegion state={state} />
       </main>
     </div>

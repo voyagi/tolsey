@@ -349,7 +349,7 @@ describe('the open-checks board shows what the record lists', () => {
     expect(textOf(render(READY))).not.toContain('Open checks');
   });
 
-  it.fails('lists the names in the order given, never the ids, under the heading Open checks', () => {
+  it('lists the names in the order given, never the ids, under the heading Open checks', () => {
     const board = boardOf(render({ ...READY, openChecks: TWO_OPEN }));
     const text = textOf(board);
 
@@ -360,21 +360,21 @@ describe('the open-checks board shows what the record lists', () => {
     expect(board).not.toContain('soup_well');
   });
 
-  it.fails('marks every row with the word Open on a status tile, never by colour alone', () => {
+  it('marks every row with the word Open on a status tile, never by colour alone', () => {
     const board = boardOf(render({ ...READY, openChecks: TWO_OPEN }));
     const tiles = board.match(/<span class="status[^"]*">Open<\/span>/g) ?? [];
 
     expect(tiles).toHaveLength(2);
   });
 
-  it.fails('shows the designed empty sentence when nothing is open', () => {
+  it('shows the designed empty sentence when nothing is open', () => {
     const board = boardOf(render({ ...READY, openChecks: [] }));
 
     expect(textOf(board)).toContain('No checks are open.');
     expect(board).not.toContain('<li');
   });
 
-  it.fails('keeps the one status region outside the board', () => {
+  it('keeps the one status region outside the board', () => {
     const markup = render({ ...READY, openChecks: TWO_OPEN });
     const status = markup.search(STATUS_REGION);
 

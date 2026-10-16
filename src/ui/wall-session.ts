@@ -7,6 +7,7 @@ import {
   type McpSession,
   type ToolCallResult,
 } from '../client/mcp-client';
+import type { DueNowOutput } from '../contract/due-now';
 import type { KitchenProfile } from '../domain/rule';
 import { intentFor } from './intent';
 import { DEMO_FULL_MESSAGE, failedAnswerReason, NO_ANSWER_REASON, STOPPED_MESSAGE, UNREACHED_REASON } from './wall-copy';
@@ -34,6 +35,7 @@ export interface WallSession {
 }
 
 const LOG_READING = 'log_reading';
+const DUE_NOW = 'due_now';
 const DEMO_FULL = 'demo_full';
 const KITCHEN_GONE_STATUS = 404;
 const KITCHEN_ENDED: ReadonlySet<unknown> = new Set(['kitchen_closed', 'kitchen_full']);
@@ -87,6 +89,27 @@ function failureOutcome(error: unknown): CallOutcome {
   return { kind: 'failed', reason: failedAnswerReason(error.status) };
 }
 
+type OpenCheck = DueNowOutput['openChecks'][number];
+
+function isOpenCheck(entry: unknown): entry is OpenCheck {
+  if (typeof entry !== 'object' || entry === null) return false;
+  const { id, name } = entry as Record<string, unknown>;
+  return typeof id === 'string' && typeof name === 'string';
+}
+
+// The list is shown only as the record gave it: an error, a failed call or a malformed answer gives
+// null, and the page then keeps the list it had rather than guessing one.
+async function fetchOpenChecks(session: McpSession): Promise<OpenCheck[] | null> {
+  try {
+    const result = await session.callTool(DUE_NOW, {});
+    const list = result.isError === true ? undefined : result.structuredContent?.openChecks;
+    if (!Array.isArray(list) || !list.every(isOpenCheck)) return null;
+    return list.map(({ id, name }) => ({ id, name }));
+  } catch {
+    return null;
+  }
+}
+
 async function callLogReading(session: McpSession, args: Record<string, unknown>): Promise<CallOutcome> {
   try {
     const result = await session.callTool(LOG_READING, args);
@@ -109,6 +132,7 @@ export function createWallSession(options: WallSessionOptions): WallSession {
   // One new kitchen per kitchen that has taken a call: without it a kitchen that closes at once
   // would be replaced again and again.
   let replacementUsed = false;
+  let refreshCount = 0;
 
   function dispatch(event: WallEvent): void {
     state = wallReducer(state, event);
@@ -133,12 +157,26 @@ export function createWallSession(options: WallSessionOptions): WallSession {
     mcp = session;
   }
 
+  // Runs after the event it follows has been dispatched, so the reply and the pass never wait on the
+  // list. Only the newest refresh may set it, and only while its session is still the wall's: a list
+  // answered late for an earlier call, or for a kitchen since replaced, is dropped.
+  async function refreshOpenChecks(): Promise<void> {
+    const session = mcp;
+    if (session === null || !toolNames.includes(DUE_NOW)) return;
+    refreshCount += 1;
+    const refresh = refreshCount;
+    const openChecks = await fetchOpenChecks(session);
+    if (openChecks === null || refresh !== refreshCount || mcp !== session) return;
+    dispatch({ type: 'openChecksLoaded', openChecks });
+  }
+
   async function start(): Promise<void> {
     dispatch({ type: 'starting' });
     mcp = null;
     try {
       await connect();
       dispatch({ type: 'started' });
+      await refreshOpenChecks();
     } catch (error) {
       if (error instanceof DemoFull) {
         stop(DEMO_FULL_MESSAGE);
@@ -167,7 +205,10 @@ export function createWallSession(options: WallSessionOptions): WallSession {
       dispatch({ type: 'kitchenReplaced', said });
     } catch (error) {
       stop(error instanceof DemoFull ? DEMO_FULL_MESSAGE : STOPPED_MESSAGE);
+      return;
     }
+    // The list on screen belonged to the kitchen that closed; the new kitchen's record replaces it.
+    await refreshOpenChecks();
   }
 
   // Unchanged words from the same cook after a call that did not land keep their request_id, so a
@@ -196,6 +237,7 @@ export function createWallSession(options: WallSessionOptions): WallSession {
       case 'landed':
         replacementUsed = false;
         dispatch({ type: 'resultReceived', said: text, result: outcome.result });
+        await refreshOpenChecks();
         return;
       case 'failed':
         dispatch({ type: 'callFailed', said: text, reason: outcome.reason, requestId, initials });

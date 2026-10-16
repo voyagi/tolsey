@@ -21,6 +21,12 @@ export const KEPT_IN_BROWSER = 'Kept in this browser';
 
 export const NOT_LOGGED = 'NOT LOGGED';
 
+export const OPEN_CHECKS_HEADING = 'Open checks';
+
+export const NO_CHECKS_OPEN = 'No checks are open.';
+
+export const OPEN_TILE = 'Open';
+
 export const NEW_KITCHEN_SENTENCE = 'That kitchen has closed, so the reading was not logged. A new kitchen is ready: send the words again.';
 
 export const STOPPED_MESSAGE = 'The wall cannot reach its kitchen right now. Reload the page later to start again.';

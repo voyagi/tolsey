@@ -561,7 +561,7 @@ function recordWorker() {
 }
 
 describe('the open checks come from due_now at load and after every answered call', () => {
-  it.fails('loads the list once after start when tools/list lists due_now', async () => {
+  it('loads the list once after start when tools/list lists due_now', async () => {
     const { worker, record, dueNowCalls } = recordWorker();
     record.open = REACH_IN_TWO_OPEN;
     const session = sessionOn(worker);
@@ -581,7 +581,7 @@ describe('the open checks come from due_now at load and after every answered cal
     expect(session.getState().openChecks).toBeNull();
   });
 
-  it.fails.each([
+  it.each([
     ['in_range', loggedResult('in_range', 'Walk-in, 38, in range, AB', { value: 38 })],
     ['refused', loggedResult('refused', 'I need the number on the thermometer. What does reach-in two read?')],
     ['held', loggedResult('held', 'Say it one digit at a time. What does the walk-in read?', { prompt: { kind: 'digit_repeat', id: 'p-1' } })],
@@ -599,7 +599,7 @@ describe('the open checks come from due_now at load and after every answered cal
     expect(session.getState().openChecks).toEqual(REACH_IN_TWO_OPEN);
   });
 
-  it.fails('makes no due_now call after a local reply', async () => {
+  it('makes no due_now call after a local reply', async () => {
     const { worker, dueNowCalls } = recordWorker();
     const session = sessionOn(worker);
     await session.start();
@@ -610,7 +610,7 @@ describe('the open checks come from due_now at load and after every answered cal
     expect(dueNowCalls()).toHaveLength(1);
   });
 
-  it.fails('makes no due_now call after a NOT LOGGED failure, and the list stays as it was', async () => {
+  it('makes no due_now call after a NOT LOGGED failure, and the list stays as it was', async () => {
     const { worker, record, dueNowCalls } = recordWorker();
     record.open = REACH_IN_TWO_OPEN;
     const session = sessionOn(worker);
@@ -626,7 +626,7 @@ describe('the open checks come from due_now at load and after every answered cal
     expect(session.getState().openChecks).toBe(listBefore);
   });
 
-  it.fails('makes no due_now call once the wall has stopped', async () => {
+  it('makes no due_now call once the wall has stopped', async () => {
     const { worker, record, dueNowCalls } = recordWorker();
     const session = sessionOn(worker);
     await session.start();
@@ -659,7 +659,7 @@ describe('the open checks come from due_now at load and after every answered cal
     expect(after.announcementSeq - before.announcementSeq).toBe(1);
   });
 
-  it.fails('shows the reply and the pass before the list answers', async () => {
+  it('shows the reply and the pass before the list answers', async () => {
     const { worker, record } = recordWorker();
     const session = sessionOn(worker);
     await session.start();
@@ -682,7 +682,7 @@ describe('the open checks come from due_now at load and after every answered cal
     expect(session.getState().openChecks).toEqual(REACH_IN_TWO_OPEN);
   });
 
-  it.fails('a refresh after a refusal never writes the status region', async () => {
+  it('a refresh after a refusal never writes the status region', async () => {
     const { worker, record } = recordWorker();
     const session = sessionOn(worker);
     await session.start();
@@ -696,7 +696,7 @@ describe('the open checks come from due_now at load and after every answered cal
     expect(session.getState().announcementSeq - seqBefore).toBe(1);
   });
 
-  it.fails('never lets an older refresh that answers late replace a newer list', async () => {
+  it('never lets an older refresh that answers late replace a newer list', async () => {
     const { worker, record } = recordWorker();
     const first = heldBack<undefined>();
     let refreshes = 0;
@@ -721,7 +721,7 @@ describe('the open checks come from due_now at load and after every answered cal
     expect(session.getState().openChecks).toEqual(REACH_IN_TWO_OPEN);
   });
 
-  it.fails("loads the new kitchen's list after a closed kitchen is replaced", async () => {
+  it("loads the new kitchen's list after a closed kitchen is replaced", async () => {
     const { worker, record, dueNowCalls } = recordWorker();
     record.open = REACH_IN_TWO_OPEN;
     const session = sessionOn(worker);

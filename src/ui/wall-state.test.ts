@@ -285,7 +285,7 @@ describe('the open checks, as the record lists them', () => {
     expect(READY.openChecks).toBeNull();
   });
 
-  it.fails('takes the list exactly as given, in its order', () => {
+  it('takes the list exactly as given, in its order', () => {
     const list = [
       { id: 'walk_in', name: 'Walk-in' },
       { id: 'soup_well', name: 'Soup well' },
@@ -300,7 +300,7 @@ describe('the open checks, as the record lists them', () => {
     expect(after.announcement).toBe(WITH_PASS.announcement);
   });
 
-  it.fails('across a refusal and the list refresh after it, the status count rises by exactly 1', () => {
+  it('across a refusal and the list refresh after it, the status count rises by exactly 1', () => {
     const events: WallEvent[] = [
       { type: 'sent', said: 'reach-in two is fine' },
       { type: 'resultReceived', said: 'reach-in two is fine', result: resultOf('refused') },

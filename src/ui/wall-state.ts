@@ -156,7 +156,8 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
       return { ...state, phase: 'stopped', stopMessage: event.message, inFlight: false };
     case 'cookSelected':
       return state.roster.includes(event.initials) ? { ...state, cook: event.initials } : state;
+    // A list refresh is not a record event, so it never writes the status region.
     case 'openChecksLoaded':
-      return state;
+      return { ...state, openChecks: event.openChecks };
   }
 }
