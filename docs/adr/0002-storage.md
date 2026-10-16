@@ -108,9 +108,12 @@ zone already uses it. One rule for both would share one per-IP counter, so its t
 refuse this demo's own traffic or loosen the other site's limit, and a paid plan breaks the free-tier
 constraint. A Free plan rule also matches on path only, never host, and counts by IP over a 10 second
 period with a 10 second block (Cloudflare's rate limiting availability by plan, read 2026-10-16). So a
-request flood on any route can still spend the account's 100,000 daily Workers requests, which stops
-every Worker on the account for the rest of that day whatever this code does. That is accepted for the
-judging window.
+request flood on the routes that invoke the Worker, `/mcp`, `/mcp/*` and `/api/*` (the
+`run_worker_first` list in `wrangler.jsonc`), can still spend the account's 100,000 daily Workers
+requests, which stops every Worker on the account for the rest of that day whatever this code does.
+Every other request is served from static assets without invoking the Worker, which Cloudflare bills as
+free and unlimited, so the page keeps loading while those routes answer 429 (Static Assets billing and
+limitations in the Workers documentation, read 2026-10-16). That is accepted for the judging window.
 
 The free allowance belongs to the account, not to this database. Cloudflare's D1 pricing page says
 that once the account reaches its daily limits no query runs against D1 until the 00:00 UTC reset
