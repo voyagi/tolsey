@@ -25,7 +25,7 @@
     "gate:dup": "jscpd .",
     "gate:deps": "depcruise src --config .dependency-cruiser.cjs",
     "gate:size": "vite build && size-limit",
-    "gate:types": "wrangler types && tsc -p tsconfig.app.json && tsc -p tsconfig.worker.json && tsc -p tsconfig.test.json && tsc -p tsconfig.node.json",
+    "gate:types": "wrangler types && tsc -p tsconfig.app.json && tsc -p tsconfig.worker.json && tsc -p tsconfig.test.json && tsc -p tsconfig.ui-test.json && tsc -p tsconfig.node.json",
     "gate:dead": "node scripts/check-dead.mjs",
     "gate:repo": "node scripts/check-goals.mjs && node scripts/check-tracked-gitignore.mjs && node scripts/check-hookspath.mjs && node scripts/check-license.mjs && node scripts/check-git-identity.mjs && node scripts/check-artifact-metadata.mjs && node scripts/check-privacy-accountability.mjs --require && node scripts/check-ai-act.mjs --require && node scripts/check-icon-decision.mjs",
     "gate:env": "node scripts/check-env-example.mjs",
@@ -34,7 +34,7 @@
     "gate:precommit": "eslint . && jscpd . && npm run gate:env && npm run gate:tsconfig && npm run gate:artifacts && vitest run --project unit",
     "gate": "npm run gate:artifacts && npm run gate:tsconfig && npm run gate:types && npm run gate:complexity && npm run gate:dup && npm run gate:deps && npm run gate:env && npm run gate:size && npm run gate:dead && npm run gate:selftest",
     "gate:selftest": "node scripts/check-test-count.mjs --selftest && node scripts/mutate-incremental.mjs --selftest && node scripts/check-ai-act.mjs --selftest && node scripts/check-privacy-accountability.mjs --selftest",
-    "gate:test-count": "vite build && node scripts/check-test-count.mjs --floor 1322",
+    "gate:test-count": "vite build && node scripts/check-test-count.mjs --floor 1405",
     "verify:ship": "node verify-ship.mjs",
     "mutate": "node scripts/mutate-incremental.mjs",
     "mutate:full": "stryker run"

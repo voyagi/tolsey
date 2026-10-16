@@ -68,46 +68,46 @@ function buttonsOf(markup: string): string[] {
 }
 
 describe('the pass shows a logged line with the fields the result carried', () => {
-  it.fails('an in_range line shows the check point, the value in °F, the verdict, the limit, the initials and the record code', () => {
+  it('an in_range line shows the check point, the value in °F, the verdict, the limit, the initials and the record code', () => {
     const markup = withPass({});
     for (const text of ['Walk-in', '38°F', 'in range', 'at most 41°F', 'AB', '261016-001']) expect(markup).toContain(text);
     expect(markup).not.toContain('out-of-range');
   });
 
-  it.fails('an out_of_range line shows its verdict word and carries the out-of-range class beside it', () => {
+  it('an out_of_range line shows its verdict word and carries the out-of-range class beside it', () => {
     const markup = withPass({ outcome: 'out_of_range', value: 45, verdict: 'out of range' });
     expect(markup).toContain('out of range');
     expect(markup).toMatch(/class="[^"]*\bout-of-range\b/);
   });
 
-  it.fails('a not_covered line shows not covered yet and no limit', () => {
+  it('a not_covered line shows not covered yet and no limit', () => {
     const markup = withPass({ outcome: 'not_covered', checkPoint: { id: 'cooling', name: 'Cooling' }, verdict: 'not covered yet', rule: undefined });
     expect(markup).toContain('not covered yet');
     expect(markup).not.toMatch(/at (most|least)/);
   });
 
-  it.fails('an at_least rule is written as at least its limit', () => {
+  it('an at_least rule is written as at least its limit', () => {
     const rule = { id: 'hot_holding', comparator: 'at_least', limit: 135, unit: 'F', sourceKind: 'food_code' } as const;
     expect(withPass({ value: 140, rule })).toContain('at least 135°F');
   });
 
-  it.fails('a value with a tenth shows as 38.5', () => {
+  it('a value with a tenth shows as 38.5', () => {
     expect(withPass({ value: 38.5 })).toContain('38.5°F');
   });
 
-  it.fails('a whole value shows as 38, never 38.0', () => {
+  it('a whole value shows as 38, never 38.0', () => {
     const markup = withPass({ value: 38 });
     expect(markup).toContain('38°F');
     expect(markup).not.toContain('38.0');
   });
 
-  it.fails('before the first line the pass shows its empty-state sentence', () => {
+  it('before the first line the pass shows its empty-state sentence', () => {
     expect(render(READY)).toContain(EMPTY_PASS);
   });
 });
 
 describe('a refusal or a held question changes the exchange only', () => {
-  it.fails('a refused result shows its reply under the speaker label and the previous pass unchanged', () => {
+  it('a refused result shows its reply under the speaker label and the previous pass unchanged', () => {
     const reply = 'I need the number on the thermometer. What does reach-in two read?';
     const state = afterResult({ ...READY, pass: IN_RANGE_PASS }, 'reach-in two is fine', result('refused', reply, { verdict: 'refused' }));
     const markup = render(state);
@@ -117,7 +117,7 @@ describe('a refusal or a held question changes the exchange only', () => {
     expect(markup).toContain('261016-001');
   });
 
-  it.fails('a held result shows its question and leaves the empty pass empty', () => {
+  it('a held result shows its question and leaves the empty pass empty', () => {
     const reply = 'Say it one digit at a time. What does the walk-in read?';
     const state = afterResult(READY, 'walk-in 15', result('held', reply, { verdict: 'held', value: 15, prompt: { kind: 'digit_repeat', id: 'p-1' } }));
     const markup = render(state);
@@ -127,19 +127,19 @@ describe('a refusal or a held question changes the exchange only', () => {
 });
 
 describe('the controls follow the start', () => {
-  it.fails('while starting every chip and the send button are disabled', () => {
+  it('while starting every chip and the send button are disabled', () => {
     const buttons = buttonsOf(render(initialWallState(WALL_PROFILE)));
     expect(buttons.length).toBeGreaterThanOrEqual(5);
     for (const button of buttons) expect(button).toContain('disabled=""');
   });
 
-  it.fails('once ready no chip and no send button is disabled', () => {
+  it('once ready no chip and no send button is disabled', () => {
     const buttons = buttonsOf(render(READY));
     expect(buttons.length).toBeGreaterThanOrEqual(5);
     for (const button of buttons) expect(button).not.toContain('disabled');
   });
 
-  it.fails('a failed start shows its sentence, a Retry button and a disabled field', () => {
+  it('a failed start shows its sentence, a Retry button and a disabled field', () => {
     const error = 'Could not open the MCP session (status 500).';
     const markup = render(wallReducer(initialWallState(WALL_PROFILE), { type: 'startFailed', error }));
     expect(markup).toContain(error);
@@ -156,18 +156,18 @@ describe('every phrase the page teaches parses to its phrase-table entry', () =>
   const quoted = [...textsMatching(markup, /<q>([^<]*)<\/q>/g), ...textsMatching(decoded(textOnly), /"([^"]*)"/g)];
   const extracted = [...new Set([...chips, ...quoted])];
 
-  it.fails('finds the chips and the quoted example in the rendered wall', () => {
+  it('finds the chips and the quoted example in the rendered wall', () => {
     expect(chips.length).toBeGreaterThan(0);
     expect(quoted.length).toBeGreaterThan(0);
   });
 
-  it.fails.each(extracted.length > 0 ? extracted : ['(nothing extracted)'])('%s has a row read with no question open and gives that row', (phrase) => {
+  it.each(extracted.length > 0 ? extracted : ['(nothing extracted)'])('%s has a row read with no question open and gives that row', (phrase) => {
     const row = PHRASE_TABLE.find((entry) => entry.phrase === phrase && entry.openPrompt === null);
     expect(row).toBeDefined();
     expect(intentFor(phrase, WALL_PROFILE, null)).toStrictEqual(row?.expected);
   });
 
-  it.fails('the phrases extracted are exactly the taught phrases', () => {
+  it('the phrases extracted are exactly the taught phrases', () => {
     expect([...extracted].sort()).toEqual([...TAUGHT_PHRASES].sort());
   });
 });

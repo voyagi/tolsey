@@ -1,11 +1,13 @@
-export function App() {
-  return (
-    <main>
-      <h1>Tolsey</h1>
-      <p>
-        A food safety log for small restaurant kitchens that you fill in by voice. Say the reading,
-        and it lands in the day's record against the rule that applies.
-      </p>
-    </main>
-  );
+import { useSyncExternalStore } from 'react';
+import type { WallSession } from './wall-session';
+import { WallView } from './WallView';
+
+export function App({ session }: { session: WallSession }) {
+  const state = useSyncExternalStore(session.subscribe, session.getState);
+  const actions = {
+    say: (text: string) => void session.say(text),
+    edit: (text: string) => session.edit(text),
+    retryStart: () => void session.retryStart(),
+  };
+  return <WallView state={state} actions={actions} />;
 }

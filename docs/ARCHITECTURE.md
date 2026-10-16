@@ -18,9 +18,12 @@ decides what a call means and what to store, a server adapter supplies the clock
 and the store, and a store port has a D1 adapter for the Worker and an in-memory adapter for tests.
 The MCP handler is stateless: a fresh server is built for every request and all state lives in D1.
 
-What exists today: `log_reading` is the only registered tool, and the React client
-(`src/ui/App.tsx`) is a single placeholder page. The other five tool names and descriptions are
-fixed in `src/contract/tools.ts`, which notes that they are registered in phases 2 and 3. The card
+What exists today: `log_reading` is the only registered tool. The wall page
+(`src/ui/WallView.tsx`, driven by `src/ui/wall-session.ts` through the MCP client in
+`src/client/mcp-client.ts`) mints a scratch kitchen and calls `log_reading` with the words typed or
+tapped, then shows the reply and the logged line exactly as the result gives them. The other five
+tool names and descriptions are fixed in `src/contract/tools.ts`, which notes that they are
+registered in phases 2 and 3. The card
 resources (`ui://tolsey/reading.html` and three others) are fixed as constants in the same file;
 ADR 0002 records that they are attached to tool definitions in phase 2.
 
@@ -155,7 +158,8 @@ read bounds are documented in ADR 0002.
 
 ## Test targets
 
-`vitest.config.ts` defines five projects. `unit` covers `src/domain` and `src/contract`; `store` runs
+`vitest.config.ts` defines five projects. `unit` covers `src/domain`, `src/contract`, `src/client`
+and `src/ui` (the page's render tests use `react-dom/server`, with no browser); `store` runs
 the store suite against a local D1 from wrangler's `getPlatformProxy`; `conformance` runs the
 server tests in process; `e2e` runs the built Worker in workerd; and `deployed` runs the
 conformance file against a deployed Worker. `src/test-support/target.ts` resolves which of these
@@ -169,7 +173,8 @@ src/
   domain/        Pure decisions: words, prompts, corrections, judging, business days, rule schemas
   contract/      Tool names, descriptions, annotations, card URIs and the log_reading schemas
   store/         The Store port, the D1 adapter and the in-memory adapter
-  ui/            React client entry (placeholder page)
+  client/        Fetch-based MCP client shared by the wall and the capture
+  ui/            The wall page: React components, the session, the intent layer
   test-support/  Shared test harnesses, fixtures and counting or gated store wrappers
 data/
   kitchens/      The demo kitchen profile: roster, foods, check points, schedule, vocabulary
