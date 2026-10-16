@@ -316,6 +316,7 @@ async function runWalk() {
     await tabTo(page, cdp, 'chip:' + PHRASES.held, walk.actions);
     await page.keyboard.press('Enter');
     walk.held = await waitForAnswer(page, PHRASES.held);
+    walk.held.focusAfter = (await focusInfo(page, cdp)).key;
 
     await page.getByRole('button', { name: 'Dark', exact: true }).click();
     await page.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'dark', null, { timeout: 10000 });
@@ -442,6 +443,13 @@ function walkFailures(walk) {
       failures.push(`keyboard walk: ${step.key} shows no focus ring (${step.outlineStyle} ${step.outlineWidth}px on the ${step.ringOn})`);
     }
     if (!step.name) failures.push(`keyboard walk: ${step.key} has no accessible name`);
+  }
+  // A control that drops focus once pressed leaves a keyboard user on the page itself, and a screen reader with
+  // nothing to say about where they are.
+  for (const action of ['logged', 'refused', 'held']) {
+    const chip = `chip:${PHRASES[action]}`;
+    const focusAfter = walk[action]?.focusAfter;
+    if (focusAfter !== chip) failures.push(`keyboard walk: Enter on ${chip} left focus on ${focusAfter}, not the chip`);
   }
   if (walk.statusAtLoad?.regions !== 1) failures.push(`status: ${walk.statusAtLoad?.regions} status regions, expected 1`);
   if (walk.statusAtLoad?.text !== '') failures.push(`status: the region holds "${walk.statusAtLoad?.text}" at load`);

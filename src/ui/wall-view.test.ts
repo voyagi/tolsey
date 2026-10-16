@@ -158,6 +158,17 @@ describe('the controls follow the start', () => {
     for (const button of buttons) expect(button).not.toContain('disabled');
   });
 
+  // A disabled button drops the keyboard's focus to the page, so the chip or Send a cook just pressed
+  // stays focusable while its call is out and only says it is unavailable.
+  it.fails('while a call is out every chip and the send button are aria-disabled and stay focusable', () => {
+    const buttons = buttonsOf(render(wallReducer(READY, { type: 'sent', said: 'the walk-in reads 38' })));
+    expect(buttons.length).toBeGreaterThanOrEqual(5);
+    for (const button of buttons) {
+      expect(button).toContain('aria-disabled="true"');
+      expect(button).not.toContain('disabled=""');
+    }
+  });
+
   it('a failed start shows its sentence, a Retry button and a disabled field', () => {
     const error = 'Could not open the MCP session (status 500).';
     const markup = render(wallReducer(initialWallState(WALL_PROFILE), { type: 'startFailed', error }));
