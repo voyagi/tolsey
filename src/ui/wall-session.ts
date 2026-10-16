@@ -15,7 +15,9 @@ export interface WallSession {
   readonly protocolVersion: string | null;
   readonly toolNames: readonly string[];
   start(): Promise<void>;
+  retryStart(): Promise<void>;
   say(text: string): Promise<void>;
+  edit(text: string): void;
   getState(): WallState;
   subscribe(listener: () => void): () => void;
 }
@@ -91,7 +93,9 @@ export function createWallSession(options: WallSessionOptions): WallSession {
       return toolNames;
     },
     start,
+    retryStart: async () => undefined,
     say,
+    edit: () => undefined,
     getState: () => state,
     subscribe: (listener) => {
       listeners.add(listener);

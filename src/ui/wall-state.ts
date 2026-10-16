@@ -25,9 +25,12 @@ export interface WallState {
   pass: Pass | null;
   openPrompt: OpenPrompt | null;
   inFlight: boolean;
+  draft: string;
 }
 
 export type WallEvent =
+  | { type: 'edited'; text: string }
+  | { type: 'localReplied'; said: string; reply: string }
   | { type: 'starting' }
   | { type: 'started' }
   | { type: 'startFailed'; error: string }
@@ -46,7 +49,13 @@ export function initialWallState(profile: KitchenProfile): WallState {
     pass: null,
     openPrompt: null,
     inFlight: false,
+    draft: '',
   };
+}
+
+export function controlsEnabled(state: WallState): boolean {
+  void state;
+  return false;
 }
 
 // Only a logged line moves the pass, and only with the fields the server sent: the page never
@@ -82,5 +91,8 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
       return afterResult(state, event.said, event.result);
     case 'wallReplied':
       return { ...state, inFlight: false, exchange: { said: event.said, reply: event.reply, source: 'wall' } };
+    case 'edited':
+    case 'localReplied':
+      return state;
   }
 }
