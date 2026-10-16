@@ -30,9 +30,13 @@ export interface WallState {
   notLogged: { reason: string } | null;
   pendingRetry: { words: string; requestId: string; initials: string } | null;
   stopMessage: string | null;
+  roster: readonly string[];
+  announcement: string;
+  announcementSeq: number;
 }
 
 export type WallEvent =
+  | { type: 'cookSelected'; initials: string }
   | { type: 'callFailed'; said: string; reason: string; requestId: string; initials: string }
   | { type: 'kitchenReplaced'; said: string }
   | { type: 'stopped'; message: string }
@@ -59,7 +63,14 @@ export function initialWallState(profile: KitchenProfile): WallState {
     notLogged: null,
     pendingRetry: null,
     stopMessage: null,
+    roster: profile.roster,
+    announcement: '',
+    announcementSeq: 0,
   };
+}
+
+export function statusWrites(events: readonly WallEvent[], initial: WallState): number {
+  return events.reduce(wallReducer, initial).announcementSeq - initial.announcementSeq;
 }
 
 // Every chip and the send button follow this, so nothing can be sent before tools/list has answered or
@@ -127,5 +138,7 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
       };
     case 'stopped':
       return { ...state, phase: 'stopped', stopMessage: event.message, inFlight: false };
+    case 'cookSelected':
+      return state;
   }
 }

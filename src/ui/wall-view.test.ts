@@ -9,7 +9,7 @@ import { SPEAKER_LABEL, TAUGHT_PHRASES } from './wall-copy';
 import { initialWallState, wallReducer, type WallState } from './wall-state';
 import { WallView } from './WallView';
 
-const ACTIONS = { say: () => undefined, edit: () => undefined, retryStart: () => undefined };
+const ACTIONS = { say: () => undefined, edit: () => undefined, retryStart: () => undefined, selectCook: () => undefined };
 const EMPTY_PASS = 'No reading yet. Log one to see it here.';
 const RULE_AT_MOST_41 = { id: 'unit_air_cold', comparator: 'at_most', limit: 41, unit: 'F', sourceKind: 'house_rule' } as const;
 
@@ -145,6 +145,113 @@ describe('the controls follow the start', () => {
     expect(markup).toContain(error);
     expect(markup).toMatch(/<button\b[^>]*>Retry<\/button>/);
     expect(markup).toMatch(/<input\b[^>]*disabled=""/);
+  });
+});
+
+// The element opened at `start` runs to its matching close tag; nesting of the same tag is counted.
+function elementSpan(markup: string, start: number, tag: string): [number, number] {
+  const tags = new RegExp(`<(/?)${tag}\\b[^>]*>`, 'g');
+  tags.lastIndex = start;
+  let depth = 0;
+  for (let match = tags.exec(markup); match !== null; match = tags.exec(markup)) {
+    depth += match[1] === '/' ? -1 : 1;
+    if (depth === 0) return [start, tags.lastIndex];
+  }
+  return [start, markup.length];
+}
+
+function spanOf(markup: string, opener: RegExp, tag: string): [number, number] {
+  const found = opener.exec(markup);
+  if (found === null) throw new Error(`no ${String(opener)} in the markup`);
+  return elementSpan(markup, found.index, tag);
+}
+
+function inside(position: number, [from, to]: [number, number]): boolean {
+  return position >= from && position < to;
+}
+
+const STATUS_REGION = /<div role="status" aria-live="polite">/g;
+
+function radiosOf(markup: string): string[] {
+  return markup.match(/<input\b[^>]*type="radio"[^>]*>/g) ?? [];
+}
+
+describe('one polite status region', () => {
+  it.fails('is in the load markup exactly once, empty, outside the pass and outside every list', () => {
+    const markup = render(READY);
+    const regions = [...markup.matchAll(STATUS_REGION)];
+    expect(regions).toHaveLength(1);
+    expect(markup.match(/role="status"/g)).toHaveLength(1);
+    const at = regions[0].index;
+    expect(markup.slice(at)).toMatch(/^<div role="status" aria-live="polite"><\/div>/);
+    expect(inside(at, spanOf(markup, /<section aria-label="Last reading">/, 'section'))).toBe(false);
+    for (const list of markup.matchAll(/<ul\b/g)) expect(inside(at, elementSpan(markup, list.index, 'ul'))).toBe(false);
+  });
+
+  it.fails('holds the reply of a logged reading and nothing else', () => {
+    const reply = 'Walk-in, 38, in range, AB';
+    const state = afterResult(READY, 'the walk-in reads 38', result('in_range', reply, { verdict: 'in range', value: 38 }));
+    const markup = render(state);
+    const [from, to] = spanOf(markup, /<div role="status" aria-live="polite">/, 'div');
+    expect(markup.slice(from, to).replace(/<[^>]*>/g, '')).toBe(reply);
+  });
+
+  it.fails('stays empty after a held question', () => {
+    const reply = 'Say it one digit at a time. What does the walk-in read?';
+    const state = afterResult(READY, 'walk-in 15', result('held', reply, { verdict: 'held', value: 15, prompt: { kind: 'digit_repeat', id: 'p-1' } }));
+    expect(render(state)).toMatch(/<div role="status" aria-live="polite"><\/div>/);
+  });
+});
+
+describe('who is logging, on the top bar', () => {
+  it.fails('lists AB, MR, JT and KL as one radio group under "Who is logging" with AB checked', () => {
+    const markup = render(READY);
+    expect(markup).toMatch(/<fieldset\b[^>]*><legend>Who is logging<\/legend>/);
+    const radios = radiosOf(markup);
+    expect(radios.map((radio) => /value="([^"]*)"/.exec(radio)?.[1])).toEqual(['AB', 'MR', 'JT', 'KL']);
+    expect(new Set(radios.map((radio) => /name="([^"]*)"/.exec(radio)?.[1])).size).toBe(1);
+    const checked = radios.filter((radio) => radio.includes('checked=""'));
+    expect(checked).toHaveLength(1);
+    expect(checked[0]).toContain('value="AB"');
+  });
+
+  it.fails('checks exactly the cook selected', () => {
+    const radios = radiosOf(render(wallReducer(READY, { type: 'cookSelected', initials: 'MR' })));
+    const checked = radios.filter((radio) => radio.includes('checked=""'));
+    expect(checked).toHaveLength(1);
+    expect(checked[0]).toContain('value="MR"');
+  });
+
+  it.fails('sits in the top bar, before the conversation', () => {
+    const markup = render(READY);
+    expect(markup.indexOf('<header')).toBeGreaterThanOrEqual(0);
+    expect(inside(markup.indexOf('<fieldset'), spanOf(markup, /<header\b/, 'header'))).toBe(true);
+  });
+});
+
+describe('a call that did not land', () => {
+  it.fails('shows NOT LOGGED with its reason, the words still in the field and the previous pass unchanged', () => {
+    const reason = 'Tolsey did not answer in time. Send the same words again to retry.';
+    const said = 'walk-in 45';
+    const state = [
+      { type: 'edited', text: said } as const,
+      { type: 'sent', said } as const,
+      { type: 'callFailed', said, reason, requestId: 'r-1', initials: 'AB' } as const,
+    ].reduce(wallReducer, { ...READY, pass: IN_RANGE_PASS });
+    const markup = render(state);
+    expect(markup).toContain('NOT LOGGED');
+    expect(markup).toContain(reason);
+    expect(markup).toMatch(/<input\b[^>]*id="cook-words"[^>]*value="walk-in 45"/);
+    expect(markup).toContain('261016-001');
+    expect(markup).toMatch(/<div role="status" aria-live="polite"><\/div>/);
+  });
+
+  it.fails('a stopped wall shows its message and disables every control', () => {
+    const message = 'The demo is full for today. Try again tomorrow.';
+    const markup = render(wallReducer(READY, { type: 'stopped', message }));
+    expect(markup).toContain(message);
+    for (const button of buttonsOf(markup)) expect(button).toContain('disabled=""');
+    expect(markup).toMatch(/<input\b[^>]*id="cook-words"[^>]*disabled=""/);
   });
 });
 

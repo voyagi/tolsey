@@ -8,6 +8,7 @@ export function App({ session }: { session: WallSession }) {
     say: (text: string) => void session.say(text),
     edit: (text: string) => session.edit(text),
     retryStart: () => void session.retryStart(),
+    selectCook: (initials: string) => session.selectCook(initials),
   };
   return <WallView state={state} actions={actions} />;
 }

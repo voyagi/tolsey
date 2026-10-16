@@ -252,6 +252,70 @@ describe('the log_reading arguments', () => {
   });
 });
 
+describe('who is logging', () => {
+  const HELD = {
+    content: [{ type: 'text', text: 'Say it one digit at a time. What does the walk-in read?' }],
+    structuredContent: { outcome: 'held', verdict: 'held', value: 15, prompt: { kind: 'digit_repeat', id: 'prompt-1' } },
+  };
+
+  it.fails('a switch from AB to MR puts MR on the next call', async () => {
+    const worker = fakeWorker();
+    const session = sessionOn(worker);
+    await session.start();
+    await session.say(WALK_IN);
+    session.selectCook('MR');
+    await session.say('the walk-in reads 37');
+    expect(worker.argsOfCall(0).initials).toBe('AB');
+    expect(worker.argsOfCall(1).initials).toBe('MR');
+  });
+
+  it.fails('a switch while a call is in flight leaves that call with the cook it was sent with', async () => {
+    const call = heldBack<Response>();
+    const worker = fakeWorker({ toolsCall: () => call.promise });
+    const session = createWallSession({ baseUrl: BASE, profile: WALL_PROFILE, fetch: worker.fetchFn });
+    await session.start();
+    const said = session.say(WALK_IN);
+    await settle();
+    session.selectCook('MR');
+    call.release(answer({ id: worker.callsOf('tools/call')[0].body?.id }, IN_RANGE));
+    await said;
+    expect(worker.argsOfCall(0).initials).toBe('AB');
+    expect(session.getState().cook).toBe('MR');
+  });
+
+  it.fails('a switch after a held question applies to the answer call', async () => {
+    const worker = fakeWorker({ toolsCall: (body) => answer(body, HELD) });
+    const session = sessionOn(worker);
+    await session.start();
+    await session.say('walk-in 15');
+    worker.routes.toolsCall = WORKING.toolsCall;
+    session.selectCook('MR');
+    await session.say('1 5');
+    expect(worker.argsOfCall(1)).toMatchObject({ initials: 'MR', pending_prompt_id: 'prompt-1', value: 15 });
+  });
+
+  it('a cook not on the roster is ignored, so the next call still carries a roster cook', async () => {
+    const worker = fakeWorker();
+    const session = sessionOn(worker);
+    await session.start();
+    session.selectCook('ZZ');
+    await session.say(WALK_IN);
+    expect(worker.argsOfCall(0).initials).toBe('AB');
+  });
+
+  it.fails('a retry of the same words after a cook switch is a new call with a new request_id', async () => {
+    const worker = fakeWorker({ toolsCall: NEVER_ANSWERS });
+    const session = sessionOn(worker);
+    await session.start();
+    await session.say(WALK_IN);
+    worker.routes.toolsCall = WORKING.toolsCall;
+    session.selectCook('MR');
+    await session.say(WALK_IN);
+    expect(worker.argsOfCall(1).request_id).not.toBe(worker.argsOfCall(0).request_id);
+    expect(worker.argsOfCall(1).initials).toBe('MR');
+  });
+});
+
 describe('a call that does not land shows NOT LOGGED, keeps the words and leaves the pass', () => {
   const failures: [string, Route][] = [
     ['a timeout', NEVER_ANSWERS],

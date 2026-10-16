@@ -28,6 +28,7 @@ export interface WallSession {
   retryStart(): Promise<void>;
   say(text: string): Promise<void>;
   edit(text: string): void;
+  selectCook(initials: string): void;
   getState(): WallState;
   subscribe(listener: () => void): () => void;
 }
@@ -222,6 +223,7 @@ export function createWallSession(options: WallSessionOptions): WallSession {
     retryStart,
     say,
     edit: (text) => dispatch({ type: 'edited', text }),
+    selectCook: () => undefined,
     getState: () => state,
     subscribe: (listener) => {
       listeners.add(listener);

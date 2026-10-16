@@ -7,6 +7,7 @@ interface WallActions {
   say(text: string): void;
   edit(text: string): void;
   retryStart(): void;
+  selectCook(initials: string): void;
 }
 
 type Pass = NonNullable<WallState['pass']>;

@@ -3,7 +3,7 @@ import type { ToolCallResult } from '../client/mcp-client';
 import type { Outcome } from '../contract/log-reading';
 import { WALL_PROFILE } from './profile';
 import { NEW_KITCHEN_SENTENCE, STOPPED_MESSAGE } from './wall-copy';
-import { controlsEnabled, initialWallState, wallReducer, type WallEvent, type WallState } from './wall-state';
+import { controlsEnabled, initialWallState, statusWrites, wallReducer, type WallEvent, type WallState } from './wall-state';
 
 const SAID = 'the walk-in reads 38';
 const RULE_AT_MOST_41 = { id: 'unit_air_cold', comparator: 'at_most', limit: 41, unit: 'F', sourceKind: 'house_rule' } as const;
@@ -210,6 +210,69 @@ describe('a call that did not land', () => {
     expect(state.inFlight).toBe(false);
     expect(state.pass).toBe(WITH_PASS.pass);
     expect(controlsEnabled(state)).toBe(false);
+  });
+});
+
+describe('who is logging', () => {
+  it('starts on the first cook on the roster', () => {
+    expect(initialWallState(WALL_PROFILE).cook).toBe(WALL_PROFILE.roster[0]);
+    expect(WALL_PROFILE.roster[0]).toBe('AB');
+  });
+
+  it.fails('cookSelected with a roster entry makes that cook the one logging', () => {
+    expect(reduce(READY, { type: 'cookSelected', initials: 'MR' }).cook).toBe('MR');
+  });
+
+  it.fails.each(['ZZ', '', 'mr'])('cookSelected with %j, which is not on the roster, keeps the cook', (initials) => {
+    const state = reduce(READY, { type: 'cookSelected', initials: 'MR' }, { type: 'cookSelected', initials });
+    expect(state.cook).toBe('MR');
+  });
+});
+
+describe('the status region is written once per logged reading or refusal and by nothing else', () => {
+  const sentAndReceived = (result: ToolCallResult, said = SAID): WallEvent[] => [
+    { type: 'sent', said },
+    { type: 'resultReceived', said, result },
+  ];
+
+  it('is empty at load', () => {
+    expect(initialWallState(WALL_PROFILE).announcement).toBe('');
+  });
+
+  it.fails('counts exactly 2 writes across a logged reading, a refusal and a held question', () => {
+    const events = [...sentAndReceived(resultOf('in_range')), ...sentAndReceived(resultOf('refused')), ...sentAndReceived(resultOf('held'))];
+    expect(statusWrites(events, READY)).toBe(2);
+  });
+
+  it.fails('writes the server reply of a logged reading', () => {
+    expect(received(READY, resultOf('out_of_range')).announcement).toBe(REPLIES.out_of_range);
+  });
+
+  it.each<[string, WallEvent[]]>([
+    ['a local reply', [{ type: 'localReplied', said: 'hello', reply: 'Say a check and its number.' }]],
+    ['a call that did not land', [{ type: 'sent', said: SAID }, failed('Tolsey did not answer in time.')]],
+    ['a replaced kitchen', [{ type: 'sent', said: SAID }, { type: 'kitchenReplaced', said: SAID }]],
+    ['a cook switch', [{ type: 'cookSelected', initials: 'MR' }]],
+    ['a held question', sentAndReceived(resultOf('held'))],
+    ['nothing to fix', sentAndReceived(resultOf('nothing_to_fix'))],
+  ])('%s adds no write', (_event, events) => {
+    expect(statusWrites(events, WITH_PASS)).toBe(0);
+    expect(events.reduce(wallReducer, WITH_PASS).announcement).toBe(WITH_PASS.announcement);
+  });
+
+  it.fails('two logged results with the same reply text still count as two writes', () => {
+    const events = [...sentAndReceived(resultOf('in_range')), ...sentAndReceived(resultOf('in_range'))];
+    expect(statusWrites(events, READY)).toBe(2);
+  });
+
+  it.fails('gives each record event its own write while one call is in flight at a time', () => {
+    const results = [resultOf('in_range'), resultOf('refused'), resultOf('out_of_range')];
+    let state = READY;
+    for (const result of results) {
+      const before = state.announcementSeq;
+      state = reduce(state, ...sentAndReceived(result));
+      expect(state.announcementSeq - before).toBe(1);
+    }
   });
 });
 
