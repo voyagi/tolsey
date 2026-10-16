@@ -219,11 +219,11 @@ describe('who is logging', () => {
     expect(WALL_PROFILE.roster[0]).toBe('AB');
   });
 
-  it.fails('cookSelected with a roster entry makes that cook the one logging', () => {
+  it('cookSelected with a roster entry makes that cook the one logging', () => {
     expect(reduce(READY, { type: 'cookSelected', initials: 'MR' }).cook).toBe('MR');
   });
 
-  it.fails.each(['ZZ', '', 'mr'])('cookSelected with %j, which is not on the roster, keeps the cook', (initials) => {
+  it.each(['ZZ', '', 'mr'])('cookSelected with %j, which is not on the roster, keeps the cook', (initials) => {
     const state = reduce(READY, { type: 'cookSelected', initials: 'MR' }, { type: 'cookSelected', initials });
     expect(state.cook).toBe('MR');
   });
@@ -239,12 +239,12 @@ describe('the status region is written once per logged reading or refusal and by
     expect(initialWallState(WALL_PROFILE).announcement).toBe('');
   });
 
-  it.fails('counts exactly 2 writes across a logged reading, a refusal and a held question', () => {
+  it('counts exactly 2 writes across a logged reading, a refusal and a held question', () => {
     const events = [...sentAndReceived(resultOf('in_range')), ...sentAndReceived(resultOf('refused')), ...sentAndReceived(resultOf('held'))];
     expect(statusWrites(events, READY)).toBe(2);
   });
 
-  it.fails('writes the server reply of a logged reading', () => {
+  it('writes the server reply of a logged reading', () => {
     expect(received(READY, resultOf('out_of_range')).announcement).toBe(REPLIES.out_of_range);
   });
 
@@ -260,12 +260,12 @@ describe('the status region is written once per logged reading or refusal and by
     expect(events.reduce(wallReducer, WITH_PASS).announcement).toBe(WITH_PASS.announcement);
   });
 
-  it.fails('two logged results with the same reply text still count as two writes', () => {
+  it('two logged results with the same reply text still count as two writes', () => {
     const events = [...sentAndReceived(resultOf('in_range')), ...sentAndReceived(resultOf('in_range'))];
     expect(statusWrites(events, READY)).toBe(2);
   });
 
-  it.fails('gives each record event its own write while one call is in flight at a time', () => {
+  it('gives each record event its own write while one call is in flight at a time', () => {
     const results = [resultOf('in_range'), resultOf('refused'), resultOf('out_of_range')];
     let state = READY;
     for (const result of results) {

@@ -223,7 +223,7 @@ export function createWallSession(options: WallSessionOptions): WallSession {
     retryStart,
     say,
     edit: (text) => dispatch({ type: 'edited', text }),
-    selectCook: () => undefined,
+    selectCook: (initials) => dispatch({ type: 'cookSelected', initials }),
     getState: () => state,
     subscribe: (listener) => {
       listeners.add(listener);

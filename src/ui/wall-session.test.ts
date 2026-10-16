@@ -258,7 +258,7 @@ describe('who is logging', () => {
     structuredContent: { outcome: 'held', verdict: 'held', value: 15, prompt: { kind: 'digit_repeat', id: 'prompt-1' } },
   };
 
-  it.fails('a switch from AB to MR puts MR on the next call', async () => {
+  it('a switch from AB to MR puts MR on the next call', async () => {
     const worker = fakeWorker();
     const session = sessionOn(worker);
     await session.start();
@@ -269,7 +269,7 @@ describe('who is logging', () => {
     expect(worker.argsOfCall(1).initials).toBe('MR');
   });
 
-  it.fails('a switch while a call is in flight leaves that call with the cook it was sent with', async () => {
+  it('a switch while a call is in flight leaves that call with the cook it was sent with', async () => {
     const call = heldBack<Response>();
     const worker = fakeWorker({ toolsCall: () => call.promise });
     const session = createWallSession({ baseUrl: BASE, profile: WALL_PROFILE, fetch: worker.fetchFn });
@@ -283,7 +283,7 @@ describe('who is logging', () => {
     expect(session.getState().cook).toBe('MR');
   });
 
-  it.fails('a switch after a held question applies to the answer call', async () => {
+  it('a switch after a held question applies to the answer call', async () => {
     const worker = fakeWorker({ toolsCall: (body) => answer(body, HELD) });
     const session = sessionOn(worker);
     await session.start();
@@ -303,7 +303,7 @@ describe('who is logging', () => {
     expect(worker.argsOfCall(0).initials).toBe('AB');
   });
 
-  it.fails('a retry of the same words after a cook switch is a new call with a new request_id', async () => {
+  it('a retry of the same words after a cook switch is a new call with a new request_id', async () => {
     const worker = fakeWorker({ toolsCall: NEVER_ANSWERS });
     const session = sessionOn(worker);
     await session.start();

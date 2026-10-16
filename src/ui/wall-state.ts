@@ -49,6 +49,7 @@ export type WallEvent =
   | { type: 'resultReceived'; said: string; result: ToolCallResult };
 
 const LOGGED: ReadonlySet<string> = new Set<LoggedOutcome>(['in_range', 'out_of_range', 'not_covered']);
+const ANNOUNCED: ReadonlySet<string> = new Set<Outcome>(['in_range', 'out_of_range', 'not_covered', 'refused']);
 
 export function initialWallState(profile: KitchenProfile): WallState {
   return {
@@ -87,13 +88,22 @@ function passFrom(structured: Partial<LogReadingOutput> | undefined, previous: P
   return { outcome: outcome as LoggedOutcome, lineId, recordCode, checkPoint, value, unit, verdict, rule, initials };
 }
 
+// The status region's only writer. The sequence number moves on every record event, so a screen
+// reader hears a second reading even when its sentence matches the one before.
+function announced(state: WallState, outcome: Outcome | undefined, reply: string): Pick<WallState, 'announcement' | 'announcementSeq'> {
+  if (outcome === undefined || !ANNOUNCED.has(outcome)) return { announcement: state.announcement, announcementSeq: state.announcementSeq };
+  return { announcement: reply, announcementSeq: state.announcementSeq + 1 };
+}
+
 function afterResult(state: WallState, said: string, result: ToolCallResult): WallState {
   const structured = result.structuredContent as Partial<LogReadingOutput> | undefined;
+  const reply = result.content[0]?.text ?? '';
   return {
     ...state,
+    ...announced(state, structured?.outcome, reply),
     inFlight: false,
     draft: '',
-    exchange: { said, reply: result.content[0]?.text ?? '', source: 'server' },
+    exchange: { said, reply, source: 'server' },
     pass: passFrom(structured, state.pass),
     openPrompt: structured?.prompt ?? null,
     notLogged: null,
@@ -139,6 +149,6 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
     case 'stopped':
       return { ...state, phase: 'stopped', stopMessage: event.message, inFlight: false };
     case 'cookSelected':
-      return state;
+      return state.roster.includes(event.initials) ? { ...state, cook: event.initials } : state;
   }
 }

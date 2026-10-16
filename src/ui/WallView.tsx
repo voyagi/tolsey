@@ -1,6 +1,6 @@
 import type { RuleResult } from '../contract/log-reading';
 import { formatValue } from '../domain/words';
-import { CHIPS, EXAMPLE_PHRASE, HINT, SPEAKER_LABEL } from './wall-copy';
+import { CHIPS, EXAMPLE_PHRASE, HINT, NOT_LOGGED, SPEAKER_LABEL } from './wall-copy';
 import { controlsEnabled, type WallState } from './wall-state';
 
 interface WallActions {
@@ -66,58 +66,117 @@ function ExchangeView({ exchange, cook }: { exchange: Exchange | null; cook: str
   );
 }
 
+// The cook can be switched while a call is out: the call already sent keeps the initials it carried.
+function RosterPicker({ state, onSelect }: { state: WallState; onSelect: (initials: string) => void }) {
+  return (
+    <fieldset disabled={state.phase !== 'ready'}>
+      <legend>Who is logging</legend>
+      {state.roster.map((initials) => (
+        <label key={initials}>
+          <input type="radio" name="cook" value={initials} checked={state.cook === initials} onChange={() => onSelect(initials)} />
+          {initials}
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
+// The one live region on the wall. It renders the reducer's announcement and nothing else, and its
+// child is keyed by the sequence number so a sentence equal to the last one is read out again.
+function StatusRegion({ state }: { state: WallState }) {
+  return (
+    <div role="status" aria-live="polite">
+      {state.announcement === '' ? null : <p key={state.announcementSeq}>{state.announcement}</p>}
+    </div>
+  );
+}
+
+const NOT_LOGGED_ID = 'not-logged';
+
+function Notices({ state, actions }: { state: WallState; actions: WallActions }) {
+  if (state.phase === 'stopped') {
+    return (
+      <section aria-label="Stopped">
+        <p>{state.stopMessage}</p>
+      </section>
+    );
+  }
+  if (state.phase !== 'start_failed') return null;
+  return (
+    <section aria-label="Start error">
+      <p>{state.startError}</p>
+      <button type="button" onClick={() => actions.retryStart()}>
+        Retry
+      </button>
+    </section>
+  );
+}
+
+// A call that did not land keeps its words in the field, and NOT LOGGED sits beside them and
+// describes the field, so the reason is read with the words it is about.
+function WordsForm({ state, actions }: { state: WallState; actions: WallActions }) {
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        actions.say(state.draft);
+      }}
+    >
+      <label htmlFor="cook-words">What the cook says</label>
+      <input
+        id="cook-words"
+        type="text"
+        autoComplete="off"
+        value={state.draft}
+        disabled={state.phase !== 'ready'}
+        readOnly={state.inFlight}
+        aria-describedby={state.notLogged === null ? undefined : NOT_LOGGED_ID}
+        onChange={(event) => actions.edit(event.target.value)}
+      />
+      <button type="submit" disabled={!controlsEnabled(state)}>
+        Send
+      </button>
+      {state.notLogged === null ? null : (
+        <p id={NOT_LOGGED_ID} className="not-logged">
+          <strong>{NOT_LOGGED}</strong> {state.notLogged.reason}
+        </p>
+      )}
+    </form>
+  );
+}
+
 export function WallView({ state, actions }: { state: WallState; actions: WallActions }) {
   const enabled = controlsEnabled(state);
   return (
-    <main>
-      <h1>Tolsey</h1>
-      {state.phase === 'start_failed' ? (
-        <section aria-label="Start error">
-          <p>{state.startError}</p>
-          <button type="button" onClick={() => actions.retryStart()}>
-            Retry
-          </button>
+    <>
+      <header>
+        <h1>Tolsey</h1>
+        <RosterPicker state={state} onSelect={actions.selectCook} />
+      </header>
+      <main>
+        <Notices state={state} actions={actions} />
+        <p>
+          {HINT_BEFORE}
+          <q>{EXAMPLE_PHRASE}</q>
+          {HINT_AFTER}
+        </p>
+        <ExchangeView exchange={state.exchange} cook={state.cook} />
+        <section aria-label="Last reading">
+          <h2>Last reading</h2>
+          <PassView pass={state.pass} />
         </section>
-      ) : null}
-      <p>
-        {HINT_BEFORE}
-        <q>{EXAMPLE_PHRASE}</q>
-        {HINT_AFTER}
-      </p>
-      <ExchangeView exchange={state.exchange} cook={state.cook} />
-      <section aria-label="Last reading">
-        <h2>Last reading</h2>
-        <PassView pass={state.pass} />
-      </section>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          actions.say(state.draft);
-        }}
-      >
-        <label htmlFor="cook-words">What the cook says</label>
-        <input
-          id="cook-words"
-          type="text"
-          autoComplete="off"
-          value={state.draft}
-          disabled={state.phase !== 'ready'}
-          readOnly={state.inFlight}
-          onChange={(event) => actions.edit(event.target.value)}
-        />
-        <button type="submit" disabled={!enabled}>
-          Send
-        </button>
-      </form>
-      <ul aria-label="Phrases to try">
-        {CHIPS.map((chip) => (
-          <li key={chip}>
-            <button type="button" className="chip" disabled={!enabled} onClick={() => actions.say(chip)}>
-              {chip}
-            </button>
-          </li>
-        ))}
-      </ul>
-    </main>
+        <WordsForm state={state} actions={actions} />
+        <ul aria-label="Phrases to try">
+          {CHIPS.map((chip) => (
+            <li key={chip}>
+              <button type="button" className="chip" disabled={!enabled} onClick={() => actions.say(chip)}>
+                {chip}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <StatusRegion state={state} />
+      </main>
+    </>
   );
 }

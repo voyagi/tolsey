@@ -177,7 +177,7 @@ function radiosOf(markup: string): string[] {
 }
 
 describe('one polite status region', () => {
-  it.fails('is in the load markup exactly once, empty, outside the pass and outside every list', () => {
+  it('is in the load markup exactly once, empty, outside the pass and outside every list', () => {
     const markup = render(READY);
     const regions = [...markup.matchAll(STATUS_REGION)];
     expect(regions).toHaveLength(1);
@@ -188,7 +188,7 @@ describe('one polite status region', () => {
     for (const list of markup.matchAll(/<ul\b/g)) expect(inside(at, elementSpan(markup, list.index, 'ul'))).toBe(false);
   });
 
-  it.fails('holds the reply of a logged reading and nothing else', () => {
+  it('holds the reply of a logged reading and nothing else', () => {
     const reply = 'Walk-in, 38, in range, AB';
     const state = afterResult(READY, 'the walk-in reads 38', result('in_range', reply, { verdict: 'in range', value: 38 }));
     const markup = render(state);
@@ -196,7 +196,7 @@ describe('one polite status region', () => {
     expect(markup.slice(from, to).replace(/<[^>]*>/g, '')).toBe(reply);
   });
 
-  it.fails('stays empty after a held question', () => {
+  it('stays empty after a held question', () => {
     const reply = 'Say it one digit at a time. What does the walk-in read?';
     const state = afterResult(READY, 'walk-in 15', result('held', reply, { verdict: 'held', value: 15, prompt: { kind: 'digit_repeat', id: 'p-1' } }));
     expect(render(state)).toMatch(/<div role="status" aria-live="polite"><\/div>/);
@@ -204,7 +204,7 @@ describe('one polite status region', () => {
 });
 
 describe('who is logging, on the top bar', () => {
-  it.fails('lists AB, MR, JT and KL as one radio group under "Who is logging" with AB checked', () => {
+  it('lists AB, MR, JT and KL as one radio group under "Who is logging" with AB checked', () => {
     const markup = render(READY);
     expect(markup).toMatch(/<fieldset\b[^>]*><legend>Who is logging<\/legend>/);
     const radios = radiosOf(markup);
@@ -215,14 +215,14 @@ describe('who is logging, on the top bar', () => {
     expect(checked[0]).toContain('value="AB"');
   });
 
-  it.fails('checks exactly the cook selected', () => {
+  it('checks exactly the cook selected', () => {
     const radios = radiosOf(render(wallReducer(READY, { type: 'cookSelected', initials: 'MR' })));
     const checked = radios.filter((radio) => radio.includes('checked=""'));
     expect(checked).toHaveLength(1);
     expect(checked[0]).toContain('value="MR"');
   });
 
-  it.fails('sits in the top bar, before the conversation', () => {
+  it('sits in the top bar, before the conversation', () => {
     const markup = render(READY);
     expect(markup.indexOf('<header')).toBeGreaterThanOrEqual(0);
     expect(inside(markup.indexOf('<fieldset'), spanOf(markup, /<header\b/, 'header'))).toBe(true);
@@ -230,7 +230,7 @@ describe('who is logging, on the top bar', () => {
 });
 
 describe('a call that did not land', () => {
-  it.fails('shows NOT LOGGED with its reason, the words still in the field and the previous pass unchanged', () => {
+  it('shows NOT LOGGED with its reason, the words still in the field and the previous pass unchanged', () => {
     const reason = 'Tolsey did not answer in time. Send the same words again to retry.';
     const said = 'walk-in 45';
     const state = [
@@ -246,7 +246,7 @@ describe('a call that did not land', () => {
     expect(markup).toMatch(/<div role="status" aria-live="polite"><\/div>/);
   });
 
-  it.fails('a stopped wall shows its message and disables every control', () => {
+  it('a stopped wall shows its message and disables every control', () => {
     const message = 'The demo is full for today. Try again tomorrow.';
     const markup = render(wallReducer(READY, { type: 'stopped', message }));
     expect(markup).toContain(message);
