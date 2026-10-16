@@ -70,8 +70,10 @@ function textsMatching(markup: string, pattern: RegExp): string[] {
   return [...markup.matchAll(pattern)].map((match) => decoded(match[1]));
 }
 
+// The wall's own controls. The theme switch is left out: it works while the wall starts or stops,
+// because it changes nothing the server keeps.
 function buttonsOf(markup: string): string[] {
-  return markup.match(/<button\b[^>]*>/g) ?? [];
+  return (markup.match(/<button\b[^>]*>/g) ?? []).filter((button) => !button.includes('aria-pressed'));
 }
 
 describe('the pass shows a logged line with the fields the result carried', () => {
@@ -87,12 +89,12 @@ describe('the pass shows a logged line with the fields the result carried', () =
     expect(markup).toMatch(/class="[^"]*\bout-of-range\b/);
   });
 
-  it.fails('the out-of-range word and its class sit on the same verdict tile', () => {
+  it('the out-of-range word and its class sit on the same verdict tile', () => {
     const markup = withPass({ outcome: 'out_of_range', value: 45, verdict: 'out of range' });
     expect(markup).toMatch(/<span class="[^"]*\bout-of-range\b[^"]*">out of range<\/span>/);
   });
 
-  it.fails('a value with a tenth steps the reading down to its tenth size', () => {
+  it('a value with a tenth steps the reading down to its tenth size', () => {
     expect(withPass({ value: 38.5 })).toMatch(/<p class="[^"]*\breading--tenth\b[^"]*">38\.5/);
     expect(withPass({ value: 38 })).not.toContain('reading--tenth');
   });
@@ -275,13 +277,13 @@ describe('a call that did not land', () => {
 describe('the simulated device frame', () => {
   const framed = renderToStaticMarkup(createElement(DeviceFrame, null, createElement(WallView, { state: READY, actions: ACTIONS })));
 
-  it.fails('says simulated Alexa+ exactly once and holds the wall inside it', () => {
+  it('says simulated Alexa+ exactly once and holds the wall inside it', () => {
     expect(DEVICE_LABEL).toBe('simulated Alexa+');
     expect(framed.split('simulated Alexa+')).toHaveLength(2);
     expect(framed).toContain('Who is logging');
   });
 
-  it.fails('labels the answer with the speaker label on its own', () => {
+  it('labels the answer with the speaker label on its own', () => {
     const reply = 'Walk-in, 38, in range, AB';
     const state = afterResult(READY, 'the walk-in reads 38', result('in_range', reply, { verdict: 'in range', value: 38 }));
     expect(render(state)).toMatch(new RegExp(`<span class="label">${SPEAKER_LABEL}</span>`));

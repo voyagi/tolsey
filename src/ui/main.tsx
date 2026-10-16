@@ -1,7 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { DeviceFrame } from './DeviceFrame';
 import { WALL_PROFILE } from './profile';
+import './styles/tokens.css';
+import './styles/wall.css';
 import { createWallSession } from './wall-session';
 
 const root = document.getElementById('root');
@@ -14,6 +17,8 @@ void session.start();
 
 createRoot(root).render(
   <StrictMode>
-    <App session={session} />
+    <DeviceFrame>
+      <App session={session} />
+    </DeviceFrame>
   </StrictMode>,
 );
