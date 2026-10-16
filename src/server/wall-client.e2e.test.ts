@@ -9,6 +9,9 @@ import { createWallSession, type WallSession } from '../ui/wall-session';
 
 const WALK_IN = 'the walk-in reads 38';
 const REACH_IN_TWO = 'reach-in two is fine';
+// Long enough that a mint or an initialize in workerd under a full suite never trips it, short enough
+// to keep the held answer's wait small.
+const LATE_ANSWER_TIMEOUT_MS = 2_000;
 
 interface ToolCall {
   args: Record<string, unknown>;
@@ -163,6 +166,62 @@ describe('the wall session against the built Worker in workerd, lines read strai
       const reading = lines.find((line) => line.requestId === calls[1].args.request_id);
       expect(held).toMatchObject({ kind: 'held' });
       expect(reading).toMatchObject({ kind: 'reading', checkPointId: 'walk_in', valueTenths: 150, answersId: held?.id });
+    });
+  });
+
+  describe('who is logging and a call answered too late (R5, R6)', () => {
+    it('a switch from AB to MR puts MR on the next stored line', async () => {
+      const day = chicagoBusinessDay();
+      const calls: ToolCall[] = [];
+      const session = createWallSession({ baseUrl, profile: WALL_PROFILE, fetch: recordingFetch(calls) });
+      await session.start();
+      await session.say(WALK_IN);
+      session.selectCook('MR');
+      await session.say('the walk-in reads 37');
+
+      expect(calls).toHaveLength(2);
+      const readings = (await store.linesForDay(session.kitchenId as string, day))
+        .filter((line) => line.kind === 'reading')
+        .sort((left, right) => left.seq - right.seq);
+      expect(readings.map((line) => line.initials)).toEqual(['AB', 'MR']);
+      expect(readings.at(-1)).toMatchObject({ requestId: calls[1].args.request_id, valueTenths: 370, initials: 'MR' });
+    });
+
+    it('a call the Worker stored but answered after the timeout shows NOT LOGGED, and the same words resent store one line', async () => {
+      const day = chicagoBusinessDay();
+      const calls: ToolCall[] = [];
+      const recording = recordingFetch(calls);
+      let held = false;
+      // Lets the first tools/call reach the Worker and be stored, then keeps its answer back until the
+      // session gives up, as a dropped connection would.
+      const answeredTooLate: FetchLike = async (url, init) => {
+        const sent = typeof init?.body === 'string' ? (JSON.parse(init.body) as SentBody) : undefined;
+        if (sent?.method !== 'tools/call' || held) return recording(url, init);
+        held = true;
+        const { signal, ...unsignalled }: RequestInit = init ?? {};
+        await recording(url, unsignalled);
+        return new Promise<Response>((_resolve, reject) => {
+          const abort = () => reject(new DOMException('The operation was aborted.', 'AbortError'));
+          if (signal?.aborted) abort();
+          signal?.addEventListener('abort', abort, { once: true });
+        });
+      };
+      const session = createWallSession({ baseUrl, profile: WALL_PROFILE, fetch: answeredTooLate, timeoutMs: LATE_ANSWER_TIMEOUT_MS });
+      await session.start();
+
+      await session.say(WALK_IN);
+      expect(session.getState().notLogged).not.toBeNull();
+      expect(session.getState().pass).toBeNull();
+      expect(session.getState().draft).toBe(WALK_IN);
+
+      await session.say(WALK_IN);
+      expect(calls).toHaveLength(2);
+      expect(calls[1].args.request_id).toBe(calls[0].args.request_id);
+      const lines = await store.linesForDay(session.kitchenId as string, day);
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toMatchObject({ requestId: calls[0].args.request_id, kind: 'reading', valueTenths: 380 });
+      expect(session.getState().notLogged).toBeNull();
+      expect(session.getState().pass).toMatchObject({ checkPoint: { id: 'walk_in' }, value: 38, outcome: 'in_range' });
     });
   });
 

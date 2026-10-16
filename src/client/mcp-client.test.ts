@@ -157,7 +157,7 @@ describe('minting a scratch kitchen', () => {
   });
 
   it('throws kind http with status 503 and code demo_full when the demo is full', async () => {
-    const { fetchFn } = scriptedFetch([() => asJson({ error: 'demo_full', message: 'The demo is full for today. Try the replay.' }, 503)]);
+    const { fetchFn } = scriptedFetch([() => asJson({ error: 'demo_full', message: 'The demo is full for today. Try again tomorrow.' }, 503)]);
     await expect(mintKitchen(BASE, fetchFn)).rejects.toMatchObject({ kind: 'http', status: 503, code: 'demo_full' });
   });
 
