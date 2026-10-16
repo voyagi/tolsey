@@ -266,7 +266,7 @@ describe('a call that does not land shows NOT LOGGED, keeps the words and leaves
     ['a body that is not JSON', () => new Response('<html>busy</html>', { status: 200, headers: { 'content-type': 'text/html' } })],
   ];
 
-  it.fails.each(failures)('%s', async (_failure, route) => {
+  it.each(failures)('%s', async (_failure, route) => {
     const worker = fakeWorker();
     const session = await loggedOnce(worker);
     const passBefore = session.getState().pass;
@@ -283,7 +283,7 @@ describe('a call that does not land shows NOT LOGGED, keeps the words and leaves
     expect(state.phase).toBe('ready');
   });
 
-  it.fails('the reason for an HTTP 500 names the status and nothing of the body', async () => {
+  it('the reason for an HTTP 500 names the status and nothing of the body', async () => {
     const worker = fakeWorker();
     const session = await loggedOnce(worker);
     worker.routes.toolsCall = () => asJson({ error: 'internal', stack: 'at handler (worker.js:1)' }, 500);
@@ -292,7 +292,7 @@ describe('a call that does not land shows NOT LOGGED, keeps the words and leaves
     expect(session.getState().notLogged?.reason).not.toContain('worker.js');
   });
 
-  it.fails('an isError result shows its own text as the reason and never moves the pass, whatever it carries', async () => {
+  it('an isError result shows its own text as the reason and never moves the pass, whatever it carries', async () => {
     const worker = fakeWorker();
     const session = await loggedOnce(worker);
     const passBefore = session.getState().pass;
@@ -308,7 +308,7 @@ describe('a call that does not land shows NOT LOGGED, keeps the words and leaves
     expect(session.getState().draft).toBe('walk-in 45');
   });
 
-  it.fails('request_id_expired shows the server text and never a pass', async () => {
+  it('request_id_expired shows the server text and never a pass', async () => {
     const worker = fakeWorker({ toolsCall: toolError('request_id_expired', EXPIRED_TEXT) });
     const session = sessionOn(worker);
     await session.start();
@@ -319,7 +319,7 @@ describe('a call that does not land shows NOT LOGGED, keeps the words and leaves
 });
 
 describe('a retry of the same words reuses the request_id', () => {
-  it.fails('the same words right after a timeout resend the same request_id, and a later new reading gets a new one', async () => {
+  it('the same words right after a timeout resend the same request_id, and a later new reading gets a new one', async () => {
     const worker = fakeWorker({ toolsCall: NEVER_ANSWERS });
     const session = sessionOn(worker);
     await session.start();
@@ -336,7 +336,7 @@ describe('a retry of the same words reuses the request_id', () => {
     expect(worker.argsOfCall(2).request_id).not.toBe(worker.argsOfCall(1).request_id);
   });
 
-  it.fails('edited words after a NOT LOGGED are a new utterance with a new request_id', async () => {
+  it('edited words after a NOT LOGGED are a new utterance with a new request_id', async () => {
     const worker = fakeWorker({ toolsCall: NEVER_ANSWERS });
     const session = sessionOn(worker);
     await session.start();
@@ -348,7 +348,7 @@ describe('a retry of the same words reuses the request_id', () => {
 });
 
 describe('a gone or closed kitchen is replaced once', () => {
-  it.fails.each<[string, Route]>([
+  it.each<[string, Route]>([
     ['a 404 at the kitchen path', KITCHEN_GONE],
     ['kitchen_closed', KITCHEN_CLOSED],
     ['kitchen_full', KITCHEN_FULL],
@@ -372,7 +372,7 @@ describe('a gone or closed kitchen is replaced once', () => {
     expect(worker.argsOfCall(calls.length - 1).request_id).not.toBe(worker.argsOfCall(calls.length - 2).request_id);
   });
 
-  it.fails('a second closed answer before any call lands in the new kitchen stops the wall, and nothing is sent after', async () => {
+  it('a second closed answer before any call lands in the new kitchen stops the wall, and nothing is sent after', async () => {
     const worker = fakeWorker({ toolsCall: KITCHEN_CLOSED });
     const session = sessionOn(worker);
     await session.start();
@@ -390,7 +390,7 @@ describe('a gone or closed kitchen is replaced once', () => {
     expect(worker.sent).toHaveLength(requests);
   });
 
-  it.fails('a call that lands in the new kitchen earns one more replacement later', async () => {
+  it('a call that lands in the new kitchen earns one more replacement later', async () => {
     const worker = fakeWorker({ toolsCall: KITCHEN_GONE });
     const session = sessionOn(worker);
     await session.start();
@@ -403,7 +403,7 @@ describe('a gone or closed kitchen is replaced once', () => {
     expect(session.getState().phase).toBe('ready');
   });
 
-  it.fails('a failed new mint stops the wall with the plain message, and nothing is sent after', async () => {
+  it('a failed new mint stops the wall with the plain message, and nothing is sent after', async () => {
     const worker = fakeWorker({ toolsCall: KITCHEN_GONE });
     worker.routes.mint = (count) => (count === 1 ? asJson(MINTED[0], 201) : asJson({ error: 'server_error' }, 500));
     const session = sessionOn(worker);
@@ -419,7 +419,7 @@ describe('a gone or closed kitchen is replaced once', () => {
 });
 
 describe('demo_full stops the wall at once', () => {
-  it.fails('a first mint answered 503 demo_full stops with the demo-full message, and nothing is sent after', async () => {
+  it('a first mint answered 503 demo_full stops with the demo-full message, and nothing is sent after', async () => {
     const worker = fakeWorker({ mint: () => asJson({ error: 'demo_full', message: 'The demo is full for today.' }, 503) });
     const session = sessionOn(worker);
     await session.start();
@@ -431,7 +431,7 @@ describe('demo_full stops the wall at once', () => {
     expect(worker.sent).toHaveLength(1);
   });
 
-  it.fails('a tools/call answered isError demo_full stops with the demo-full message, and nothing is sent after', async () => {
+  it('a tools/call answered isError demo_full stops with the demo-full message, and nothing is sent after', async () => {
     const worker = fakeWorker();
     const session = await loggedOnce(worker);
     const passBefore = session.getState().pass;
@@ -448,7 +448,7 @@ describe('demo_full stops the wall at once', () => {
     expect(worker.sent).toHaveLength(requests);
   });
 
-  it.fails('a new mint answered demo_full after a gone kitchen stops with the demo-full message', async () => {
+  it('a new mint answered demo_full after a gone kitchen stops with the demo-full message', async () => {
     const worker = fakeWorker({ toolsCall: KITCHEN_GONE });
     worker.routes.mint = (count) => (count === 1 ? asJson(MINTED[0], 201) : asJson({ error: 'demo_full' }, 503));
     const session = sessionOn(worker);

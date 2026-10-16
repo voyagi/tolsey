@@ -60,12 +60,36 @@ function preview(status: number, bodyText: string): string {
   return `status ${status}, body ${JSON.stringify(bodyText.slice(0, BODY_PREVIEW_CHARS))}`;
 }
 
-async function send(fetchFn: FetchLike, url: URL, init: RequestInit): Promise<Response> {
+interface Answer {
+  status: number;
+  headers: Headers;
+  bodyText: string;
+}
+
+// A timer and an AbortController rather than AbortSignal.timeout: the timer is cleared the moment
+// the answer is read, and the body read sits inside it, so a server that sends headers and then
+// stalls still times out.
+async function send(fetchFn: FetchLike, url: URL, init: RequestInit, timeoutMs: number): Promise<Answer> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  const caller = init.signal;
+  const forward = () => controller.abort();
+  if (caller?.aborted) controller.abort();
+  caller?.addEventListener('abort', forward, { once: true });
   try {
-    return await fetchFn(url, init);
+    const response = await fetchFn(url, { ...init, signal: controller.signal });
+    return { status: response.status, headers: response.headers, bodyText: await response.text() };
   } catch (error) {
+    if (timedOut) throw new McpClientError('timeout', `the request to ${url.pathname} had no answer within ${timeoutMs} ms`);
     const reason = error instanceof Error ? error.message : String(error);
     throw new McpClientError('network', `the request to ${url.pathname} never reached the server: ${reason}`);
+  } finally {
+    clearTimeout(timer);
+    caller?.removeEventListener('abort', forward);
   }
 }
 
@@ -80,15 +104,16 @@ export async function mintKitchen(
   baseUrl: URL,
   fetchFn: FetchLike = globalFetch,
   body: Record<string, string> = {},
-  _options: ClientOptions = {},
+  options: ClientOptions = {},
 ): Promise<MintedKitchen> {
   // Never an empty body: the Worker answers an untyped empty POST with 415.
-  const response = await send(fetchFn, new URL('/api/kitchens', baseUrl), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const bodyText = await response.text();
+  const response = await send(
+    fetchFn,
+    new URL('/api/kitchens', baseUrl),
+    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) },
+    options.timeoutMs ?? CALL_TIMEOUT_MS,
+  );
+  const { bodyText } = response;
   const parsed = parseJson(bodyText);
   if (response.status !== CREATED) {
     const error = (parsed as { error?: unknown } | undefined)?.error;
@@ -112,7 +137,7 @@ interface Exchange {
   bodyText: string;
 }
 
-function connection(endpoint: URL, fetchFn: FetchLike) {
+function connection(endpoint: URL, fetchFn: FetchLike, timeoutMs: number) {
   let nextId = 1;
   let negotiated = false;
   let sessionId: string | null = null;
@@ -125,14 +150,14 @@ function connection(endpoint: URL, fetchFn: FetchLike) {
   }
 
   async function post(message: Record<string, unknown>, signal?: AbortSignal): Promise<Exchange> {
-    const response = await send(fetchFn, endpoint, {
-      method: 'POST',
-      headers: headers(),
-      body: JSON.stringify({ jsonrpc: '2.0', ...message }),
-      signal,
-    });
+    const response = await send(
+      fetchFn,
+      endpoint,
+      { method: 'POST', headers: headers(), body: JSON.stringify({ jsonrpc: '2.0', ...message }), signal },
+      timeoutMs,
+    );
     sessionId = response.headers.get('mcp-session-id') ?? sessionId;
-    return { status: response.status, contentType: response.headers.get('content-type'), bodyText: await response.text() };
+    return { status: response.status, contentType: response.headers.get('content-type'), bodyText: response.bodyText };
   }
 
   async function request(method: string, params: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
@@ -185,8 +210,8 @@ function toolResultIn(name: string, result: unknown): ToolCallResult {
   return result as ToolCallResult;
 }
 
-export async function openMcpSession(endpoint: URL, fetchFn: FetchLike = globalFetch, _options: ClientOptions = {}): Promise<McpSession> {
-  const link = connection(endpoint, fetchFn);
+export async function openMcpSession(endpoint: URL, fetchFn: FetchLike = globalFetch, options: ClientOptions = {}): Promise<McpSession> {
+  const link = connection(endpoint, fetchFn, options.timeoutMs ?? CALL_TIMEOUT_MS);
   const initialized = await link.request('initialize', {
     protocolVersion: PROTOCOL_VERSION,
     capabilities: {},

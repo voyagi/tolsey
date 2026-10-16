@@ -20,3 +20,15 @@ export const NEW_KITCHEN_SENTENCE = 'That kitchen has closed, so the reading was
 export const STOPPED_MESSAGE = 'The wall cannot reach its kitchen right now. Reload the page later to start again.';
 
 export const DEMO_FULL_MESSAGE = 'The demo is full for today. Try again tomorrow.';
+
+export const NO_ANSWER_REASON = 'Tolsey did not answer in time. Send the same words again to retry.';
+
+export const UNREACHED_REASON = 'The words never reached Tolsey. Send them again to retry.';
+
+// The status alone, never the body: a body can carry a stack or the cook's own words back.
+export function failedAnswerReason(status: number | undefined): string {
+  const shown = status === undefined ? '' : ` (status ${status})`;
+  return status !== undefined && status >= 400
+    ? `Tolsey answered with an error${shown}. Send the same words again to retry.`
+    : `Tolsey's answer could not be read${shown}. Send the same words again to retry.`;
+}

@@ -2,6 +2,7 @@ import type { ToolCallResult } from '../client/mcp-client';
 import type { LogReadingOutput, Outcome } from '../contract/log-reading';
 import type { KitchenProfile } from '../domain/rule';
 import type { OpenPrompt } from './intent';
+import { NEW_KITCHEN_SENTENCE } from './wall-copy';
 
 type WallPhase = 'starting' | 'ready' | 'start_failed' | 'stopped';
 
@@ -41,8 +42,7 @@ export type WallEvent =
   | { type: 'started' }
   | { type: 'startFailed'; error: string }
   | { type: 'sent'; said: string }
-  | { type: 'resultReceived'; said: string; result: ToolCallResult }
-  | { type: 'wallReplied'; said: string; reply: string };
+  | { type: 'resultReceived'; said: string; result: ToolCallResult };
 
 const LOGGED: ReadonlySet<string> = new Set<LoggedOutcome>(['in_range', 'out_of_range', 'not_covered']);
 
@@ -85,6 +85,8 @@ function afterResult(state: WallState, said: string, result: ToolCallResult): Wa
     exchange: { said, reply: result.content[0]?.text ?? '', source: 'server' },
     pass: passFrom(structured, state.pass),
     openPrompt: structured?.prompt ?? null,
+    notLogged: null,
+    pendingRetry: null,
   };
 }
 
@@ -100,16 +102,30 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
       return state.inFlight ? state : { ...state, inFlight: true };
     case 'resultReceived':
       return afterResult(state, event.said, event.result);
-    // A call that never answered keeps the words in the field, so the cook can send them again.
-    case 'wallReplied':
-      return { ...state, inFlight: false, exchange: { said: event.said, reply: event.reply, source: 'wall' } };
     case 'edited':
       return { ...state, draft: event.text };
     case 'localReplied':
       return { ...state, draft: '', exchange: { said: event.said, reply: event.reply, source: 'wall' } };
+    // Never touches the pass: a call that did not land must not look logged.
     case 'callFailed':
+      return {
+        ...state,
+        inFlight: false,
+        draft: event.said,
+        notLogged: { reason: event.reason },
+        pendingRetry: { words: event.said, requestId: event.requestId, initials: event.initials },
+      };
     case 'kitchenReplaced':
+      return {
+        ...state,
+        inFlight: false,
+        draft: event.said,
+        exchange: { said: event.said, reply: NEW_KITCHEN_SENTENCE, source: 'wall' },
+        notLogged: null,
+        pendingRetry: null,
+        openPrompt: null,
+      };
     case 'stopped':
-      return state;
+      return { ...state, phase: 'stopped', stopMessage: event.message, inFlight: false };
   }
 }

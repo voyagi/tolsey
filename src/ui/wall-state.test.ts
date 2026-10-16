@@ -166,7 +166,7 @@ function failed(reason: string, requestId = 'request-1'): WallEvent {
 describe('a call that did not land', () => {
   const sentWithPass = reduce(WITH_PASS, { type: 'edited', text: SAID }, { type: 'sent', said: SAID });
 
-  it.fails('callFailed shows NOT LOGGED with the reason, keeps the words and leaves the pass as it was', () => {
+  it('callFailed shows NOT LOGGED with the reason, keeps the words and leaves the pass as it was', () => {
     const state = reduce(sentWithPass, failed('Tolsey did not answer in time.'));
     expect(state.notLogged).toEqual({ reason: 'Tolsey did not answer in time.' });
     expect(state.draft).toBe(SAID);
@@ -174,7 +174,7 @@ describe('a call that did not land', () => {
     expect(state.inFlight).toBe(false);
   });
 
-  it.fails('callFailed keeps the words and request_id for a retry of the same words', () => {
+  it('callFailed keeps the words and request_id for a retry of the same words', () => {
     const state = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
     expect(state.pendingRetry).toEqual({ words: SAID, requestId: 'request-7', initials: 'AB' });
   });
@@ -191,7 +191,7 @@ describe('a call that did not land', () => {
     expect(state.pendingRetry).toBeNull();
   });
 
-  it.fails('kitchenReplaced says the new kitchen in the exchange, keeps the words and drops the retry and the open question', () => {
+  it('kitchenReplaced says the new kitchen in the exchange, keeps the words and drops the retry and the open question', () => {
     const asked = received(WITH_PASS, resultOf('held'));
     const notLogged = reduce(asked, { type: 'edited', text: SAID }, { type: 'sent', said: SAID }, failed('x'));
     const state = reduce(notLogged, { type: 'kitchenReplaced', said: SAID });
@@ -203,7 +203,7 @@ describe('a call that did not land', () => {
     expect(state.pass).toBe(WITH_PASS.pass);
   });
 
-  it.fails('stopped ends the wall with its message and keeps every control off', () => {
+  it('stopped ends the wall with its message and keeps every control off', () => {
     const state = reduce(sentWithPass, { type: 'stopped', message: STOPPED_MESSAGE });
     expect(state.phase).toBe('stopped');
     expect(state.stopMessage).toBe(STOPPED_MESSAGE);

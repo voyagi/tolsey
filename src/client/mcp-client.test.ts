@@ -227,7 +227,7 @@ describe('a call that gets no answer times out', () => {
     expect(CALL_TIMEOUT_MS).toBe(10_000);
   });
 
-  it.fails('aborts a tools/call whose answer never comes after timeoutMs and throws kind timeout', async () => {
+  it('aborts a tools/call whose answer never comes after timeoutMs and throws kind timeout', async () => {
     const opened = scriptedFetch([initializeAt(PROTOCOL_VERSION), accepted]);
     const silent = silentUntilAborted();
     let answered = 0;
@@ -239,13 +239,13 @@ describe('a call that gets no answer times out', () => {
     await expect(settledWithin(session.callTool('log_reading', {}), 1_000)).rejects.toMatchObject({ kind: 'timeout' });
   });
 
-  it.fails('times out a mint that never answers', async () => {
+  it('times out a mint that never answers', async () => {
     await expect(settledWithin(mintKitchen(BASE, silentUntilAborted(), {}, { timeoutMs: 20 }), 1_000)).rejects.toMatchObject({
       kind: 'timeout',
     });
   });
 
-  it.fails('without a timeoutMs, still waits at 9.999 seconds and gives up at 10', async () => {
+  it('without a timeoutMs, still waits at 9.999 seconds and gives up at 10', async () => {
     const opened = scriptedFetch([initializeAt(PROTOCOL_VERSION), accepted]);
     const silent = silentUntilAborted();
     let answered = 0;
