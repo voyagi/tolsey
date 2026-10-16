@@ -7,6 +7,7 @@ import {
   namedInWords,
   namesAnotherFigure,
   namesAnotherMagnitude,
+  partsWithoutNames,
   rebuildWords,
   saysCorrection,
   tokensOf,
@@ -457,6 +458,16 @@ describe('namedInWords', () => {
     ['it reads 38', [], []],
   ])('finds in "%s" the check points %j and the measured %j', (words, checkPoints, measured) => {
     expect(named(words)).toEqual({ checkPoints, measured });
+  });
+});
+
+describe('partsWithoutNames', () => {
+  it.each([
+    ['reach-in 2 reads 38', ['reads', '38']],
+    ['walk-in freezer 0', ['0']],
+    ['freezer reads -5', ['reads', '-5']],
+  ])('leaves in "%s" the parts %j once every name is taken out', (words, parts) => {
+    expect(partsWithoutNames(tokensOf(words), profile)).toEqual(parts);
   });
 });
 

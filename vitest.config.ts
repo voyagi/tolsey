@@ -11,7 +11,14 @@ export default defineConfig({
     // Stryker's .stryker-tmp, so a coverage run and a mutation run cannot collide.
     coverage: {
       provider: 'v8',
-      include: ['src/contract/**/*.ts', 'src/domain/**/*.ts', 'src/store/**/*.ts', 'src/server/**/*.ts'],
+      include: [
+        'src/contract/**/*.ts',
+        'src/domain/**/*.ts',
+        'src/store/**/*.ts',
+        'src/server/**/*.ts',
+        'src/client/**/*.ts',
+        'src/ui/**/*.ts',
+      ],
       exclude: ['src/**/*.test.ts', 'src/test-support/**'],
       reportsDirectory: 'coverage',
       thresholds: {
@@ -26,7 +33,10 @@ export default defineConfig({
     projects: [
       {
         extends: true,
-        test: { name: 'unit', include: ['src/domain/**/*.test.ts', 'src/contract/**/*.test.ts'] },
+        test: {
+          name: 'unit',
+          include: ['src/domain/**/*.test.ts', 'src/contract/**/*.test.ts', 'src/client/**/*.test.ts', 'src/ui/**/*.test.ts'],
+        },
       },
       {
         extends: true,

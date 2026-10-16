@@ -255,6 +255,12 @@ function partsOf(tokens: readonly string[], profile: KitchenProfile): string[] {
   return withoutNames(tokens.flatMap(spokenParts), namesOf(profile).parts);
 }
 
+// The wall reads the figure from these same parts, so the page and the server take names out by one
+// rule: a second alias matcher in the page would drift from this one.
+export function partsWithoutNames(tokens: readonly string[], profile: KitchenProfile): string[] {
+  return partsOf(tokens, profile);
+}
+
 function hedgeOrSign(parts: readonly string[], hedges: Hedges): NumberWords | undefined {
   return saysHedge(parts, hedges) ? HEDGE : signedOf(parts, hedges);
 }
