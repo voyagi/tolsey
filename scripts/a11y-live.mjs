@@ -5,7 +5,9 @@
 // A render test reads markup; it cannot press Tab, see a focus ring, hear a live region or watch what the page keeps
 // in the browser. This drives the built wall through the dev-browser CLI in Light and Dark and, in each theme, takes
 // it through its four states: initial, a logged reading, a refused numberless check, and NOT LOGGED (the MCP route
-// blocked in the browser, so the call fails the way a dropped connection does). In the Light run a fresh page is
+// blocked in the browser, so the call fails the way a dropped connection does). axe-core audits each of the eight
+// state and theme pairs against WCAG 2.0, 2.1 and 2.2 A and AA, injected with page.evaluate because the page's
+// Content Security Policy refuses an injected script tag. In the Light run a fresh page is
 // walked by keyboard alone: every chip, the field, Send, each cook on the roster and each theme button must take
 // focus with a visible ring, and Enter on two chips must log a reading and get a refusal. The one status region must
 // be written exactly twice across a logged reading, a refusal, a held question and a theme change, and afterwards
@@ -13,13 +15,15 @@
 //
 // WIRING: verify:ship only, after the build; local, never CI (dev-browser is a machine CLI). Run `npx vite build`
 // first: it serves dist/, never the sources. The walk is written to reports/a11y-live/keyboard-walk.json (git-ignored).
+// `--plant-missing-label` removes the text field's label before the first audit, so the gate can be seen red.
 //
 // Exit codes: 0 clean, 1 an accessibility, focus, status or storage failure, 2 the run could not audit (no dist,
 // no CLI, no axe, zero checks, a non-200 navigation, a theme that did not take).
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { CannotRun, runDevBrowser, withBuiltWall } from './wall-browser.mjs';
+import { CannotRun, DEV_BROWSER_DIR, runDevBrowser, withBuiltWall } from './wall-browser.mjs';
 
 const THEMES = ['light', 'dark'];
 const STATES = ['initial', 'logged', 'refused', 'not-logged'];
@@ -39,15 +43,29 @@ const THEME_BUTTONS = 3;
 const MIN_RING_PX = 2;
 const EXPECTED_STATUS_WRITES = 2;
 const ALLOWED_STORAGE_KEYS = new Set(['tolsey-theme']);
+const PLANT_FLAG = '--plant-missing-label';
+const AXE_FILE = 'tolsey-axe.min.js';
+const AXE_OPTIONS = {
+  runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] },
+  // axe skips a rule it ships disabled even when its tag is selected: target-size (WCAG 2.5.8, wcag22aa) is still
+  // "enabled": false in 4.14.0, and label-content-name-mismatch (2.5.3) is experimental. Named, they run.
+  rules: { 'target-size': { enabled: true }, 'label-content-name-mismatch': { enabled: true } },
+};
+// An incomplete result is axe saying it could not decide, which is not clean. An entry here names the rule, the
+// state and why axe cannot decide it on this wall; nothing has needed one.
+const ALLOWED_INCOMPLETE = [];
 
 // The script dev-browser runs, in its QuickJS sandbox. Everything it needs is written in as a literal.
-function themeScript(base, theme, walk) {
+function themeScript(base, theme, walk, plant) {
   return `
 const BASE = ${JSON.stringify(base)};
 const THEME = ${JSON.stringify(theme)};
 const WALK = ${JSON.stringify(walk)};
+const PLANT = ${JSON.stringify(plant)};
 const PHRASES = ${JSON.stringify(PHRASES)};
-const result = { theme: THEME, navigations: [], states: [], description: null, walk: null, csp: [], errors: [] };
+const AXE_OPTIONS = ${JSON.stringify(AXE_OPTIONS)};
+const AXE_SOURCE = await readFile(${JSON.stringify(AXE_FILE)});
+const result = { theme: THEME, navigations: [], states: [], description: null, walk: null, planted: null, csp: [], errors: [] };
 
 function message(error) {
   return String(error && error.message ? error.message : error);
@@ -99,8 +117,29 @@ function chip(page, words) {
   return page.getByRole('button', { name: words, exact: true });
 }
 
+// The theme is read first and recorded with the audit, so an audit of the wrong theme is refused, never counted.
 async function checkpoint(page, state, extra) {
   const entry = Object.assign({ state: state, theme: await appliedTheme(page) }, extra || {});
+  const loaded = await page.evaluate(() => typeof window.axe !== 'undefined');
+  if (!loaded) await page.evaluate(AXE_SOURCE);
+  entry.audit = await page.evaluate((options) => window.axe.run(document, options).then((run) => {
+    const shape = (items) => items.map((item) => ({
+      id: item.id,
+      impact: item.impact,
+      help: item.help,
+      nodes: item.nodes.map((node) => {
+        const check = node.any.concat(node.all, node.none)[0];
+        return { target: node.target.join(' '), message: check === undefined ? '' : check.message };
+      }),
+    }));
+    return {
+      engine: run.testEngine.version,
+      violations: shape(run.violations),
+      incomplete: shape(run.incomplete),
+      passes: run.passes.length,
+      inapplicable: run.inapplicable.length,
+    };
+  }), AXE_OPTIONS);
   result.states.push(entry);
   return entry;
 }
@@ -121,6 +160,14 @@ async function fieldDescription(page) {
 async function runStates() {
   const page = await freshPage();
   await openWall(page);
+  if (PLANT) {
+    result.planted = await page.evaluate(() => {
+      const label = document.querySelector('label[for="cook-words"]');
+      if (label === null) return false;
+      label.remove();
+      return true;
+    });
+  }
   await checkpoint(page, 'initial');
 
   await chip(page, PHRASES.logged).click();
@@ -318,13 +365,50 @@ function couldNotRun(results) {
     if (reached.join() !== STATES.join()) problems.push(`${run.theme}: reached ${reached.join(', ') || 'no state'}, not ${STATES.join(', ')}`);
     for (const entry of run.states) {
       if (entry.theme !== run.theme) problems.push(`${run.theme}: the ${entry.state} state showed the ${entry.theme} theme`);
+      if (entry.audit.passes === 0 && entry.audit.violations.length === 0) {
+        problems.push(`${run.theme}: axe checked nothing in the ${entry.state} state`);
+      }
     }
+    if (run.planted === false) problems.push(`${run.theme}: there was no field label to remove`);
   }
   const walk = results.find((run) => run.walk !== null)?.walk;
   if (walk === undefined) problems.push('the keyboard walk did not run');
   else if (walk.theme !== 'light') problems.push(`the keyboard walk ran in the ${walk.theme} theme, not light`);
   else if (walk.required.length === 0) problems.push('the keyboard walk found no control to reach');
   return problems;
+}
+
+function isAllowedIncomplete(id, state) {
+  return ALLOWED_INCOMPLETE.some((entry) => entry.rule === id && entry.state === state);
+}
+
+function nodeList(nodes) {
+  return nodes.map((node) => (node.message ? `${node.target} (${node.message})` : node.target)).join('; ');
+}
+
+function auditFailures(results) {
+  const failures = [];
+  for (const run of results) {
+    for (const entry of run.states) {
+      const where = `${entry.state} (${run.theme})`;
+      for (const item of entry.audit.violations) {
+        failures.push(`axe [${item.impact}] ${item.id} in ${where}: ${item.help} at ${nodeList(item.nodes)}`);
+      }
+      for (const item of entry.audit.incomplete.filter((found) => !isAllowedIncomplete(found.id, entry.state))) {
+        failures.push(`axe [undetermined] ${item.id} in ${where}: ${item.help} at ${nodeList(item.nodes)}`);
+      }
+    }
+  }
+  return failures;
+}
+
+function auditSummary(results) {
+  const audits = results.flatMap((run) => run.states.map((entry) => entry.audit));
+  const engines = [...new Set(audits.map((audit) => audit.engine))].join(', ');
+  const passes = audits.reduce((sum, audit) => sum + audit.passes, 0);
+  const violations = audits.reduce((sum, audit) => sum + audit.violations.length, 0);
+  const undetermined = audits.reduce((sum, audit) => sum + audit.incomplete.length, 0);
+  return `axe ${engines}: ${audits.length} audits (${STATES.length} states by ${THEMES.length} themes), ${passes} rule passes, ${violations} violations, ${undetermined} undetermined`;
 }
 
 function stateFailures(results) {
@@ -382,11 +466,31 @@ function walkSummary(walk) {
   return `keyboard walk: ${byTab} Tab stops and ${byArrow} arrow moves reached ${walk.required.length} of ${walk.required.length} controls, rings ${rings}; Enter on ${tabs}; logged "${walk.logged?.answer}", refused "${walk.refused?.answer}"`;
 }
 
+function readArguments(argv) {
+  const unknown = argv.filter((argument) => argument !== PLANT_FLAG);
+  if (unknown.length > 0) throw new CannotRun(`unknown argument ${unknown.join(' ')}; the only flag is ${PLANT_FLAG}`);
+  return { plant: argv.includes(PLANT_FLAG) };
+}
+
+// The sandbox reads files only from its own folder, so the engine is copied there from the installed package.
+function stageAxe() {
+  let source;
+  try {
+    source = createRequire(import.meta.url).resolve('axe-core/axe.min.js');
+  } catch {
+    throw new CannotRun('axe-core is not installed: the audit did not run');
+  }
+  mkdirSync(DEV_BROWSER_DIR, { recursive: true });
+  copyFileSync(source, join(DEV_BROWSER_DIR, AXE_FILE));
+}
+
 async function main() {
+  const { plant } = readArguments(process.argv.slice(2));
+  stageAxe();
   return withBuiltWall(async (baseUrl) => {
     const results = [];
     for (const theme of THEMES) {
-      const run = await runDevBrowser(themeScript(baseUrl.origin, theme, theme === 'light'), {
+      const run = await runDevBrowser(themeScript(baseUrl.origin, theme, theme === 'light', plant), {
         browserName: BROWSER_NAME,
         timeoutSeconds: TIMEOUT_SECONDS,
       });
@@ -402,22 +506,25 @@ async function main() {
     const walkFile = join(REPORT_DIR, 'keyboard-walk.json');
     writeFileSync(walkFile, `${JSON.stringify(walk, null, 2)}\n`);
 
-    const failures = [...stateFailures(results), ...walkFailures(walk)];
+    const failures = [...auditFailures(results), ...stateFailures(results), ...walkFailures(walk)];
     console.log(
       JSON.stringify({
-        states: results.map((run) => ({ theme: run.theme, states: run.states, description: run.description })),
+        states: results.map((run) => ({
+          theme: run.theme,
+          planted: run.planted,
+          states: run.states.map(({ audit, ...entry }) => ({ ...entry, passes: audit.passes, violations: audit.violations.length })),
+          description: run.description,
+        })),
         statusWrites: walk.statusWrites,
         storage: walk.storage,
         failures,
       }),
     );
+    console.log(auditSummary(results));
     console.log(walkSummary(walk));
     console.log(walkFile);
-    if (failures.length > 0) {
-      for (const failure of failures) console.error(`[a11y-live] FAIL: ${failure}`);
-      return 1;
-    }
-    throw new CannotRun('axe-core is not installed: the audit did not run');
+    for (const failure of failures) console.error(`[a11y-live] FAIL: ${failure}`);
+    return failures.length === 0 ? 0 : 1;
   });
 }
 

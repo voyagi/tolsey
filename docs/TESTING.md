@@ -15,6 +15,7 @@ than trust its exit code: a test-count gate, coverage floors and mutation testin
 | `@modelcontextprotocol/client` | `2.2.0` | The reference client the conformance tests connect with |
 | Wrangler | `wrangler` `^4.120.0` | `getPlatformProxy` for a local D1 database in Node, `createTestHarness` for the built Worker in workerd |
 | Stryker | `@stryker-mutator/core` `^10.0.0` | Mutation testing |
+| axe-core | `axe-core` `4.14.0` | The accessibility rules `npm run a11y:live` runs in the browser |
 
 Prerequisites:
 
@@ -149,8 +150,13 @@ npm run a11y:live
 
 `scripts/a11y-live.mjs` uses the same harness and drives the wall in Light and Dark through four
 states: initial, a logged reading, a refused numberless check, and NOT LOGGED (the MCP route blocked
-in the browser). It checks that the field's accessible description holds the NOT LOGGED text once
-that panel shows. In the Light run a fresh page is walked by keyboard alone: every chip, the field,
+in the browser). In each of the eight state and theme pairs it runs axe-core (`axe-core` `4.14.0`, a
+devDependency copied into the page with `page.evaluate`, since the page's Content Security Policy
+refuses an injected script tag) over the WCAG 2.0, 2.1 and 2.2 A and AA rules, with `target-size` and
+`label-content-name-mismatch` named so that they run, since axe ships them switched off. Any violation
+fails the run, and so does any result axe could not decide unless the script's `ALLOWED_INCOMPLETE`
+list names its rule, its state and why. It checks that the field's accessible description holds the
+NOT LOGGED text once that panel shows. In the Light run a fresh page is walked by keyboard alone: every chip, the field,
 Send, each cook on the roster and each theme button must take focus with a visible ring of at least
 2 px, and Enter on two chips must log a reading and get a refusal. The one status region must be
 empty at load and written exactly twice across a logged reading, a refusal, a held question and a
@@ -158,8 +164,16 @@ theme change, and afterwards the browser may hold the `tolsey-theme` key and not
 storage, no cookie). A console message about the Content Security Policy fails the run. The walk is
 written to `reports/a11y-live/keyboard-walk.json` (git-ignored). It exits 1 on any of those failures
 and 2 when it could not audit: no build, no dev-browser CLI, axe-core not installed, a navigation that
-is not a 200, a theme that did not take, or a state never reached. Until axe-core is installed it
-exits 2 after the checks above, so it never reads as clean without the audit.
+is not a 200, a theme that did not take, a state never reached, or an audit that checked nothing.
+
+The gate has been seen red on a planted fault; to see it again:
+
+```bash
+npm run a11y:live -- --plant-missing-label
+```
+
+The flag removes the text field's label before the first audit, and the run exits 1 on axe's `label`
+rule.
 
 Mutation testing:
 

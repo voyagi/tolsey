@@ -15,7 +15,9 @@
     "@modelcontextprotocol/ext-apps",
     // knip reads "testRunner": "command" as a package, but the command runner ships inside
     // @stryker-mutator/core.
-    "@stryker-mutator/command-runner"
+    "@stryker-mutator/command-runner",
+    // Read by path in scripts/a11y-live.mjs for injection into the page under test, never imported.
+    "axe-core"
   ],
   // The browser CLI the layout check drives is installed on the machine, never in package.json:
   // wall-shots.mjs exits 2 when it is missing.
