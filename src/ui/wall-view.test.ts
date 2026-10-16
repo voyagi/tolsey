@@ -3,9 +3,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { ToolCallResult } from '../client/mcp-client';
 import { PHRASE_TABLE } from '../test-support/phrase-table';
+import { DeviceFrame } from './DeviceFrame';
 import { intentFor } from './intent';
 import { WALL_PROFILE } from './profile';
-import { SPEAKER_LABEL, TAUGHT_PHRASES } from './wall-copy';
+import { DEVICE_LABEL, SPEAKER_LABEL, TAUGHT_PHRASES } from './wall-copy';
 import { initialWallState, wallReducer, type WallState } from './wall-state';
 import { WallView } from './WallView';
 
@@ -35,6 +36,12 @@ function render(state: WallState): string {
 
 function withPass(pass: Partial<Pass>): string {
   return render({ ...READY, pass: { ...IN_RANGE_PASS, ...pass } });
+}
+
+// The text a reader sees, with the tags that only style it removed: the unit of a reading is set
+// smaller than its figure, and is still read as one "38°F".
+function textOf(markup: string): string {
+  return markup.replace(/<[^>]*>/g, '');
 }
 
 function result(outcome: string, text: string, fields: Record<string, unknown>): ToolCallResult {
@@ -70,7 +77,7 @@ function buttonsOf(markup: string): string[] {
 describe('the pass shows a logged line with the fields the result carried', () => {
   it('an in_range line shows the check point, the value in °F, the verdict, the limit, the initials and the record code', () => {
     const markup = withPass({});
-    for (const text of ['Walk-in', '38°F', 'in range', 'at most 41°F', 'AB', '261016-001']) expect(markup).toContain(text);
+    for (const text of ['Walk-in', '38°F', 'in range', 'at most 41°F', 'AB', '261016-001']) expect(textOf(markup)).toContain(text);
     expect(markup).not.toContain('out-of-range');
   });
 
@@ -78,6 +85,16 @@ describe('the pass shows a logged line with the fields the result carried', () =
     const markup = withPass({ outcome: 'out_of_range', value: 45, verdict: 'out of range' });
     expect(markup).toContain('out of range');
     expect(markup).toMatch(/class="[^"]*\bout-of-range\b/);
+  });
+
+  it.fails('the out-of-range word and its class sit on the same verdict tile', () => {
+    const markup = withPass({ outcome: 'out_of_range', value: 45, verdict: 'out of range' });
+    expect(markup).toMatch(/<span class="[^"]*\bout-of-range\b[^"]*">out of range<\/span>/);
+  });
+
+  it.fails('a value with a tenth steps the reading down to its tenth size', () => {
+    expect(withPass({ value: 38.5 })).toMatch(/<p class="[^"]*\breading--tenth\b[^"]*">38\.5/);
+    expect(withPass({ value: 38 })).not.toContain('reading--tenth');
   });
 
   it('a not_covered line shows not covered yet and no limit', () => {
@@ -88,15 +105,15 @@ describe('the pass shows a logged line with the fields the result carried', () =
 
   it('an at_least rule is written as at least its limit', () => {
     const rule = { id: 'hot_holding', comparator: 'at_least', limit: 135, unit: 'F', sourceKind: 'food_code' } as const;
-    expect(withPass({ value: 140, rule })).toContain('at least 135°F');
+    expect(textOf(withPass({ value: 140, rule }))).toContain('at least 135°F');
   });
 
   it('a value with a tenth shows as 38.5', () => {
-    expect(withPass({ value: 38.5 })).toContain('38.5°F');
+    expect(textOf(withPass({ value: 38.5 }))).toContain('38.5°F');
   });
 
   it('a whole value shows as 38, never 38.0', () => {
-    const markup = withPass({ value: 38 });
+    const markup = textOf(withPass({ value: 38 }));
     expect(markup).toContain('38°F');
     expect(markup).not.toContain('38.0');
   });
@@ -252,6 +269,51 @@ describe('a call that did not land', () => {
     expect(markup).toContain(message);
     for (const button of buttonsOf(markup)) expect(button).toContain('disabled=""');
     expect(markup).toMatch(/<input\b[^>]*id="cook-words"[^>]*disabled=""/);
+  });
+});
+
+describe('the simulated device frame', () => {
+  const framed = renderToStaticMarkup(createElement(DeviceFrame, null, createElement(WallView, { state: READY, actions: ACTIONS })));
+
+  it.fails('says simulated Alexa+ exactly once and holds the wall inside it', () => {
+    expect(DEVICE_LABEL).toBe('simulated Alexa+');
+    expect(framed.split('simulated Alexa+')).toHaveLength(2);
+    expect(framed).toContain('Who is logging');
+  });
+
+  it.fails('labels the answer with the speaker label on its own', () => {
+    const reply = 'Walk-in, 38, in range, AB';
+    const state = afterResult(READY, 'the walk-in reads 38', result('in_range', reply, { verdict: 'in range', value: 38 }));
+    expect(render(state)).toMatch(new RegExp(`<span class="label">${SPEAKER_LABEL}</span>`));
+  });
+});
+
+describe('markup the page CSP and the static look allow', () => {
+  const failed = [
+    { type: 'edited', text: 'walk-in 45' } as const,
+    { type: 'sent', said: 'walk-in 45' } as const,
+    { type: 'callFailed', said: 'walk-in 45', reason: 'Tolsey did not answer in time.', requestId: 'r-1', initials: 'AB' } as const,
+  ].reduce(wallReducer, READY);
+  const states: WallState[] = [
+    initialWallState(WALL_PROFILE),
+    READY,
+    { ...READY, pass: IN_RANGE_PASS },
+    { ...READY, pass: { ...IN_RANGE_PASS, outcome: 'out_of_range', value: 45, verdict: 'out of range' } },
+    { ...READY, pass: { ...IN_RANGE_PASS, outcome: 'not_covered', verdict: 'not covered yet', rule: undefined } },
+    failed,
+    wallReducer(initialWallState(WALL_PROFILE), { type: 'startFailed', error: 'Could not open the MCP session (status 500).' }),
+    wallReducer(READY, { type: 'stopped', message: 'The demo is full for today. Try again tomorrow.' }),
+  ];
+  const markups = states.map((state) => renderToStaticMarkup(createElement(DeviceFrame, null, createElement(WallView, { state, actions: ACTIONS }))));
+
+  it('renders no style attribute in any state', () => {
+    for (const markup of markups) expect(markup).not.toContain('style="');
+  });
+
+  it('renders no class naming a flap in any state', () => {
+    for (const markup of markups) {
+      for (const [, classes] of markup.matchAll(/class="([^"]*)"/g)) expect(classes).not.toContain('flap');
+    }
   });
 });
 
