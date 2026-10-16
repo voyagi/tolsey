@@ -9,9 +9,9 @@ export type ToolName =
   | 'day_sheet';
 
 // Captured runs and the drift test pin every name and description from phase 2, so all six are
-// fixed here even though phase 1 registers only log_reading.
+// fixed here even though only log_reading and due_now are registered; the other four arrive later.
 
-/** @public The full v1 tool set; the tools after log_reading are registered in phases 2 and 3. */
+/** @public The full v1 tool set; log_reading and due_now are registered, the other four come later. */
 export const TOOL_NAMES: readonly ToolName[] = [
   'log_reading',
   'record_corrective_action',
@@ -34,7 +34,9 @@ export const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
   close_corrective_action:
     'Close an open corrective action with its disposition, such as discarded or rejected. A passing re-check of ' +
     'the food is logged through log_reading instead, which closes the action itself.',
-  due_now: 'Say which checks and corrective actions are due now, in the order they fall due.',
+  due_now:
+    "Say which checks are still open today, in the kitchen's own order. A check is open while its newest " +
+    'line is a refusal or a question waiting for a number. This reads the record and writes nothing.',
   shift_handover:
     'Summarise the shift for handover: the open items with the time each has left, the counts so far and the ' +
     'checks due next.',

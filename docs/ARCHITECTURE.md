@@ -1,7 +1,7 @@
 # Architecture
 
-This document describes the code as it stands: one MCP tool, `log_reading`, its storage, and the
-routes around it. The decisions behind the stack and the storage are recorded in
+This document describes the code as it stands: two MCP tools, `log_reading`, which writes the
+record, and `due_now`, which reads it, their storage, and the routes around them. The decisions behind the stack and the storage are recorded in
 [ADR 0001: Stack](adr/0001-stack.md) and [ADR 0002: Storage](adr/0002-storage.md), and this page
 links to them rather than repeating them.
 
@@ -18,12 +18,12 @@ decides what a call means and what to store, a server adapter supplies the clock
 and the store, and a store port has a D1 adapter for the Worker and an in-memory adapter for tests.
 The MCP handler is stateless: a fresh server is built for every request and all state lives in D1.
 
-What exists today: `log_reading` is the only registered tool. The wall page
+What exists today: `log_reading` and `due_now` are the registered tools. The wall page
 (`src/ui/WallView.tsx`, driven by `src/ui/wall-session.ts` through the MCP client in
 `src/client/mcp-client.ts`) mints a scratch kitchen and calls `log_reading` with the words typed or
-tapped, then shows the reply and the logged line exactly as the result gives them. The other five
-tool names and descriptions are fixed in `src/contract/tools.ts`, which notes that they are
-registered in phases 2 and 3. The card
+tapped, then shows the reply and the logged line exactly as the result gives them. The other four
+tool names and descriptions are fixed in `src/contract/tools.ts`, which notes that they arrive
+later. The card
 resources (`ui://tolsey/reading.html` and three others) are fixed as constants in the same file;
 ADR 0002 records that they are attached to tool definitions in phase 2.
 
@@ -34,7 +34,7 @@ graph TD
   Host["MCP host"] -->|"POST /mcp, /mcp/k/id"| Worker
   Host -->|"POST /api/kitchens"| Worker
   Worker["Worker entry<br/>src/server/worker.ts<br/>allowlist, body cap, era check, scope"] -->|"any other path"| Assets["Static assets<br/>ASSETS binding, Vite build of src/ui"]
-  Worker --> Mcp["MCP adapter<br/>src/server/mcp.ts<br/>log_reading, schemas from src/contract"]
+  Worker --> Mcp["MCP adapter<br/>src/server/mcp.ts<br/>log_reading, due_now, schemas from src/contract"]
   Worker --> Kitchens["Kitchen mint<br/>src/server/kitchens.ts"]
   Mcp --> Domain["Domain<br/>src/domain<br/>decideLogReading, judge, words"]
   Mcp --> Store["Store port and D1 adapter<br/>src/store"]
@@ -86,6 +86,15 @@ validated once in `src/server/data.ts` and handed to the MCP adapter and the dom
    with the error's name and code only, never its message, and answered with a fixed sentence under
    `server_fault`.
 
+### A `due_now` call
+
+Steps 1 to 5 are the same as for `log_reading`. In `dueNow` (`src/server/mcp.ts`) the clock is read
+once, `businessDay` turns it into the kitchen's day, and `Store.openChecks` returns the ids of the
+check points whose newest line that day is a refusal, a held reading or a `wrong_number` marker. The
+adapter keeps the profile's order of check points, adds their names, and answers a sentence plus
+`structuredContent`. Nothing is appended, so the demo kitchen answers it as well; a thrown fault is
+answered under `server_fault` as above.
+
 ### Minting a scratch kitchen
 
 `POST /api/kitchens` is handled by `handleKitchensRoute` (`src/server/kitchens.ts`). It accepts only
@@ -113,8 +122,9 @@ retry window before retention age, are set out in ADR 0002 under "Write model".
 | Abstraction | File | Role |
 |-------------|------|------|
 | `createWorker`, `WorkerEnv` | `src/server/worker.ts` | Worker entry: `fetch` routing and front checks, `scheduled` sweep; takes a `Clock` and an optional store factory so tests can inject both |
-| `createServer`, `ServerDeps`, `Clock` | `src/server/mcp.ts` | Builds the per-request `McpServer` and registers `log_reading`; reads the clock once per tool call and passes it down |
+| `createServer`, `ServerDeps`, `Clock` | `src/server/mcp.ts` | Builds the per-request `McpServer` and registers `log_reading` and `due_now`; reads the clock once per tool call and passes it down |
 | `LogReadingInputSchema`, `LogReadingOutputSchema` | `src/contract/log-reading.ts` | Zod schemas for the tool's input and `structuredContent`, including which fields each outcome must and must not carry |
+| `DueNowInputSchema`, `DueNowOutputSchema` | `src/contract/due-now.ts` | Zod schemas for `due_now`: an empty input object, and the open checks of the day with its business day and time zone |
 | `TOOL_NAMES`, `TOOL_DESCRIPTIONS`, `UI_RESOURCE_URIS` | `src/contract/tools.ts` | The full tool set and card resource URIs, fixed ahead of registration |
 | `decideLogReading`, `Decision`, `DecisionContext` | `src/domain/log-reading.ts`, `src/domain/decision.ts` | Pure decision from the call and the context the adapter read: roster check, correction, prompt answer or fresh reading |
 | `judgeReading` | `src/domain/judge.ts` | Compares a reading in tenths of a degree with the limit it is handed, inclusive both ways |
@@ -171,7 +181,7 @@ targets a conformance run drives.
 src/
   server/        Worker entry, routing and front checks, the MCP adapter, kitchen mint, retention
   domain/        Pure decisions: words, prompts, corrections, judging, business days, rule schemas
-  contract/      Tool names, descriptions, annotations, card URIs and the log_reading schemas
+  contract/      Tool names, descriptions, annotations, card URIs and the log_reading and due_now schemas
   store/         The Store port, the D1 adapter and the in-memory adapter
   client/        Fetch-based MCP client shared by the wall and the capture
   ui/            The wall page: React components, the session, the intent layer

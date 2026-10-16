@@ -165,6 +165,17 @@ describe('due_now, the checks still open today', () => {
     });
   });
 
+  // MCP lets a host leave arguments out of tools/call; an empty-input tool must still answer it.
+  it('answers a tools/call that carries no arguments member at all', async () => {
+    const at = await kitchen();
+    const response = await postJsonRpc(
+      { url: at, fetch: local },
+      { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'due_now' } },
+    );
+
+    expect(byId(response, 1)).toMatchObject({ structuredContent: { openChecks: [] } });
+  });
+
   it('answers at the demo kitchen without an error and makes no append there', async () => {
     instant = AFTERNOON;
     const { result, calls } = await dueNowCallsOf(new URL('/mcp', BASE));
