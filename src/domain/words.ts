@@ -293,8 +293,9 @@ export function namesAFigure(tokens: readonly string[], profile: KitchenProfile)
 const SINGLE_DIGIT = /^\d$/;
 
 // Single digits said one at a time ("1 5", as the digit repeat asks for) spell one number, so a run of
-// them is joined before figures are read. A longer figure never joins a run ("38 5" stays two).
-function joinDigits(parts: readonly string[]): string[] {
+// them is joined before figures are read. A longer figure never joins a run ("38 5" stays two). The wall
+// joins an answer's digits by this same rule, so the page and the server agree on what "1 5" says.
+export function joinDigits(parts: readonly string[]): string[] {
   const joined: string[] = [];
   let inRun = false;
   for (const part of parts) {
@@ -318,8 +319,9 @@ const POINT = 'point';
 // The one fraction read in words. Any other ("38 and a quarter") is the intent layer's to read, so the
 // whole figure before it is compared as said.
 const AND_A_HALF: readonly string[] = ['and', 'a', 'half'];
-// The digits after a point said one word at a time ("point five").
-const DIGIT_OF_WORD: ReadonlyMap<string, string> = new Map(
+// The digits after a point said one word at a time ("point five"), and the digit words the wall reads in
+// an answer to a question ("one five").
+export const DIGIT_OF_WORD: ReadonlyMap<string, string> = new Map(
   ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'].map((word, digit) => [word, String(digit)]),
 );
 

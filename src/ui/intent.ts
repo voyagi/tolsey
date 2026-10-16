@@ -1,5 +1,6 @@
 import type { KitchenProfile } from '../domain/rule';
-import { namedInWords, partsWithoutNames, tokensOf } from '../domain/words';
+import { DIGIT_OF_WORD, joinDigits, namedInWords, partsWithoutNames, tokensOf } from '../domain/words';
+import { LOCAL_REPLY } from './wall-copy';
 
 export type OpenPrompt = { kind: string; id: string };
 
@@ -15,13 +16,24 @@ function onlyOne<T>(items: readonly T[]): T | undefined {
   return items.length === 1 ? items[0] : undefined;
 }
 
+// Only an answer may spell its number one digit at a time, as the digit repeat asks the cook to; outside
+// a question number words are not read at all, so "one five" alone names no figure.
+function figureParts(tokens: readonly string[], profile: KitchenProfile, openPrompt: OpenPrompt | null): string[] {
+  const parts = partsWithoutNames(tokens, profile);
+  return openPrompt === null ? parts : joinDigits(parts.map((part) => DIGIT_OF_WORD.get(part) ?? part));
+}
+
 // The words go out exactly as given: the server judges them beside the value, so cleaning them up
 // here could turn a hedge into a reading.
 export function intentFor(text: string, profile: KitchenProfile, openPrompt: OpenPrompt | null): Intent {
   if (text.trim() === '') return { kind: 'none' };
   const tokens = tokensOf(text);
   const checkPoint = onlyOne([...namedInWords(tokens, profile).checkPoints]);
-  const figure = onlyOne(partsWithoutNames(tokens, profile).filter((part) => FIGURE.test(part)));
+  const figure = onlyOne(figureParts(tokens, profile, openPrompt).filter((part) => FIGURE.test(part)));
+  // With nothing to log and no question to answer, a call would only store an empty refusal.
+  if (openPrompt === null && checkPoint === undefined && figure === undefined) {
+    return { kind: 'local_reply', text: LOCAL_REPLY };
+  }
   return {
     kind: 'call',
     args: {

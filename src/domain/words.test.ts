@@ -4,6 +4,8 @@ import { KitchenProfileSchema } from './rule';
 import {
   answerNumberWords,
   classifyNumberWords,
+  DIGIT_OF_WORD,
+  joinDigits,
   namedInWords,
   namesAnotherFigure,
   namesAnotherMagnitude,
@@ -468,6 +470,24 @@ describe('partsWithoutNames', () => {
     ['freezer reads -5', ['reads', '-5']],
   ])('leaves in "%s" the parts %j once every name is taken out', (words, parts) => {
     expect(partsWithoutNames(tokensOf(words), profile)).toEqual(parts);
+  });
+});
+
+describe('the digit words and the digit join the wall shares', () => {
+  it('maps each digit word zero to nine to its digit and nothing past nine', () => {
+    expect([...DIGIT_OF_WORD.entries()]).toEqual(
+      ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'].map((word, digit) => [word, String(digit)]),
+    );
+    expect(DIGIT_OF_WORD.has('ten')).toBe(false);
+  });
+
+  it.each([
+    [['1', '5'], ['15']],
+    [['3', '8', 'reads'], ['38', 'reads']],
+    [['38', '5'], ['38', '5']],
+    [['1', 'or', '5'], ['1', 'or', '5']],
+  ])('joins the single digits in %j into %j', (parts, joined) => {
+    expect(joinDigits(parts)).toEqual(joined);
   });
 });
 

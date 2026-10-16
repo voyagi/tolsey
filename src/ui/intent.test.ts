@@ -8,26 +8,8 @@ function promptLabel(openPrompt: { kind: string } | null): string {
   return openPrompt === null ? 'no question open' : `a ${openPrompt.kind} question open`;
 }
 
-const ROWS = PHRASE_TABLE.map((row) => ({ ...row, label: promptLabel(row.openPrompt) }));
-
-// Rows the tracer rule does not read yet, held as expected failures because the pre-commit gate runs
-// this project; the commit that completes the rule moves them back with the others.
-const NOT_READ_YET = new Set(['38.50/null', 'hello/null', 'one five/null', '1 5/digit_repeat', 'one five/digit_repeat']);
-
-function keyOf(row: (typeof ROWS)[number]): string {
-  return `${row.phrase}/${row.openPrompt?.kind ?? 'null'}`;
-}
-
 describe('the intent rule for every phrase in the table', () => {
-  it.each(ROWS.filter((row) => !NOT_READ_YET.has(keyOf(row))))(
-    'reads $phrase with $label as $expected.kind',
-    ({ phrase, openPrompt, expected }) => {
-      const intent = intentFor(phrase, WALL_PROFILE, openPrompt);
-      expect(intent.kind).toBe(expected.kind);
-      expect(intent).toStrictEqual(expected);
-    },
-  );
-  it.fails.each(ROWS.filter((row) => NOT_READ_YET.has(keyOf(row))))(
+  it.each(PHRASE_TABLE.map((row) => ({ ...row, label: promptLabel(row.openPrompt) })))(
     'reads $phrase with $label as $expected.kind',
     ({ phrase, openPrompt, expected }) => {
       const intent = intentFor(phrase, WALL_PROFILE, openPrompt);
