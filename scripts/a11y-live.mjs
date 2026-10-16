@@ -5,7 +5,8 @@
 // A render test reads markup; it cannot press Tab, see a focus ring, hear a live region or watch what the page keeps
 // in the browser. This drives the built wall through the dev-browser CLI in Light and Dark and, in each theme, takes
 // it through its four states: initial, a logged reading, a refused numberless check, and NOT LOGGED (the MCP route
-// blocked in the browser, so the call fails the way a dropped connection does). axe-core audits each of the eight
+// blocked in the browser, so the call fails the way a dropped connection does), each audited only once the
+// open-checks board shows the list the record gives in that state. axe-core audits each of the eight
 // state and theme pairs against WCAG 2.0, 2.1 and 2.2 A and AA, injected with page.evaluate because the page's
 // Content Security Policy refuses an injected script tag. In the Light run a fresh page is
 // walked by keyboard alone: every chip, the field, Send, each cook on the roster and each theme button must take
@@ -117,6 +118,17 @@ function chip(page, words) {
   return page.getByRole('button', { name: words, exact: true });
 }
 
+// The open-checks board answers after the reply, so each audit first waits for the list the record gives in that
+// state: axe then judges the board as a judge sees it, empty at load and after the logged reading, holding reach-in
+// two after the refusal.
+async function waitForBoard(page, expected) {
+  await page.waitForFunction((text) => {
+    const board = document.querySelector('.board');
+    return board !== null && board.textContent.indexOf(text) !== -1;
+  }, expected, { timeout: 30000 });
+  return { board: await page.evaluate(() => document.querySelector('.board').textContent) };
+}
+
 // The theme is read first and recorded with the audit, so an audit of the wrong theme is refused, never counted.
 async function checkpoint(page, state, extra) {
   const entry = Object.assign({ state: state, theme: await appliedTheme(page) }, extra || {});
@@ -168,13 +180,15 @@ async function runStates() {
       return true;
     });
   }
-  await checkpoint(page, 'initial');
+  await checkpoint(page, 'initial', await waitForBoard(page, 'No checks are open.'));
 
   await chip(page, PHRASES.logged).click();
-  await checkpoint(page, 'logged', await waitForAnswer(page, PHRASES.logged));
+  const logged = await waitForAnswer(page, PHRASES.logged);
+  await checkpoint(page, 'logged', Object.assign(logged, await waitForBoard(page, 'No checks are open.')));
 
   await chip(page, PHRASES.refused).click();
-  await checkpoint(page, 'refused', await waitForAnswer(page, PHRASES.refused));
+  const refused = await waitForAnswer(page, PHRASES.refused);
+  await checkpoint(page, 'refused', Object.assign(refused, await waitForBoard(page, 'Reach-in two')));
 
   const before = await fieldDescription(page);
   await page.route('**/mcp/**', (route) => route.abort());

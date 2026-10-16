@@ -27,6 +27,10 @@ export const NO_CHECKS_OPEN = 'No checks are open.';
 
 export const OPEN_TILE = 'Open';
 
+// What every open check has in common: its newest line of the day is a refusal, a held reading or a
+// "wrong number", and each of them is waiting for a number.
+export const NEEDS_A_NUMBER = 'Needs a number';
+
 export const NEW_KITCHEN_SENTENCE = 'That kitchen has closed, so the reading was not logged. A new kitchen is ready: send the words again.';
 
 export const STOPPED_MESSAGE = 'The wall cannot reach its kitchen right now. Reload the page later to start again.';

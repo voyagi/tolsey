@@ -4,7 +4,8 @@
 // WHY THIS EXISTS
 // A judge decides in seconds at a laptop's size. This drives the built wall in a real browser, logs a reading through
 // the real Worker, and checks what a screenshot alone cannot: at 1280 by 800 and 1366 by 657, in Light and Dark, the
-// pass, the reply and the text field sit inside the viewport with the page unscrolled; a reading with a tenth (38.5)
+// pass, the reply and the text field sit inside the viewport with the page unscrolled, and stay there with a row on
+// the open-checks board, which then ends inside the viewport too; a reading with a tenth (38.5)
 // fits its box; at 390 wide the page is no wider than the screen; and every request the page makes stays on its own
 // origin, since the privacy notice names Cloudflare as the only processor.
 //
@@ -53,6 +54,34 @@ async function logChip(text) {
   await page.waitForSelector('.pass .reading', { timeout: 30000 });
   await page.waitForSelector('.exchange .answer', { timeout: 30000 });
   await page.waitForFunction(() => !document.querySelector('#cook-words').readOnly, null, { timeout: 30000 });
+  await page.waitForSelector('.board', { timeout: 30000 });
+}
+
+// A refused reach-in two puts a row on the open-checks board, the tallest state the wall's own chips reach.
+async function refuseReachInTwo() {
+  await page.locator('button.chip', { hasText: 'reach-in two is fine' }).first().click();
+  await page.waitForFunction(() => {
+    const board = document.querySelector('.board');
+    return board !== null && board.textContent.indexOf('Reach-in two') !== -1;
+  }, null, { timeout: 30000 });
+}
+
+async function fitOf(withBoard) {
+  return page.evaluate((board) => {
+    const bottom = (selector) => {
+      const element = document.querySelector(selector);
+      return element === null ? null : element.getBoundingClientRect().bottom;
+    };
+    const fit = {
+      pass: bottom('.pass'),
+      reply: bottom('.exchange .answer'),
+      field: bottom('#cook-words'),
+      innerHeight: window.innerHeight,
+      scrollY: window.scrollY,
+    };
+    if (board) fit.board = bottom('.board');
+    return fit;
+  }, withBoard);
 }
 
 for (const size of SIZES) {
@@ -63,19 +92,7 @@ for (const size of SIZES) {
       const applied = await openWall(theme);
       await logChip('the walk-in reads 38');
       const file = await saveScreenshot(await page.screenshot(), 'tolsey-wall-' + name + '.png');
-      const fit = await page.evaluate(() => {
-        const bottom = (selector) => {
-          const element = document.querySelector(selector);
-          return element === null ? null : element.getBoundingClientRect().bottom;
-        };
-        return {
-          pass: bottom('.pass'),
-          reply: bottom('.exchange .answer'),
-          field: bottom('#cook-words'),
-          innerHeight: window.innerHeight,
-          scrollY: window.scrollY,
-        };
-      });
+      const fit = await fitOf(false);
       result.shots.push({ name: name, file: file, theme: applied });
       result.fit.push(Object.assign({ name: name }, fit));
       if (size[0] === 1280 && theme === 'light') {
@@ -99,6 +116,11 @@ for (const size of SIZES) {
         });
         result.tenth.file = tenthFile;
       }
+      const openName = size[0] + 'x' + size[1] + '-open-' + theme;
+      await refuseReachInTwo();
+      const openFile = await saveScreenshot(await page.screenshot(), 'tolsey-wall-' + openName + '.png');
+      result.shots.push({ name: openName, file: openFile, theme: applied });
+      result.fit.push(Object.assign({ name: openName }, await fitOf(true)));
     } catch (error) {
       result.errors.push(name + ': ' + String(error && error.message ? error.message : error));
     }
@@ -117,6 +139,14 @@ for (const theme of THEMES) {
       innerWidth: window.innerWidth,
     }));
     result.phone.push(Object.assign({ name: name, file: file, theme: applied }, widths));
+    const openName = PHONE + 'x800-open-' + theme;
+    await refuseReachInTwo();
+    const openFile = await saveScreenshot(await page.screenshot({ fullPage: true }), 'tolsey-wall-' + openName + '.png');
+    const openWidths = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+    }));
+    result.phone.push(Object.assign({ name: openName, file: openFile, theme: applied }, openWidths));
   } catch (error) {
     result.errors.push(name + ': ' + String(error && error.message ? error.message : error));
   }
@@ -130,11 +160,16 @@ function fitFailures(fit) {
   const failures = [];
   for (const row of fit) {
     if (row.scrollY !== 0) failures.push(`${row.name}: the page is scrolled (${row.scrollY})`);
-    for (const part of ['pass', 'reply', 'field']) {
+    // A row measured with its open-checks board holds the board to the same rule as the pass, reply and field.
+    const parts = 'board' in row ? ['pass', 'reply', 'field', 'board'] : ['pass', 'reply', 'field'];
+    for (const part of parts) {
       if (row[part] === null) failures.push(`${row.name}: no ${part} on the page`);
       else if (row[part] > row.innerHeight) failures.push(`${row.name}: the ${part} ends at ${row[part]}, below the ${row.innerHeight} viewport`);
     }
   }
+  const boardRows = fit.filter((row) => 'board' in row).length;
+  const expected = JUDGED_SIZES.length * THEMES.length;
+  if (boardRows !== expected) failures.push(`the open-checks board was measured in ${boardRows} of ${expected} captures`);
   return failures;
 }
 
@@ -148,7 +183,9 @@ function tenthFailures(tenth) {
 }
 
 function phoneFailures(phone) {
-  if (phone.length !== THEMES.length) return [`390 wide: ${phone.length} of ${THEMES.length} themes measured`];
+  // Each theme is measured twice: after a logged reading and with a row on the open-checks board.
+  const expected = THEMES.length * 2;
+  if (phone.length !== expected) return [`390 wide: ${phone.length} of ${expected} captures measured`];
   return phone
     .filter((row) => row.scrollWidth !== row.innerWidth)
     .map((row) => `${row.name}: the page is ${row.scrollWidth} wide in a ${row.innerWidth} viewport`);

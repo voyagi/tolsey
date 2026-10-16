@@ -6,6 +6,7 @@ import {
   CHIPS,
   EXAMPLE_PHRASE,
   HINT,
+  NEEDS_A_NUMBER,
   NO_CHECKS_OPEN,
   NOT_LOGGED,
   OPEN_CHECKS_HEADING,
@@ -203,8 +204,11 @@ function OpenChecksBoard({ openChecks }: { openChecks: NonNullable<WallState['op
         <ul className="board-rows">
           {openChecks.map((check) => (
             <li key={check.id} className="board-row">
-              <span className="board-name">{check.name}</span>
-              <span className="status status--open">{OPEN_TILE}</span>
+              <p className="board-check">
+                {check.name}
+                <small>{NEEDS_A_NUMBER}</small>
+              </p>
+              <span className="status status--alert">{OPEN_TILE}</span>
             </li>
           ))}
         </ul>
@@ -312,8 +316,8 @@ export function WallView({ state, actions }: { state: WallState; actions: WallAc
               </li>
             ))}
           </ul>
+          {state.openChecks === null ? null : <OpenChecksBoard openChecks={state.openChecks} />}
         </div>
-        {state.openChecks === null ? null : <OpenChecksBoard openChecks={state.openChecks} />}
         <StatusRegion state={state} />
       </main>
     </div>

@@ -133,9 +133,11 @@ npm run wall:shots
 
 `scripts/wall-shots.mjs` serves the built Worker in workerd on loopback with its D1 migrations
 applied (`scripts/wall-browser.mjs`), drives the page through the dev-browser CLI, logs a reading
-by its chip, and saves screenshots at 1280 by 800 and 1366 by 657 in Light and Dark, plus 390 wide,
-to `reports/wall-shots/` (git-ignored). It exits 1 when the pass, the reply or the text field ends
-below the viewport or the page is scrolled, when a 38.5 reading overflows its box, when the page at
+by its chip, then taps "reach-in two is fine" so the open-checks board holds a row, and saves
+screenshots of both states at 1280 by 800 and 1366 by 657 in Light and Dark, plus 390 wide, to
+`reports/wall-shots/` (git-ignored). It exits 1 when the pass, the reply or the text field ends
+below the viewport or the page is scrolled, when the board with its row ends below the viewport or
+was not measured in every judged capture, when a 38.5 reading overflows its box, when the page at
 390 wide is wider than the screen, or when any request leaves the page's origin; it exits 2 when it
 could not look (no build, no dev-browser CLI, a theme that did not take, a page that never became
 ready), and 0 only when every check ran clean.
@@ -150,7 +152,9 @@ npm run a11y:live
 
 `scripts/a11y-live.mjs` uses the same harness and drives the wall in Light and Dark through four
 states: initial, a logged reading, a refused numberless check, and NOT LOGGED (the MCP route blocked
-in the browser). In each of the eight state and theme pairs it runs axe-core (`axe-core` `4.14.0`, a
+in the browser). Each audit waits until the open-checks board shows the list the record gives in
+that state: empty at load and after the logged reading, holding reach-in two after the refusal. In
+each of the eight state and theme pairs it runs axe-core (`axe-core` `4.14.0`, a
 devDependency copied into the page with `page.evaluate`, since the page's Content Security Policy
 refuses an injected script tag) over the WCAG 2.0, 2.1 and 2.2 A and AA rules, with `target-size` and
 `label-content-name-mismatch` named so that they run, since axe ships them switched off. Any violation
@@ -249,7 +253,7 @@ projects only; the workerd run adds nothing to it.
 npm run gate:test-count
 ```
 
-The script builds the Worker, then `scripts/check-test-count.mjs --floor 1488` runs the `unit`,
+The script builds the Worker, then `scripts/check-test-count.mjs --floor 1531` runs the `unit`,
 `store`, `conformance` and `e2e` projects with Vitest's JSON reporter, writing the report to a new
 temporary folder each time. The `e2e` project runs the built Worker, as `npm run test:e2e` does. The
 floor is set in the `gate:test-count` script in `package.json`. The gate refuses the run when:

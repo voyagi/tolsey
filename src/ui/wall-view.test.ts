@@ -365,6 +365,13 @@ describe('the open-checks board shows what the record lists', () => {
     const tiles = board.match(/<span class="status[^"]*">Open<\/span>/g) ?? [];
 
     expect(tiles).toHaveLength(2);
+    expect(textOf(board).match(/Needs a number/g)).toHaveLength(2);
+  });
+
+  it('adds nothing a keyboard can reach and no second live region', () => {
+    const board = boardOf(render({ ...READY, openChecks: TWO_OPEN }));
+
+    expect(board).not.toMatch(/<(button|a|input|select|textarea)\b|tabindex=|aria-live=|role="(status|alert|log)"/);
   });
 
   it('shows the designed empty sentence when nothing is open', () => {
