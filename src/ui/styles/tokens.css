@@ -145,8 +145,7 @@ a {
   position: relative;
   background: var(--pass-stock);
 }
-.pass::after {
-  content: '';
+.pass > .tear {
   position: absolute;
   top: 0;
   right: 0;

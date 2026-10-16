@@ -64,6 +64,19 @@ function Cell({ label, value }: { label: string; value: string | undefined }) {
   );
 }
 
+// The tear line is a real element, hidden from assistive tech, rather than a pseudo element: a checker
+// that meets a painted pseudo element over the pass cannot judge the contrast of any word on it.
+function TearLine() {
+  return <span className="tear" aria-hidden="true" />;
+}
+
+// A control that cannot act while a call is out stays focusable and says so: disabling it would drop
+// the keyboard's focus to the page. Before the wall is ready, or once it stops, it is disabled outright.
+function unavailable(state: WallState): { disabled?: true; 'aria-disabled'?: true } {
+  if (controlsEnabled(state)) return {};
+  return state.phase === 'ready' ? { 'aria-disabled': true } : { disabled: true };
+}
+
 // Every field here is the server's own: the page writes no verdict of its own, so a reading the
 // server judged out of range can never be shown as in range. Out of range is said in words and
 // marked by a class on the same tile, never by colour alone.
@@ -75,6 +88,7 @@ function PassView({ pass }: { pass: Pass | null }) {
           <h2 className="label">Last reading</h2>
           <p className="pass-empty">No reading yet. Log one to see it here.</p>
         </div>
+        <TearLine />
       </article>
     );
   }
@@ -100,6 +114,7 @@ function PassView({ pass }: { pass: Pass | null }) {
           </p>
         </div>
       )}
+      <TearLine />
     </article>
   );
 }
@@ -191,7 +206,7 @@ function WordsForm({ state, actions }: { state: WallState; actions: WallActions 
       className="words"
       onSubmit={(event) => {
         event.preventDefault();
-        actions.say(state.draft);
+        if (controlsEnabled(state)) actions.say(state.draft);
       }}
     >
       <label htmlFor="cook-words" className="label">
@@ -208,7 +223,7 @@ function WordsForm({ state, actions }: { state: WallState; actions: WallActions 
           aria-describedby={state.notLogged === null ? undefined : NOT_LOGGED_ID}
           onChange={(event) => actions.edit(event.target.value)}
         />
-        <button type="submit" className="control" disabled={!controlsEnabled(state)}>
+        <button type="submit" className="control" {...unavailable(state)}>
           Send
         </button>
       </div>
@@ -248,7 +263,14 @@ export function WallView({ state, actions }: { state: WallState; actions: WallAc
           <ul className="chips" aria-label="Phrases to try">
             {CHIPS.map((chip) => (
               <li key={chip}>
-                <button type="button" className="chip" disabled={!enabled} onClick={() => actions.say(chip)}>
+                <button
+                  type="button"
+                  className="chip"
+                  {...unavailable(state)}
+                  onClick={() => {
+                    if (enabled) actions.say(chip);
+                  }}
+                >
                   {chip}
                 </button>
               </li>

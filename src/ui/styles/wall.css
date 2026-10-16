@@ -394,12 +394,14 @@
 .words .control {
   min-height: 56px;
 }
-.control:hover:not(:disabled) {
+.control:hover:not(:disabled, [aria-disabled='true']) {
   background: var(--row-alt);
   color: var(--ink);
   box-shadow: inset 0 0 0 3px var(--ink);
 }
-.control:disabled {
+/* aria-disabled is the same unavailable look on a control that keeps its focus while a call is out. */
+.control:disabled,
+.control[aria-disabled='true'] {
   background: var(--row-alt);
   color: var(--steel);
   box-shadow: inset 0 0 0 2px var(--steel);
@@ -448,10 +450,11 @@
   box-shadow: inset 0 0 0 2px var(--steel);
   cursor: pointer;
 }
-.chip:hover:not(:disabled) {
+.chip:hover:not(:disabled, [aria-disabled='true']) {
   box-shadow: inset 0 0 0 3px var(--ink);
 }
-.chip:disabled {
+.chip:disabled,
+.chip[aria-disabled='true'] {
   background: var(--row-alt);
   color: var(--steel);
   cursor: not-allowed;
@@ -561,7 +564,7 @@
   .wall {
     grid-template-columns: minmax(0, 1fr);
   }
-  .pass::after {
+  .pass > .tear {
     top: auto;
     left: 0;
     width: auto;
