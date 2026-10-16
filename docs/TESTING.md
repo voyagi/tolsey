@@ -38,7 +38,7 @@ needs a build, which `npm run test:e2e` runs itself.
 
 | Project | Collects | Runs against |
 |---------|----------|--------------|
-| `unit` | `src/domain/**/*.test.ts`, `src/contract/**/*.test.ts` | Pure functions, no storage |
+| `unit` | `src/domain/**/*.test.ts`, `src/contract/**/*.test.ts`, `src/client/**/*.test.ts`, `src/ui/**/*.test.ts` | Pure functions, no storage |
 | `store` | `src/store/**/*.test.ts` | Both store adapters, D1 from `getPlatformProxy` |
 | `conformance` | `src/server/**/*.test.ts` except `*.e2e.test.ts` | The Worker in process (`target: 'in-process'`) |
 | `e2e` | `src/server/**/*.e2e.test.ts` and `src/server/conformance.test.ts` | The built Worker in workerd (`target: 'workerd'`), 60 second test and hook timeouts |
@@ -82,8 +82,9 @@ npm run test:e2e
 
 This runs `vite build`, then `vitest run --project e2e`. The e2e files cover routing of the built
 Worker (`routing.e2e.test.ts`), the hourly retention sweep (`retention.e2e.test.ts`), the built
-Worker's `/mcp` endpoint, shipped allowlist and D1 binding (`built-worker.e2e.test.ts`), and `Intl` parity between workerd and Node
-(`intl-parity.e2e.test.ts`, which starts a test-only Worker from
+Worker's `/mcp` endpoint, shipped allowlist and D1 binding (`built-worker.e2e.test.ts`), the wall's
+MCP client and session logging and refusing against the built Worker (`wall-client.e2e.test.ts`), and
+`Intl` parity between workerd and Node (`intl-parity.e2e.test.ts`, which starts a test-only Worker from
 `src/test-support/intl-probe.wrangler.jsonc`).
 
 Conformance against a deployed Worker:
@@ -196,7 +197,7 @@ projects only; the workerd run adds nothing to it.
 npm run gate:test-count
 ```
 
-The script builds the Worker, then `scripts/check-test-count.mjs --floor 1300` runs the `unit`,
+The script builds the Worker, then `scripts/check-test-count.mjs --floor 1322` runs the `unit`,
 `store`, `conformance` and `e2e` projects with Vitest's JSON reporter, writing the report to a new
 temporary folder each time. The `e2e` project runs the built Worker, as `npm run test:e2e` does. The
 floor is set in the `gate:test-count` script in `package.json`. The gate refuses the run when:
