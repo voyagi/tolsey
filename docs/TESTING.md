@@ -123,6 +123,22 @@ A direct run like this uses the host's own time zone; only `npm test` covers bot
 `e2e` file needs `npm run build` first, because the harness loads the built config. There is no
 watch-mode script.
 
+The wall's layout, in a real browser (local only, not in CI):
+
+```bash
+npx vite build
+npm run wall:shots
+```
+
+`scripts/wall-shots.mjs` serves the built Worker in workerd on loopback with its D1 migrations
+applied (`scripts/wall-browser.mjs`), drives the page through the dev-browser CLI, logs a reading
+by its chip, and saves screenshots at 1280 by 800 and 1366 by 657 in Light and Dark, plus 390 wide,
+to `reports/wall-shots/` (git-ignored). It exits 1 when the pass, the reply or the text field ends
+below the viewport or the page is scrolled, when a 38.5 reading overflows its box, when the page at
+390 wide is wider than the screen, or when any request leaves the page's origin; it exits 2 when it
+could not look (no build, no dev-browser CLI, a theme that did not take, a page that never became
+ready), and 0 only when every check ran clean.
+
 Mutation testing:
 
 ```bash
@@ -197,7 +213,7 @@ projects only; the workerd run adds nothing to it.
 npm run gate:test-count
 ```
 
-The script builds the Worker, then `scripts/check-test-count.mjs --floor 1468` runs the `unit`,
+The script builds the Worker, then `scripts/check-test-count.mjs --floor 1487` runs the `unit`,
 `store`, `conformance` and `e2e` projects with Vitest's JSON reporter, writing the report to a new
 temporary folder each time. The `e2e` project runs the built Worker, as `npm run test:e2e` does. The
 floor is set in the `gate:test-count` script in `package.json`. The gate refuses the run when:
