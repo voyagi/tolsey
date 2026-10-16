@@ -224,7 +224,7 @@ describe('the due_now fault path', () => {
     rowsPerWrite: ROWS_PER_WRITE,
   };
 
-  it('answers a thrown store error with the fixed server_fault sentence and logs only its name and code', async () => {
+  it('answers a thrown store error with its own fixed server_fault sentence and logs only its name and code', async () => {
     const handler = createMcpHandler(() => createServer(deps));
     const viaHandler: FetchLike = async (url, init) => {
       const request = new Request(url, init);
@@ -246,7 +246,7 @@ describe('the due_now fault path', () => {
 
     expect(result).toMatchObject({
       isError: true,
-      content: [{ type: 'text', text: 'Tolsey could not log that. Try again.' }],
+      content: [{ type: 'text', text: 'Tolsey could not read the open checks. Try again.' }],
       _meta: { error: 'server_fault' },
     });
     expect(JSON.stringify(result)).not.toContain(PLANTED);
