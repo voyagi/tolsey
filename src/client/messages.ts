@@ -20,7 +20,7 @@ export function parseJson(text: string): unknown {
   }
 }
 
-export function asMessages(parsed: unknown): JsonRpcMessage[] {
+function asMessages(parsed: unknown): JsonRpcMessage[] {
   if (Array.isArray(parsed)) return parsed as JsonRpcMessage[];
   return parsed && typeof parsed === 'object' ? [parsed as JsonRpcMessage] : [];
 }

@@ -3,9 +3,9 @@ import type { LogReadingOutput, Outcome } from '../contract/log-reading';
 import type { KitchenProfile } from '../domain/rule';
 import type { OpenPrompt } from './intent';
 
-export type WallPhase = 'starting' | 'ready' | 'start_failed' | 'stopped';
+type WallPhase = 'starting' | 'ready' | 'start_failed' | 'stopped';
 
-export interface Exchange {
+interface Exchange {
   said: string;
   reply: string;
   source: 'server' | 'wall';
@@ -15,7 +15,7 @@ type LoggedOutcome = Extract<Outcome, 'in_range' | 'out_of_range' | 'not_covered
 
 type PassField = 'lineId' | 'recordCode' | 'checkPoint' | 'value' | 'unit' | 'verdict' | 'rule' | 'initials';
 
-export type Pass = Partial<Pick<LogReadingOutput, PassField>> & { outcome: LoggedOutcome };
+type Pass = Partial<Pick<LogReadingOutput, PassField>> & { outcome: LoggedOutcome };
 
 export interface WallState {
   phase: WallPhase;
