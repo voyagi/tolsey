@@ -344,9 +344,10 @@ The owner creates the database with `wrangler d1 create tolsey --jurisdiction=eu
 is set only at creation, cannot be changed afterwards, and takes precedence over any location hint.
 EU is chosen because data stays in EU regions wherever a service offers one. The trade-off is added
 round-trip latency for requests from the US, which is I/O wait and not Worker CPU time. The owner
-confirms the jurisdiction at creation. Until then `wrangler.jsonc` carries the `DB` binding with no
-`database_id`: local D1, `getPlatformProxy`, `createTestHarness` and `wrangler d1 migrations apply
---local` all accept the entry without one, and no test can reach a remote database. The id, not the
+confirms the jurisdiction at creation. The database was created on 2026-09-27 with jurisdiction
+`eu` (read back with `wrangler d1 list` on 2026-10-16), and `wrangler.jsonc` carries its id on the
+`DB` binding since 2026-10-16. Local D1, `getPlatformProxy`, `createTestHarness` and `wrangler d1
+migrations apply --local` never reach it, so no test can reach a remote database. The id, not the
 name, is what pins the Worker to the EU database: wrangler 4.131 deploys a binding with no id by binding a
 database named `tolsey` found on the account, or by creating one under that name with no jurisdiction.
 The deploy preflight refuses a config without the id for that reason. It checks that an id is set, not

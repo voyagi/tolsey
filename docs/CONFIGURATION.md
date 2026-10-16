@@ -20,7 +20,7 @@ These come from `wrangler.jsonc` and are typed in `WorkerEnv` (`src/server/worke
 | Name | Kind | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | `ALLOWED_HOSTNAMES` | var | **Required** | The deployed hostname, set in `wrangler.jsonc` `vars` | Comma-separated hostnames the Worker answers on. Every request to `/mcp`, `/mcp/*` and `/api/*` must carry a `Host` header (and, when present, an `Origin`) naming one of them. |
-| `DB` | D1 binding | **Required** | `database_name: "tolsey"`, `migrations_dir: "migrations"` | The day record: kitchens, events, line counts and the daily row budget. Schema lives in `migrations/0001_record.sql` through `migrations/0004_bounded_reads.sql`. |
+| `DB` | D1 binding | **Required** | `database_name: "tolsey"`, `database_id` (the id of the EU database, required by the deploy preflight), `migrations_dir: "migrations"` | The day record: kitchens, events, line counts and the daily row budget. Schema lives in `migrations/0001_record.sql` through `migrations/0004_bounded_reads.sql`. |
 | `ASSETS` | assets binding | Required | Set by `assets.binding` | Serves the built web app. Any path outside `/mcp`, `/mcp/*` and `/api/*` goes straight to it. |
 
 After changing a binding, run `npm run types:worker` (`wrangler types`) to regenerate the binding
@@ -66,7 +66,9 @@ The browser bundle reads no environment values: nothing under `src/` uses `impor
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/mcp", "/mcp/*", "/api/*"]
   },
-  "d1_databases": [{ "binding": "DB", "database_name": "tolsey", "migrations_dir": "migrations" }],
+  "d1_databases": [
+    { "binding": "DB", "database_name": "tolsey", "database_id": "<database id>", "migrations_dir": "migrations" }
+  ],
   "vars": { "ALLOWED_HOSTNAMES": "<deployed hostname>" },
   "routes": [{ "pattern": "<deployed hostname>", "custom_domain": true }],
   "workers_dev": false,
@@ -80,7 +82,7 @@ The browser bundle reads no environment values: nothing under `src/` uses `impor
 |-----|---------|
 | `assets.run_worker_first` | The only paths the Worker code handles. `familyOf()` in `src/server/worker.ts` mirrors this list, so the two change together. |
 | `assets.not_found_handling` | Unknown paths fall back to the web app's `index.html`. |
-| `d1_databases` | The `DB` binding. It carries no `database_id` until the database is created before the first deploy (`docs/DEPLOYMENT.md`). Local D1 and the test harnesses accept the entry without one, and the deploy preflight refuses to deploy until one is added. |
+| `d1_databases` | The `DB` binding. Its `database_id` is the id of the `tolsey` database created under the EU jurisdiction (`docs/DEPLOYMENT.md`, step 1). Local D1 and the test harnesses never reach that database, and the deploy preflight refuses a config without an id. |
 | `vars.ALLOWED_HOSTNAMES` | The deployed hostname alone (see Required vs optional settings). |
 | `routes` | One custom-domain route for the deployed hostname. |
 | `workers_dev`, `preview_urls` | Both `false`, so the Worker gets no second public URL on a `workers.dev` subdomain. |
