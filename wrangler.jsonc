@@ -12,6 +12,7 @@
     {
       "binding": "DB",
       "database_name": "tolsey",
+      "database_id": "8681bc11-0ec1-4319-ad03-6efe1d41a275",
       "migrations_dir": "migrations"
     }
   ],

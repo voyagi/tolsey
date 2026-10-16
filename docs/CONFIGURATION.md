@@ -80,7 +80,7 @@ The browser bundle reads no environment values: nothing under `src/` uses `impor
 |-----|---------|
 | `assets.run_worker_first` | The only paths the Worker code handles. `familyOf()` in `src/server/worker.ts` mirrors this list, so the two change together. |
 | `assets.not_found_handling` | Unknown paths fall back to the web app's `index.html`. |
-| `d1_databases` | The `DB` binding. It carries no `database_id` until the database is created before the first deploy (`docs/DEPLOYMENT.md`). Local D1 and the test harnesses accept the entry without one, and the deploy preflight refuses to deploy until one is added. |
+| `d1_databases` | The `DB` binding. Its `database_id` is the id of the `tolsey` database created under the EU jurisdiction (`docs/DEPLOYMENT.md`, step 1). Local D1 and the test harnesses never reach that database, and the deploy preflight refuses a config without an id. |
 | `vars.ALLOWED_HOSTNAMES` | The deployed hostname alone (see Required vs optional settings). |
 | `routes` | One custom-domain route for the deployed hostname. |
 | `workers_dev`, `preview_urls` | Both `false`, so the Worker gets no second public URL on a `workers.dev` subdomain. |

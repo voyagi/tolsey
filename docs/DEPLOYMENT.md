@@ -23,8 +23,9 @@ There is no Dockerfile and no other hosting config in the repository.
 
 ## Before the first deploy
 
-Until the first deploy the repository carries no database id, so the first deploy needs these steps
-first.
+The first deploy needs these steps first. Steps 1 and 2 are done: the `tolsey` database exists under
+the EU jurisdiction and `wrangler.jsonc` carries its id. A move to another Cloudflare account repeats
+them.
 
 ### 1. Create the D1 database
 
