@@ -64,11 +64,17 @@ outside destination, turns Logpush on or attaches a Tail Worker (each receives e
 metadata), or carries a `previews` block that could turn any of these back on for preview
 deployments. Workers Logs lists the Worker's own logs apart from the per-request ones, which is what
 that switch turns off. It stores each of the Worker's own lines with metadata about the invocation
-that wrote it, which Cloudflare's documentation does not list, so a fault line written while serving
-a request may still hold that request's URL, which carries the kitchen id. The first deploy confirms a
-request leaves no per-request log and reads the stored fields of one `[mcp]` line, which a text/plain
-POST to a scratch kitchen writes on demand ("logs a text/plain POST through onerror" in
-`src/server/logging.test.ts`). Writes close one retry window early so that a retry of the last accepted
+that wrote it. One `[mcp]` line, which a text/plain POST to a scratch kitchen writes on demand ("logs a
+text/plain POST through onerror" in `src/server/logging.test.ts`), was read in the Workers Logs
+dashboard after the first deploy (2026-10-16, Worker version `3312102a`). Beside the line's own name,
+message and level it holds the request's method, URL and path, a trigger made of the method and path,
+request, ray, trace and span ids, the Worker's name and version, the account id, a timestamp and the
+event size. It holds no IP address, no request header and no body. The kitchen id in the URL, the path
+and the trigger reads `REDACTED`, which matches Cloudflare's documented URL redaction of any run of 32
+or more hex digits (TailRequest in the Workers documentation, read 2026-10-16). Kitchen ids are 32 hex
+characters, but Cloudflare calls the redaction a heuristic subject to false positives and negatives,
+so a fault line may still hold a kitchen id. Whether a request that succeeds leaves no per-request log
+in the dashboard has not been read yet. Writes close one retry window early so that a retry of the last accepted
 write still finds its kitchen and gets its stored result before the sweep may take it; closing at the
 full retention age would let such a retry answer "not found" instead.
 
@@ -95,6 +101,16 @@ Phase 1 has no per-client limit. Cloudflare's rate limiting binding counts per l
 60 seconds and its documentation advises against IP keys, so it cannot cap one client's day, and a
 daily per-client count would need its own store. The zero-install replay is the fallback, and the
 pass that attacks the running service measures a mint flood against the deployed Worker.
+
+No edge rate limit sits in front of the Worker either (2026-10-16). Its host is on a zone on
+Cloudflare's Free plan, which allows one rate limiting rule per zone, and another site on the same
+zone already uses it. One rule for both would share one per-IP counter, so its threshold would either
+refuse this demo's own traffic or loosen the other site's limit, and a paid plan breaks the free-tier
+constraint. A Free plan rule also matches on path only, never host, and counts by IP over a 10 second
+period with a 10 second block (Cloudflare's rate limiting availability by plan, read 2026-10-16). So a
+request flood on any route can still spend the account's 100,000 daily Workers requests, which stops
+every Worker on the account for the rest of that day whatever this code does. That is accepted for the
+judging window.
 
 The free allowance belongs to the account, not to this database. Cloudflare's D1 pricing page says
 that once the account reaches its daily limits no query runs against D1 until the 00:00 UTC reset
@@ -181,7 +197,13 @@ those reads grow with what was stored, never with the number of requests. D1 kee
 statistics until ANALYZE runs, and its docs recommend `PRAGMA optimize`, which runs it, after an index
 is created; both plans and their handful of rows hold on a busy table that has statistics ("keeps both
 plans and their handful of rows once ANALYZE has gathered statistics on a busy table" in
-`src/server/budget.test.ts`). The read figures are measured again on remote D1 at the first deploy.
+`src/server/budget.test.ts`).
+
+Remote D1 after the first deploy (2026-10-16, `wrangler d1 insights tolsey --time-period 1h --sort-by
+writes --json` over two `npm run test:deployed` runs; the insights group by statement text): the events
+insert read 316 rows over 41 runs, about 8 each, the local figure for an accepted reading in an empty
+kitchen. The kitchen lookup read 1 row on each of its 162 runs, the budget read and the sweep's search
+read 1 row a run, and the request id lookup read none.
 
 ## Events table
 
@@ -303,7 +325,16 @@ direction.
 Retention deletes count against the same daily allowance. A round adds the summed `meta.rows_written`
 of its delete batch, plus `budget_add`, with no cap check: retention is never refused. Unlike an
 insert, a delete counts one row per kitchen, one per line counter and one per line on local D1, with
-no index rows (the pinned test named in the write model). All numbers are measured again on remote D1 at the first deploy.
+no index rows (the pinned test named in the write model).
+
+Remote D1 after the first deploy (2026-10-16, the same insights command over the same two runs): the
+events insert wrote 287 rows over 41 runs, 7 on average, the kitchens insert 126 over 42, 3 each, and
+the budget and line-counter upserts 1 row on each of their 34 and 26 runs. Each is at or under the
+local figure it belongs to: 7 with one budget row and one counter row is the local `event` figure of 9,
+and 3 with one budget row is 4 against the 5 reserved for a mint. The insights group by statement
+text, so every event kind shares one INSERT and the 7 is an average over the kinds the suite sent, not
+a figure per kind. The reserve stays the local measurement. No kitchen reached its retention age
+within that hour, so remote deletes are not measured yet.
 
 ## Append-only guard
 
@@ -316,9 +347,12 @@ every business day already written. Local D1 accepts and enforces all three thro
 `wrangler d1 migrations apply DB --local`, which applied 0001 and 0002 on its first run and reported
 no migrations to apply on its second.
 
-Remote D1's verdict arrives with the owner's first `wrangler d1 migrations apply DB --remote`. The
-guard sits alone in 0002 so a remote refusal can never block the schema in 0001, and the phase 1
-test that reads the adapter's SQL for any UPDATE or DELETE against the record holds either way.
+Remote D1 accepted 0002 at the owner's first deploy (2026-10-16, Worker version `3312102a`): `wrangler
+d1 migrations apply DB --remote` applied 0001 to 0004 with status ok for each and no refusal. No
+UPDATE or DELETE has been tried against the remote record, so remote enforcement rests on D1 running
+the triggers it accepted. The guard sits alone in 0002 so a remote refusal could never block the
+schema in 0001, and the phase 1 test that reads the adapter's SQL for any UPDATE or DELETE against the
+record holds either way.
 
 The deploy preflight cannot see a remote refusal, and the deploy script runs the remote apply before
 `wrangler deploy`, chained with `&&`, so a refusal of 0002 stops the deploy after 0001 has applied,
@@ -375,6 +409,6 @@ which database it names, so the id copied in has to be the EU database's own.
   guarded INSERT), never a read followed by a write.
 - A change to the schema that alters rows written turns the store suite red until
   `data/store/rows-per-write.json` and this record are measured again.
-- Owner steps before the first deploy: create the database with its jurisdiction, add the
-  `database_id`, run the first remote migration and record its verdict here, and confirm Cron Trigger
-  headroom on the account, which allows 5 on the free plan.
+- Owner steps before the first deploy, all done by 2026-10-16: the database created with its
+  jurisdiction, the `database_id` added, the first remote migration run with its verdict recorded
+  here, and the hourly Cron Trigger registered by the deploy, one of the 5 the free plan allows.

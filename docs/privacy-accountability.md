@@ -23,7 +23,7 @@ below).
 
 | What | Why | Legal basis | Where | How long | How it is deleted |
 | --- | --- | --- | --- | --- | --- |
-| IP addresses of visitors | Cloudflare needs them to route and protect each request | Article 6(1)(f): delivering and protecting each request | In transit through Cloudflare's network | The Worker never stores them or writes them into a log line, though a fault line's stored metadata may hold one for 3 days (Security) | Nothing to delete in the database: the Worker writes no IP address to it, and Cloudflare drops a kept log line after 3 days |
+| IP addresses of visitors | Cloudflare needs them to route and protect each request | Article 6(1)(f): delivering and protecting each request | In transit through Cloudflare's network | The Worker never stores them or writes them into a log line, and the stored fault line read after the first deploy held none (Security) | Nothing to delete in the database: the Worker writes no IP address to it, and Cloudflare drops a kept log line after 3 days |
 | Readings, refusals and prompts written in the public demo | To show a spoken reading becoming a record line | Article 6(1)(f): showing the product to a visitor who chose to try it | A scratch kitchen in the D1 database | Deleted whole within 24 hours while the hourly job runs on time (Deletion) | An hourly job deletes each scratch kitchen and all its lines once it is 22 hours 45 minutes old |
 | Staff initials | To show who logged a reading | Article 6(1)(f), as for the line they belong to | Stored with the line they belong to | As long as that line | With the line; any initials outside the kitchen's closed roster are refused and never stored |
 | The words said with a reading | To show what was heard | Article 6(1)(f), as for the line they belong to | Stored with the line they belong to | As long as that line | With the line |
@@ -90,10 +90,13 @@ complies with the EU-U.S. Data Privacy Framework.
   when something fails and are kept for 3 days on the free plan (Workers Logs pricing,
   https://developers.cloudflare.com/workers/observability/logs/workers-logs/, read 2026-10-11, which
   also says Workers Logs moves to Cloudflare's Observability pricing on 2026-12-01). Cloudflare stores each of them with
-  metadata about the invocation that wrote it, and its documentation does not list that metadata, so a
-  fault line written while serving a request may hold that request's URL, which carries the scratch
-  kitchen's id, and other request details such as the visitor's IP address, for those 3 days. The
-  first deploy reads the stored fields of one such line, and this record is corrected to what it holds.
+  metadata about the invocation that wrote it. One such line, an `[mcp]` fault line read in the
+  Workers Logs dashboard on 2026-10-16 after the first deploy, holds the request's method, URL and
+  path, request, ray and trace ids, the Worker's name and version, the account id and a timestamp, and
+  no IP address, request header or body. Its URL shows the scratch kitchen's id as `REDACTED`, which
+  matches Cloudflare's documented URL redaction of any run of 32 or more hex digits (TailRequest in the
+  Workers documentation, read 2026-10-16). Cloudflare calls that redaction a heuristic subject to false
+  positives and negatives, so a fault line may still hold a scratch kitchen's id for those 3 days.
 - Free text never persists (Words, above), and initials outside the roster are refused (Initials).
 - D1 encrypts stored data at rest with AES-256-GCM (Cloudflare's D1 data security documentation,
   read 2026-10-10).
