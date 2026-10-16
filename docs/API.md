@@ -420,9 +420,9 @@ it, and the refusal line stays in the record. `Store.openChecks` (`src/store/por
 from the stored lines alone; the tool only orders the answer and adds the names.
 
 The demo kitchen at `/mcp` answers `due_now` too, with an empty list, since nothing can be logged
-there. A fault inside the tool is answered like one in `log_reading`: `isError: true`, the text
-`Tolsey could not log that. Try again.` and `_meta.error` `server_fault`, with the error's message
-never echoed or logged.
+there. A fault inside the tool, such as a failed store read, is answered with `isError: true`, the
+text `Tolsey could not read the open checks. Try again.` and `_meta.error` `server_fault`, with the
+error's message never echoed or logged.
 
 ## Rate limits
 

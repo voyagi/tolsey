@@ -87,7 +87,7 @@ The browser bundle reads no environment values: nothing under `src/` uses `impor
 | `routes` | One custom-domain route for the deployed hostname. |
 | `workers_dev`, `preview_urls` | Both `false`, so the Worker gets no second public URL on a `workers.dev` subdomain. |
 | `triggers.crons` | `0 * * * *`: the hourly retention sweep (`scheduled()` in `src/server/worker.ts`, `runScheduledSweep()` in `src/server/retention.ts`). |
-| `observability` | Workers Logs on, so the Worker's own `[worker]`, `[mcp]`, `[log_reading]`, `[retention]` and `[mint-sweep]` fault lines are kept. Invocation logs off, so a successful request leaves no log line carrying its URL (and the kitchen id in it). See `docs/privacy-accountability.md`. |
+| `observability` | Workers Logs on, so the Worker's own `[worker]`, `[mcp]`, `[log_reading]`, `[due_now]`, `[retention]` and `[mint-sweep]` fault lines are kept. Invocation logs off, so a successful request leaves no log line carrying its URL (and the kitchen id in it). See `docs/privacy-accountability.md`. |
 
 The deployed hostname must agree in `vars.ALLOWED_HOSTNAMES`, `routes` and the `DEPLOYED_HOST`
 constant in `scripts/deploy-preflight.mjs`, and the tests that pin the shipped list and the

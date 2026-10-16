@@ -61,6 +61,7 @@ preloadSchemas();
 const SECOND_MS = 1000;
 
 const SERVER_FAULT = 'Tolsey could not log that. Try again.';
+const DUE_NOW_FAULT = 'Tolsey could not read the open checks. Try again.';
 const DEMO_READ_ONLY =
   'This is the demo kitchen, and its record is read only. Start your own kitchen to log readings.';
 const REQUEST_ID_REUSED =
@@ -274,7 +275,7 @@ export function createServer(deps: ServerDeps): McpServer {
         return await dueNow(deps);
       } catch (error) {
         logFault('[due_now]', error);
-        return errorResult(SERVER_FAULT, 'server_fault');
+        return errorResult(DUE_NOW_FAULT, 'server_fault');
       }
     },
   );
