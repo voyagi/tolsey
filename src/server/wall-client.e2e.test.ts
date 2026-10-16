@@ -123,6 +123,49 @@ describe('the wall session against the built Worker in workerd, lines read strai
     });
   });
 
+  describe('the step a edges, each in a fresh session', () => {
+    async function startedSession(calls: ToolCall[]): Promise<WallSession> {
+      const session = createWallSession({ baseUrl, profile: WALL_PROFILE, fetch: recordingFetch(calls) });
+      await session.start();
+      return session;
+    }
+
+    it('sends "walk-in 41.45" with no value and stores no reading line for that request', async () => {
+      const day = chicagoBusinessDay();
+      const calls: ToolCall[] = [];
+      const session = await startedSession(calls);
+      await session.say('walk-in 41.45');
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0].args).not.toHaveProperty('value');
+      expect(calls[0].args.words).toBe('walk-in 41.45');
+      const lines = await store.linesForDay(session.kitchenId as string, day);
+      const ofRequest = lines.filter((line) => line.requestId === calls[0].args.request_id);
+      expect(ofRequest.length).toBeGreaterThan(0);
+      expect(ofRequest.filter((line) => line.kind === 'reading')).toEqual([]);
+    });
+
+    it('holds "walk-in 15" for a digit repeat, then logs "1 5" as a walk-in reading of 15 answering it', async () => {
+      const day = chicagoBusinessDay();
+      const calls: ToolCall[] = [];
+      const session = await startedSession(calls);
+      await session.say('walk-in 15');
+      expect(calls[0].structuredContent).toMatchObject({ outcome: 'held', prompt: { kind: 'digit_repeat' } });
+      const promptId = (calls[0].structuredContent?.prompt as { id: string }).id;
+
+      await session.say('1 5');
+      expect(calls).toHaveLength(2);
+      expect(calls[1].args).toMatchObject({ value: 15, pending_prompt_id: promptId, words: '1 5' });
+      expect(calls[1].args).not.toHaveProperty('check_point');
+
+      const lines = await store.linesForDay(session.kitchenId as string, day);
+      const held = lines.find((line) => line.requestId === calls[0].args.request_id);
+      const reading = lines.find((line) => line.requestId === calls[1].args.request_id);
+      expect(held).toMatchObject({ kind: 'held' });
+      expect(reading).toMatchObject({ kind: 'reading', checkPointId: 'walk_in', valueTenths: 150, answersId: held?.id });
+    });
+  });
+
   it('gives two sessions started one after the other two kitchens, each holding only its own line', async () => {
     const day = chicagoBusinessDay();
     const sessions: { session: WallSession; calls: ToolCall[] }[] = [];
