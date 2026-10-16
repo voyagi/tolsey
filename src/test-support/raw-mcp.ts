@@ -1,22 +1,12 @@
+import { messagesIn, type JsonRpcError, type JsonRpcMessage } from '../client/messages';
+
+export type { JsonRpcError } from '../client/messages';
+
 type FetchLike = (url: string | URL, init?: RequestInit) => Promise<Response>;
 
 export interface Endpoint {
   url: URL;
   fetch?: FetchLike;
-}
-
-export interface JsonRpcError {
-  code: number;
-  message: string;
-  data?: unknown;
-}
-
-interface JsonRpcMessage {
-  jsonrpc?: string;
-  id?: string | number | null;
-  method?: string;
-  result?: unknown;
-  error?: JsonRpcError;
 }
 
 export interface RawResponse {
@@ -28,31 +18,6 @@ export interface RawResponse {
 
 const JSON_AND_STREAM = 'application/json, text/event-stream';
 const BODY_PREVIEW_CHARS = 200;
-
-function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-}
-
-function asMessages(parsed: unknown): JsonRpcMessage[] {
-  if (Array.isArray(parsed)) return parsed as JsonRpcMessage[];
-  return parsed && typeof parsed === 'object' ? [parsed as JsonRpcMessage] : [];
-}
-
-// Every data line of an event stream is read, so a response is matched by its id rather than by
-// being the first message on the stream.
-function messagesIn(contentType: string | null, bodyText: string): JsonRpcMessage[] {
-  if (contentType?.includes('text/event-stream')) {
-    return bodyText
-      .split(/\r?\n/)
-      .filter((line) => line.startsWith('data:'))
-      .flatMap((line) => asMessages(parseJson(line.slice('data:'.length))));
-  }
-  return bodyText ? asMessages(parseJson(bodyText)) : [];
-}
 
 export async function sendRaw(endpoint: Endpoint, init: RequestInit): Promise<RawResponse> {
   const response = await (endpoint.fetch ?? fetch)(endpoint.url, init);
