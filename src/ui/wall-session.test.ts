@@ -95,7 +95,7 @@ async function settle(): Promise<void> {
 }
 
 describe('the controls wait for tools/list', () => {
-  it.fails('controlsEnabled is false before tools/list answers and true after', async () => {
+  it('controlsEnabled is false before tools/list answers and true after', async () => {
     const list = heldBack<Response>();
     const worker = fakeWorker({ toolsList: () => list.promise });
     const session = createWallSession({ baseUrl: BASE, profile: WALL_PROFILE, fetch: worker.fetchFn });
@@ -110,7 +110,7 @@ describe('the controls wait for tools/list', () => {
 });
 
 describe('a failed start names its step and can be retried', () => {
-  it.fails('a mint that succeeds with an initialize answered 500 is start_failed naming the MCP session, and retryStart reaches ready', async () => {
+  it('a mint that succeeds with an initialize answered 500 is start_failed naming the MCP session, and retryStart reaches ready', async () => {
     const worker = fakeWorker({ initialize: () => asJson({ error: 'internal' }, 500) });
     const session = createWallSession({ baseUrl: BASE, profile: WALL_PROFILE, fetch: worker.fetchFn });
     await session.start();
@@ -125,7 +125,7 @@ describe('a failed start names its step and can be retried', () => {
     expect(worker.sent.filter((request) => request.path === '/api/kitchens')).toHaveLength(2);
   });
 
-  it.fails('a refused mint is start_failed naming the kitchen and the status', async () => {
+  it('a refused mint is start_failed naming the kitchen and the status', async () => {
     const worker = fakeWorker({ mint: () => asJson({ error: 'demo_full' }, 503) });
     const session = createWallSession({ baseUrl: BASE, profile: WALL_PROFILE, fetch: worker.fetchFn });
     await session.start();
@@ -133,7 +133,7 @@ describe('a failed start names its step and can be retried', () => {
     expect(session.getState().startError).toContain('503');
   });
 
-  it.fails('a tools list without log_reading is start_failed saying so', async () => {
+  it('a tools list without log_reading is start_failed saying so', async () => {
     const worker = fakeWorker({ toolsList: (body) => answer(body, { tools: [{ name: 'due_now' }] }) });
     const session = createWallSession({ baseUrl: BASE, profile: WALL_PROFILE, fetch: worker.fetchFn });
     await session.start();
@@ -157,7 +157,7 @@ describe('one call in flight', () => {
     expect(session.getState().exchange?.said).toBe('the walk-in reads 38');
   });
 
-  it.fails('holds the sent words in the field while the call is out and clears them on the result', async () => {
+  it('holds the sent words in the field while the call is out and clears them on the result', async () => {
     const call = heldBack<Response>();
     const worker = fakeWorker({ toolsCall: () => call.promise });
     const session = createWallSession({ baseUrl: BASE, profile: WALL_PROFILE, fetch: worker.fetchFn });
@@ -194,7 +194,7 @@ describe('the log_reading arguments', () => {
     expect(session.getState().exchange).toMatchObject({ said: 'hello', source: 'wall' });
   });
 
-  it.fails('edit puts the typed words in the field', async () => {
+  it('edit puts the typed words in the field', async () => {
     const session = createWallSession({ baseUrl: BASE, profile: WALL_PROFILE, fetch: fakeWorker().fetchFn });
     await session.start();
     session.edit('walk-in 4');

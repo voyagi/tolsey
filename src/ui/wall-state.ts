@@ -53,9 +53,10 @@ export function initialWallState(profile: KitchenProfile): WallState {
   };
 }
 
+// Every chip and the send button follow this, so nothing can be sent before tools/list has answered or
+// while the one call allowed is still out.
 export function controlsEnabled(state: WallState): boolean {
-  void state;
-  return false;
+  return state.phase === 'ready' && !state.inFlight;
 }
 
 // Only a logged line moves the pass, and only with the fields the server sent: the page never
@@ -71,6 +72,7 @@ function afterResult(state: WallState, said: string, result: ToolCallResult): Wa
   return {
     ...state,
     inFlight: false,
+    draft: '',
     exchange: { said, reply: result.content[0]?.text ?? '', source: 'server' },
     pass: passFrom(structured, state.pass),
     openPrompt: structured?.prompt ?? null,
@@ -86,13 +88,15 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
     case 'startFailed':
       return { ...state, phase: 'start_failed', startError: event.error };
     case 'sent':
-      return { ...state, inFlight: true };
+      return state.inFlight ? state : { ...state, inFlight: true };
     case 'resultReceived':
       return afterResult(state, event.said, event.result);
+    // A call that never answered keeps the words in the field, so the cook can send them again.
     case 'wallReplied':
       return { ...state, inFlight: false, exchange: { said: event.said, reply: event.reply, source: 'wall' } };
     case 'edited':
+      return { ...state, draft: event.text };
     case 'localReplied':
-      return state;
+      return { ...state, draft: '', exchange: { said: event.said, reply: event.reply, source: 'wall' } };
   }
 }

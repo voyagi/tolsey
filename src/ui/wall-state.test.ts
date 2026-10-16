@@ -110,7 +110,7 @@ describe('a value at the rule limit shows the verdict the result carried', () =>
 });
 
 describe('one call in flight at a time', () => {
-  it.fails('a sent event while a call is in flight leaves the state unchanged', () => {
+  it('a sent event while a call is in flight leaves the state unchanged', () => {
     const inFlight = reduce(READY, { type: 'sent', said: SAID });
     expect(inFlight.inFlight).toBe(true);
     expect(wallReducer(inFlight, { type: 'sent', said: 'walk-in 15' })).toBe(inFlight);
@@ -128,7 +128,7 @@ describe('the open question', () => {
     expect(received(asked, resultOf('in_range')).openPrompt).toBeNull();
   });
 
-  it.fails('a local reply changes neither the open question nor the pass', () => {
+  it('a local reply changes neither the open question nor the pass', () => {
     const asked = received(WITH_PASS, resultOf('held'));
     const state = reduce(asked, { type: 'localReplied', said: 'hello', reply: 'Say a check and its number.' });
     expect(state.openPrompt).toBe(asked.openPrompt);
@@ -138,7 +138,7 @@ describe('the open question', () => {
 });
 
 describe('the words in the field', () => {
-  it.fails('an edited event sets the draft', () => {
+  it('an edited event sets the draft', () => {
     expect(reduce(READY, { type: 'edited', text: 'walk-in 1' }).draft).toBe('walk-in 1');
   });
 
@@ -152,7 +152,7 @@ describe('the words in the field', () => {
     expect(reduce(typed, { type: 'localReplied', said: 'hello', reply: 'Say a check.' }).draft).toBe('');
   });
 
-  it.fails('a call that never answered keeps the draft', () => {
+  it('a call that never answered keeps the draft', () => {
     const typed = reduce(READY, { type: 'edited', text: SAID }, { type: 'sent', said: SAID });
     expect(reduce(typed, { type: 'wallReplied', said: SAID, reply: 'the request never reached the server' }).draft).toBe(SAID);
   });
@@ -163,7 +163,7 @@ describe('controlsEnabled', () => {
     expect(controlsEnabled(initialWallState(WALL_PROFILE))).toBe(false);
   });
 
-  it.fails('is true once ready with nothing in flight', () => {
+  it('is true once ready with nothing in flight', () => {
     expect(controlsEnabled(READY)).toBe(true);
   });
 
