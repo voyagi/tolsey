@@ -139,6 +139,28 @@ below the viewport or the page is scrolled, when a 38.5 reading overflows its bo
 could not look (no build, no dev-browser CLI, a theme that did not take, a page that never became
 ready), and 0 only when every check ran clean.
 
+The wall's accessibility, in a real browser (local only, not in CI; `verify:ship` runs it after the
+build):
+
+```bash
+npx vite build
+npm run a11y:live
+```
+
+`scripts/a11y-live.mjs` uses the same harness and drives the wall in Light and Dark through four
+states: initial, a logged reading, a refused numberless check, and NOT LOGGED (the MCP route blocked
+in the browser). It checks that the field's accessible description holds the NOT LOGGED text once
+that panel shows. In the Light run a fresh page is walked by keyboard alone: every chip, the field,
+Send, each cook on the roster and each theme button must take focus with a visible ring of at least
+2 px, and Enter on two chips must log a reading and get a refusal. The one status region must be
+empty at load and written exactly twice across a logged reading, a refusal, a held question and a
+theme change, and afterwards the browser may hold the `tolsey-theme` key and nothing else (no other
+storage, no cookie). A console message about the Content Security Policy fails the run. The walk is
+written to `reports/a11y-live/keyboard-walk.json` (git-ignored). It exits 1 on any of those failures
+and 2 when it could not audit: no build, no dev-browser CLI, axe-core not installed, a navigation that
+is not a 200, a theme that did not take, or a state never reached. Until axe-core is installed it
+exits 2 after the checks above, so it never reads as clean without the audit.
+
 Mutation testing:
 
 ```bash
@@ -285,8 +307,8 @@ npm run verify:ship
 ```
 
 `verify-ship.mjs` runs, stopping at the first failure: `gate:types`, `npm test`, `gate:test-count`,
-`lint`, `gate`, `gate:repo`, the build, `test:coverage`, `a11y:live` (printed as SKIPPED while no
-such script exists in `package.json`), and `npm run mutate`. Each step is killed after 30 minutes
+`lint`, `gate`, `gate:repo`, the build, `test:coverage`, `a11y:live` (an exit 2 fails the run, never
+skips it), and `npm run mutate`. Each step is killed after 30 minutes
 (override with `VERIFY_SHIP_TIMEOUT_MS`); the mutation step gets twice the slowest measured full
 run (`MUTATION_FULL_RUN_MS` in `verify-ship.mjs`). The summary block at the end is the record of
 the run.

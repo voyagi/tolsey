@@ -37,6 +37,7 @@
     "gate:test-count": "vite build && node scripts/check-test-count.mjs --floor 1487",
     "verify:ship": "node verify-ship.mjs",
     "wall:shots": "node scripts/wall-shots.mjs",
+    "a11y:live": "node scripts/a11y-live.mjs",
     "mutate": "node scripts/mutate-incremental.mjs",
     "mutate:full": "stryker run"
   },
