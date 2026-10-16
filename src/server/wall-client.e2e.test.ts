@@ -122,4 +122,28 @@ describe('the wall session against the built Worker in workerd, lines read strai
       expect(session.getState().pass).toMatchObject({ checkPoint: { id: 'walk_in' }, value: 38 });
     });
   });
+
+  it('gives two sessions started one after the other two kitchens, each holding only its own line', async () => {
+    const day = chicagoBusinessDay();
+    const sessions: { session: WallSession; calls: ToolCall[] }[] = [];
+    for (let started = 0; started < 2; started += 1) {
+      const calls: ToolCall[] = [];
+      const session = createWallSession({ baseUrl, profile: WALL_PROFILE, fetch: recordingFetch(calls) });
+      await session.start();
+      await session.say(WALK_IN);
+      sessions.push({ session, calls });
+    }
+
+    const [first, second] = sessions;
+    expect(first.session.kitchenId).not.toBeNull();
+    expect(second.session.kitchenId).not.toBeNull();
+    expect(first.session.kitchenId).not.toBe(second.session.kitchenId);
+
+    for (const { session, calls } of sessions) {
+      expect(calls).toHaveLength(1);
+      const lines = await store.linesForDay(session.kitchenId as string, day);
+      expect(lines.map((line) => line.requestId)).toEqual([calls[0].args.request_id]);
+    }
+    expect(first.calls[0].args.request_id).not.toBe(second.calls[0].args.request_id);
+  });
 });
