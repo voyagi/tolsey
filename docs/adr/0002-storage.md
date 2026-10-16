@@ -202,8 +202,9 @@ is created; both plans and their handful of rows hold on a busy table that has s
 plans and their handful of rows once ANALYZE has gathered statistics on a busy table" in
 `src/server/budget.test.ts`).
 
-Remote D1 after the first deploy (2026-10-16, `wrangler d1 insights tolsey --time-period 1h --sort-by
-writes --json` over two `npm run test:deployed` runs; the insights group by statement text): the events
+Remote D1 after the first deploy (2026-10-16, `wrangler d1 insights tolsey --time-period 1h --limit 60
+--sort-by writes --json` over two `npm run test:deployed` runs; `--limit` defaults to 5 and the hour held
+15 statement groups; the insights group by statement text): the events
 insert read 316 rows over 41 runs, about 8 each, the local figure for an accepted reading in an empty
 kitchen. The kitchen lookup read 1 row on each of its 162 runs, the budget read and the sweep's search
 read 1 row a run, and the request id lookup read none.
