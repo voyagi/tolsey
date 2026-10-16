@@ -24,7 +24,13 @@ export interface McpSession {
   callTool(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<ToolCallResult>;
 }
 
-export type McpClientErrorKind = 'http' | 'protocol' | 'network';
+export type McpClientErrorKind = 'http' | 'protocol' | 'network' | 'timeout';
+
+export const CALL_TIMEOUT_MS = 10_000;
+
+export interface ClientOptions {
+  timeoutMs?: number;
+}
 
 export class McpClientError extends Error {
   readonly kind: McpClientErrorKind;
@@ -74,6 +80,7 @@ export async function mintKitchen(
   baseUrl: URL,
   fetchFn: FetchLike = globalFetch,
   body: Record<string, string> = {},
+  _options: ClientOptions = {},
 ): Promise<MintedKitchen> {
   // Never an empty body: the Worker answers an untyped empty POST with 415.
   const response = await send(fetchFn, new URL('/api/kitchens', baseUrl), {
@@ -178,7 +185,7 @@ function toolResultIn(name: string, result: unknown): ToolCallResult {
   return result as ToolCallResult;
 }
 
-export async function openMcpSession(endpoint: URL, fetchFn: FetchLike = globalFetch): Promise<McpSession> {
+export async function openMcpSession(endpoint: URL, fetchFn: FetchLike = globalFetch, _options: ClientOptions = {}): Promise<McpSession> {
   const link = connection(endpoint, fetchFn);
   const initialized = await link.request('initialize', {
     protocolVersion: PROTOCOL_VERSION,

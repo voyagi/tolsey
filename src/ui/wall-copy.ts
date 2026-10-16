@@ -12,3 +12,11 @@ export const TAUGHT_PHRASES: readonly string[] = [...new Set([...CHIPS, EXAMPLE_
 
 // One constant, so the owner's choice of "Tolsey" or "Alexa" is a one-line change.
 export const SPEAKER_LABEL = 'Tolsey';
+
+export const NOT_LOGGED = 'NOT LOGGED';
+
+export const NEW_KITCHEN_SENTENCE = 'That kitchen has closed, so the reading was not logged. A new kitchen is ready: send the words again.';
+
+export const STOPPED_MESSAGE = 'The wall cannot reach its kitchen right now. Reload the page later to start again.';
+
+export const DEMO_FULL_MESSAGE = 'The demo is full for today. Try again tomorrow.';

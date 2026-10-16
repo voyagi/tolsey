@@ -26,9 +26,15 @@ export interface WallState {
   openPrompt: OpenPrompt | null;
   inFlight: boolean;
   draft: string;
+  notLogged: { reason: string } | null;
+  pendingRetry: { words: string; requestId: string; initials: string } | null;
+  stopMessage: string | null;
 }
 
 export type WallEvent =
+  | { type: 'callFailed'; said: string; reason: string; requestId: string; initials: string }
+  | { type: 'kitchenReplaced'; said: string }
+  | { type: 'stopped'; message: string }
   | { type: 'edited'; text: string }
   | { type: 'localReplied'; said: string; reply: string }
   | { type: 'starting' }
@@ -50,6 +56,9 @@ export function initialWallState(profile: KitchenProfile): WallState {
     openPrompt: null,
     inFlight: false,
     draft: '',
+    notLogged: null,
+    pendingRetry: null,
+    stopMessage: null,
   };
 }
 
@@ -98,5 +107,9 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
       return { ...state, draft: event.text };
     case 'localReplied':
       return { ...state, draft: '', exchange: { said: event.said, reply: event.reply, source: 'wall' } };
+    case 'callFailed':
+    case 'kitchenReplaced':
+    case 'stopped':
+      return state;
   }
 }

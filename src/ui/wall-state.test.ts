@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ToolCallResult } from '../client/mcp-client';
 import type { Outcome } from '../contract/log-reading';
 import { WALL_PROFILE } from './profile';
+import { NEW_KITCHEN_SENTENCE, STOPPED_MESSAGE } from './wall-copy';
 import { controlsEnabled, initialWallState, wallReducer, type WallEvent, type WallState } from './wall-state';
 
 const SAID = 'the walk-in reads 38';
@@ -154,7 +155,61 @@ describe('the words in the field', () => {
 
   it('a call that never answered keeps the draft', () => {
     const typed = reduce(READY, { type: 'edited', text: SAID }, { type: 'sent', said: SAID });
-    expect(reduce(typed, { type: 'wallReplied', said: SAID, reply: 'the request never reached the server' }).draft).toBe(SAID);
+    expect(reduce(typed, failed('The words never reached Tolsey.')).draft).toBe(SAID);
+  });
+});
+
+function failed(reason: string, requestId = 'request-1'): WallEvent {
+  return { type: 'callFailed', said: SAID, reason, requestId, initials: 'AB' };
+}
+
+describe('a call that did not land', () => {
+  const sentWithPass = reduce(WITH_PASS, { type: 'edited', text: SAID }, { type: 'sent', said: SAID });
+
+  it.fails('callFailed shows NOT LOGGED with the reason, keeps the words and leaves the pass as it was', () => {
+    const state = reduce(sentWithPass, failed('Tolsey did not answer in time.'));
+    expect(state.notLogged).toEqual({ reason: 'Tolsey did not answer in time.' });
+    expect(state.draft).toBe(SAID);
+    expect(state.pass).toBe(WITH_PASS.pass);
+    expect(state.inFlight).toBe(false);
+  });
+
+  it.fails('callFailed keeps the words and request_id for a retry of the same words', () => {
+    const state = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
+    expect(state.pendingRetry).toEqual({ words: SAID, requestId: 'request-7', initials: 'AB' });
+  });
+
+  it('callFailed never sets a pass, even from an empty one', () => {
+    const fromEmpty = reduce(READY, { type: 'sent', said: SAID }, failed('Tolsey answered with an error (status 500).'));
+    expect(fromEmpty.pass).toBeNull();
+  });
+
+  it('a result from the server clears NOT LOGGED and the pending retry', () => {
+    const notLogged = reduce(sentWithPass, failed('Tolsey did not answer in time.'));
+    const state = received(notLogged, resultOf('in_range'));
+    expect(state.notLogged).toBeNull();
+    expect(state.pendingRetry).toBeNull();
+  });
+
+  it.fails('kitchenReplaced says the new kitchen in the exchange, keeps the words and drops the retry and the open question', () => {
+    const asked = received(WITH_PASS, resultOf('held'));
+    const notLogged = reduce(asked, { type: 'edited', text: SAID }, { type: 'sent', said: SAID }, failed('x'));
+    const state = reduce(notLogged, { type: 'kitchenReplaced', said: SAID });
+    expect(state.exchange).toEqual({ said: SAID, reply: NEW_KITCHEN_SENTENCE, source: 'wall' });
+    expect(state.draft).toBe(SAID);
+    expect(state.pendingRetry).toBeNull();
+    expect(state.openPrompt).toBeNull();
+    expect(state.inFlight).toBe(false);
+    expect(state.pass).toBe(WITH_PASS.pass);
+  });
+
+  it.fails('stopped ends the wall with its message and keeps every control off', () => {
+    const state = reduce(sentWithPass, { type: 'stopped', message: STOPPED_MESSAGE });
+    expect(state.phase).toBe('stopped');
+    expect(state.stopMessage).toBe(STOPPED_MESSAGE);
+    expect(state.inFlight).toBe(false);
+    expect(state.pass).toBe(WITH_PASS.pass);
+    expect(controlsEnabled(state)).toBe(false);
   });
 });
 

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { McpClientError, mintKitchen, openMcpSession, PROTOCOL_VERSION, type FetchLike } from './mcp-client';
+import { describe, expect, it, vi } from 'vitest';
+import { CALL_TIMEOUT_MS, McpClientError, mintKitchen, openMcpSession, PROTOCOL_VERSION, type FetchLike } from './mcp-client';
 
 const BASE = new URL('http://wall.test/');
 const ENDPOINT = new URL('/mcp/k/0123456789abcdef0123456789abcdef', BASE);
@@ -187,5 +187,102 @@ describe('failures on the wire', () => {
       asJson({ jsonrpc: '2.0', id: request.body?.id, error: { code: -32602, message: 'Invalid params' } }),
     );
     await expect(session.callTool('log_reading', {})).rejects.toMatchObject({ kind: 'protocol', code: -32602 });
+  });
+
+  it.each([
+    ['an empty body', () => new Response('', { status: 200, headers: { 'content-type': 'application/json' } })],
+    ['a body that is not JSON', () => new Response('<html>busy</html>', { status: 200, headers: { 'content-type': 'text/html' } })],
+  ])('throws kind protocol for a tools/call answered with %s', async (_shape, reply) => {
+    const { session } = await readySession(reply);
+    await expect(session.callTool('log_reading', {})).rejects.toMatchObject({ kind: 'protocol', status: 200 });
+  });
+});
+
+const NOT_YET = 'still pending';
+
+// Fails the test with a plain error when the promise has not settled by the deadline, so a missing
+// timeout shows as a wrong rejection rather than as the test runner's own timeout.
+function settledWithin<T>(promise: Promise<T>, deadlineMs: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_resolve, reject) => {
+      setTimeout(() => reject(new Error(NOT_YET)), deadlineMs);
+    }),
+  ]);
+}
+
+// A fetch that never answers on its own and rejects as a browser does once its signal aborts.
+function silentUntilAborted(): FetchLike {
+  return (_url, init) =>
+    new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      const abort = () => reject(new DOMException('The operation was aborted.', 'AbortError'));
+      if (signal?.aborted) abort();
+      signal?.addEventListener('abort', abort, { once: true });
+    });
+}
+
+describe('a call that gets no answer times out', () => {
+  it('waits 10 seconds by default', () => {
+    expect(CALL_TIMEOUT_MS).toBe(10_000);
+  });
+
+  it.fails('aborts a tools/call whose answer never comes after timeoutMs and throws kind timeout', async () => {
+    const opened = scriptedFetch([initializeAt(PROTOCOL_VERSION), accepted]);
+    const silent = silentUntilAborted();
+    let answered = 0;
+    const fetchFn: FetchLike = (url, init) => {
+      answered += 1;
+      return answered <= 2 ? opened.fetchFn(url, init) : silent(url, init);
+    };
+    const session = await openMcpSession(ENDPOINT, fetchFn, { timeoutMs: 20 });
+    await expect(settledWithin(session.callTool('log_reading', {}), 1_000)).rejects.toMatchObject({ kind: 'timeout' });
+  });
+
+  it.fails('times out a mint that never answers', async () => {
+    await expect(settledWithin(mintKitchen(BASE, silentUntilAborted(), {}, { timeoutMs: 20 }), 1_000)).rejects.toMatchObject({
+      kind: 'timeout',
+    });
+  });
+
+  it.fails('without a timeoutMs, still waits at 9.999 seconds and gives up at 10', async () => {
+    const opened = scriptedFetch([initializeAt(PROTOCOL_VERSION), accepted]);
+    const silent = silentUntilAborted();
+    let answered = 0;
+    const fetchFn: FetchLike = (url, init) => {
+      answered += 1;
+      return answered <= 2 ? opened.fetchFn(url, init) : silent(url, init);
+    };
+    const session = await openMcpSession(ENDPOINT, fetchFn);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let outcome: unknown = NOT_YET;
+      const call = session.callTool('log_reading', {}).then(
+        () => 'answered',
+        (error: unknown) => error,
+      );
+      void call.then((value) => {
+        outcome = value;
+      });
+      await vi.advanceTimersByTimeAsync(CALL_TIMEOUT_MS - 1);
+      expect(outcome).toBe(NOT_YET);
+      await vi.advanceTimersByTimeAsync(1);
+      for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
+      expect(outcome).toMatchObject({ kind: 'timeout' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a fetch that rejects for any other reason is kind network, never timeout', async () => {
+    const opened = scriptedFetch([initializeAt(PROTOCOL_VERSION), accepted]);
+    let answered = 0;
+    const fetchFn: FetchLike = async (url, init) => {
+      answered += 1;
+      if (answered <= 2) return opened.fetchFn(url, init);
+      throw new TypeError('Failed to fetch');
+    };
+    const session = await openMcpSession(ENDPOINT, fetchFn, { timeoutMs: 1_000 });
+    await expect(session.callTool('log_reading', {})).rejects.toMatchObject({ kind: 'network' });
   });
 });

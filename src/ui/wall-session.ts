@@ -8,6 +8,7 @@ export interface WallSessionOptions {
   profile: KitchenProfile;
   fetch?: FetchLike;
   newId?: () => string;
+  timeoutMs?: number;
 }
 
 export interface WallSession {
