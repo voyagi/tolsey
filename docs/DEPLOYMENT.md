@@ -333,7 +333,7 @@ Cloudflare itself:
   and a run that starts more than 15 minutes late pushes it past 24 hours too
   (`docs/adr/0002-storage.md`).
 - **The daily write budget.** Once `dailyRowCap` is spent, minting and writing are refused with
-  "The demo is full for today. Try the replay." until 00:00 UTC.
+  "The demo is full for today. Try again tomorrow." until 00:00 UTC.
 - **The account's D1 limits.** Past them no query runs until 00:00 UTC (`docs/adr/0002-storage.md`).
   A request to a scratch kitchen then fails at its kitchen lookup (`resolveScope` in
   `src/server/scope.ts`), before any tool runs, and answers HTTP 500 with JSON-RPC `-32603`. A mint

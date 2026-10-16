@@ -216,7 +216,7 @@ npx wrangler d1 create tolsey --jurisdiction=eu --binding DB
 
 | Setting | Default | Used in | Effect |
 |---------|---------|---------|--------|
-| `dailyRowCap` | `40000` | `src/server/kitchens.ts`, `src/server/mcp.ts`, `src/store/d1-store.ts` | Rows the Worker may write per UTC day, summed from `rows-per-write.json`. Past it, minting a kitchen and writing a line are refused with "The demo is full for today. Try the replay." Retention's deletes are added to the same total after they run and are never refused, so they can take it past the cap. |
+| `dailyRowCap` | `40000` | `src/server/kitchens.ts`, `src/server/mcp.ts`, `src/store/d1-store.ts` | Rows the Worker may write per UTC day, summed from `rows-per-write.json`. Past it, minting a kitchen and writing a line are refused with "The demo is full for today. Try again tomorrow." Retention's deletes are added to the same total after they run and are never refused, so they can take it past the cap. |
 | `kitchenLineCap` | `200` | `src/store/d1-store.ts` | Lines one kitchen may hold before writes are refused as `kitchen_full`. |
 | `writeWindowHours` | `22.75` | `writeWindowMs()` in `src/server/kitchens.ts` | A scratch kitchen accepts writes for this long, minus `retryWindowSeconds`, after it is minted. Reported as `closesAt`. |
 | `retentionAgeHours` | `22.75` | `src/server/retention.ts` | Scratch kitchens this old are deleted with their lines. While every hourly run succeeds and starts within 15 minutes of its scheduled hour, deletion happens by `retentionAgeHours` plus one hour plus 15 minutes, reported as `expiresAt`. A later start deletes later, and each failed run can push it back by an hour. |

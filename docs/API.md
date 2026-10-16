@@ -145,7 +145,7 @@ Checks run in this order, so the first one that fails decides the answer:
 | 405 | `{"error":"method_not_allowed"}` plus `allow: POST` | Any method other than POST |
 | 400 | `{"error":"invalid_body"}` | Body is not JSON, not an object, or holds a key other than `label` |
 | 400 | `{"error":"invalid_label"}` | `label` is not `capture` or `conformance` |
-| 503 | `{"error":"demo_full","message":"The demo is full for today. Try the replay."}` | The day's row budget is spent |
+| 503 | `{"error":"demo_full","message":"The demo is full for today. Try again tomorrow."}` | The day's row budget is spent |
 | 500 | `{"error":"server_error"}` | A fault while reading the body or minting |
 
 Only a POST has its body read, so the 413 and 415 checks apply to POST alone. Any other method skips
@@ -363,7 +363,7 @@ Refusals are tool results with `isError: true`, a sentence in `content[0].text` 
 | `initials_not_on_roster` | `Those initials are not on this kitchen's roster. Who is logging? Call again with the whole reading and their initials.` | Initials not on the roster; nothing is stored, so send the whole reading again |
 | `kitchen_closed` | `This kitchen has closed. Start a new kitchen to keep logging.` | Past the kitchen's write window (`closesAt`) |
 | `kitchen_full` | `This kitchen is full. Start a new kitchen to keep logging.` | The kitchen holds `kitchenLineCap` (200) stored events |
-| `demo_full` | `The demo is full for today. Try the replay.` | The day's row budget is spent; the same code `POST /api/kitchens` gives |
+| `demo_full` | `The demo is full for today. Try again tomorrow.` | The day's row budget is spent; the same code `POST /api/kitchens` gives |
 | `request_id_reused` | `Tolsey could not log that: this request_id was already used for a different call. Call again with a new request_id.` | See retries |
 | `request_id_expired` | `Tolsey already logged this call earlier, record <code>. Use a new request_id only for a new reading.` | See retries |
 | `server_fault` | `Tolsey could not log that. Try again.` | Any fault inside the tool; the message is never echoed, because it can carry the cook's words and initials |
