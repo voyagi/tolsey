@@ -93,11 +93,22 @@ async function send(fetchFn: FetchLike, url: URL, init: RequestInit, timeoutMs: 
   }
 }
 
-function isMinted(value: unknown): value is MintedKitchen {
+// Judged by where the URL parser sends the path, never by its first characters: the parser reads a
+// backslash as a slash and drops tabs and newlines, so "/\host" reaches another host as "//host" does.
+function staysOnOrigin(path: string, baseUrl: URL): boolean {
+  if (!path.startsWith('/')) return false;
+  try {
+    return new URL(path, baseUrl).origin === baseUrl.origin;
+  } catch {
+    return false;
+  }
+}
+
+// A path on the same origin only, so a reply can never point the wall at another host.
+function isMinted(value: unknown, baseUrl: URL): value is MintedKitchen {
   if (!value || typeof value !== 'object') return false;
   const { id, mcpPath } = value as Record<string, unknown>;
-  // A path on the same origin only, so a reply can never point the wall at another host.
-  return typeof id === 'string' && typeof mcpPath === 'string' && mcpPath.startsWith('/') && !mcpPath.startsWith('//');
+  return typeof id === 'string' && typeof mcpPath === 'string' && staysOnOrigin(mcpPath, baseUrl);
 }
 
 export async function mintKitchen(
@@ -123,7 +134,7 @@ export async function mintKitchen(
       code,
     });
   }
-  if (!isMinted(parsed)) {
+  if (!isMinted(parsed, baseUrl)) {
     throw new McpClientError('protocol', `minting a kitchen answered no kitchen: ${preview(response.status, bodyText)}`, {
       status: response.status,
     });

@@ -165,6 +165,16 @@ describe('minting a scratch kitchen', () => {
     const { fetchFn } = scriptedFetch([() => asJson({ ...MINTED, mcpPath: '//elsewhere.test/mcp' }, 201)]);
     await expect(mintKitchen(BASE, fetchFn)).rejects.toMatchObject({ kind: 'protocol', status: 201 });
   });
+
+  // The URL parser reads a backslash as a slash and drops tabs and newlines, so each of these opens
+  // with one slash and still resolves to another host, or to no URL at all.
+  it.each([['/\\elsewhere.test/mcp'], ['/\t/elsewhere.test/mcp'], ['/\n/elsewhere.test/mcp'], ['/\\[bad/mcp']])(
+    'refuses a 201 whose kitchen path %j leaves the wall origin once resolved',
+    async (mcpPath) => {
+      const { fetchFn } = scriptedFetch([() => asJson({ ...MINTED, mcpPath }, 201)]);
+      await expect(mintKitchen(BASE, fetchFn)).rejects.toMatchObject({ kind: 'protocol', status: 201 });
+    },
+  );
 });
 
 describe('failures on the wire', () => {
