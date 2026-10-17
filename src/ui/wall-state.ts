@@ -24,6 +24,14 @@ type Pass = Partial<Pick<LogReadingOutput, PassField>> & { outcome: LoggedOutcom
 
 type OpenCheck = DueNowOutput['openChecks'][number];
 
+// Words that did not land and the request_id they went out under: the server may have stored them
+// before the answer was lost, so they keep that id until an answer for the same words and cook comes back.
+interface PendingRetry {
+  words: string;
+  requestId: string;
+  initials: string;
+}
+
 export interface WallState {
   phase: WallPhase;
   startError: string | null;
@@ -34,7 +42,9 @@ export interface WallState {
   inFlight: boolean;
   draft: string;
   notLogged: { reason: string } | null;
-  pendingRetry: { words: string; requestId: string; initials: string } | null;
+  // Newest last. NOT LOGGED, when shown, always describes the newest: every event that clears or
+  // shortens this list also clears the notice.
+  pendingRetries: readonly PendingRetry[];
   stopMessage: string | null;
   roster: readonly string[];
   announcement: string;
@@ -69,7 +79,7 @@ export function initialWallState(profile: KitchenProfile): WallState {
     inFlight: false,
     draft: '',
     notLogged: null,
-    pendingRetry: null,
+    pendingRetries: [],
     stopMessage: null,
     roster: profile.roster,
     announcement: '',
@@ -106,6 +116,16 @@ function spoken(state: WallState, sentence: string): Pick<WallState, 'announceme
   return { announcement: sentence, announcementSeq: state.announcementSeq + 1 };
 }
 
+export function retryFor(retries: readonly PendingRetry[], words: string, initials: string): PendingRetry | undefined {
+  return retries.find((retry) => retry.words === words && retry.initials === initials);
+}
+
+function withoutRetry(retries: readonly PendingRetry[], words: string, initials: string): readonly PendingRetry[] {
+  return retries.filter((retry) => retry.words !== words || retry.initials !== initials);
+}
+
+// Only an answer for the same words from the same cook settles their retry: an answer for other words
+// says nothing about whether these were stored.
 function afterResult(state: WallState, said: string, result: ToolCallResult, initials: string): WallState {
   const structured = result.structuredContent as Partial<LogReadingOutput> | undefined;
   const reply = result.content[0]?.text ?? '';
@@ -118,7 +138,7 @@ function afterResult(state: WallState, said: string, result: ToolCallResult, ini
     pass: passFrom(structured, state.pass),
     openPrompt: structured?.prompt ?? null,
     notLogged: null,
-    pendingRetry: null,
+    pendingRetries: withoutRetry(state.pendingRetries, said, initials),
   };
 }
 
@@ -135,10 +155,10 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
     case 'resultReceived':
       return afterResult(state, event.said, event.result, event.initials);
     // In this case and the next, the field moves on to other words, so NOT LOGGED no longer describes it.
-    // The pending retry stays: the words that did not land may still be stored, and resending them must
+    // The pending retries stay: the words that did not land may still be stored, and resending them must
     // reuse their request_id.
     case 'edited':
-      return { ...state, draft: event.text, notLogged: event.text === state.pendingRetry?.words ? state.notLogged : null };
+      return { ...state, draft: event.text, notLogged: event.text === state.pendingRetries.at(-1)?.words ? state.notLogged : null };
     case 'localReplied':
       return {
         ...state,
@@ -155,7 +175,10 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
         inFlight: false,
         draft: event.said,
         notLogged: { reason: event.reason },
-        pendingRetry: { words: event.said, requestId: event.requestId, initials: event.initials },
+        pendingRetries: [
+          ...withoutRetry(state.pendingRetries, event.said, event.initials),
+          { words: event.said, requestId: event.requestId, initials: event.initials },
+        ],
       };
     // The open checks belonged to the kitchen that closed, so they go with it: the new kitchen's list
     // shows only once its own record answers.
@@ -167,12 +190,22 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
         draft: event.said,
         exchange: { said: event.said, reply: NEW_KITCHEN_SENTENCE, source: 'wall', cook: event.initials },
         notLogged: null,
-        pendingRetry: null,
+        pendingRetries: [],
         openPrompt: null,
         openChecks: null,
       };
+    // A stopped wall refuses every send, so a notice to send the words again, and the ids to send them
+    // under, go with it.
     case 'stopped':
-      return { ...state, ...spoken(state, event.message), phase: 'stopped', stopMessage: event.message, inFlight: false };
+      return {
+        ...state,
+        ...spoken(state, event.message),
+        phase: 'stopped',
+        stopMessage: event.message,
+        inFlight: false,
+        notLogged: null,
+        pendingRetries: [],
+      };
     case 'cookSelected':
       return state.roster.includes(event.initials) ? { ...state, cook: event.initials } : state;
     // A list refresh is not an answer to a send, so it never writes the status region.

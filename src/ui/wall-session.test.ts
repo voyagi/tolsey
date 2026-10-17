@@ -404,7 +404,7 @@ describe('a call that does not land shows NOT LOGGED, keeps the words and leaves
     expect(worker.argsOfCall(1).request_id).toBe(worker.argsOfCall(0).request_id);
     const state = session.getState();
     expect(state.notLogged).toBeNull();
-    expect(state.pendingRetry).toBeNull();
+    expect(state.pendingRetries).toEqual([]);
     expect(state.draft).toBe('');
     expect(state.exchange).toEqual({ said: WALK_IN, reply: EXPIRED_TEXT, source: 'server', cook: 'AB' });
     expect(state.announcement).toBe(EXPIRED_TEXT);
@@ -452,10 +452,44 @@ describe('a retry of the same words reuses the request_id', () => {
     await session.say(WALK_IN);
     expect(worker.argsOfCall(1).request_id).toBe(worker.argsOfCall(0).request_id);
     expect(session.getState().notLogged).toBeNull();
-    expect(session.getState().pendingRetry).toBeNull();
+    expect(session.getState().pendingRetries).toEqual([]);
 
     await session.say(WALK_IN);
     expect(worker.argsOfCall(2).request_id).not.toBe(worker.argsOfCall(1).request_id);
+  });
+
+  // The server may have stored the first words before their answer was lost, so a call for other
+  // words in between, landed or not, must not cost them their request_id.
+  it('words that timed out keep their request_id across a call for other words that lands', async () => {
+    const worker = fakeWorker({ toolsCall: NEVER_ANSWERS });
+    const session = sessionOn(worker);
+    await session.start();
+    await session.say(WALK_IN);
+    expect(session.getState().notLogged).not.toBeNull();
+
+    worker.routes.toolsCall = WORKING.toolsCall;
+    await session.say('walk-in 45');
+    expect(worker.argsOfCall(1).request_id).not.toBe(worker.argsOfCall(0).request_id);
+
+    await session.say(WALK_IN);
+    expect(worker.argsOfCall(2).request_id).toBe(worker.argsOfCall(0).request_id);
+    expect(session.getState().pendingRetries).toEqual([]);
+  });
+
+  it('words that timed out keep their request_id across a call for other words that also times out', async () => {
+    const worker = fakeWorker({ toolsCall: NEVER_ANSWERS });
+    const session = sessionOn(worker);
+    await session.start();
+    await session.say(WALK_IN);
+    await session.say('walk-in 45');
+    expect(session.getState().notLogged).not.toBeNull();
+
+    worker.routes.toolsCall = WORKING.toolsCall;
+    await session.say(WALK_IN);
+    expect(worker.argsOfCall(2).request_id).toBe(worker.argsOfCall(0).request_id);
+    await session.say('walk-in 45');
+    expect(worker.argsOfCall(3).request_id).toBe(worker.argsOfCall(1).request_id);
+    expect(session.getState().pendingRetries).toEqual([]);
   });
 
   it('a local reply after a NOT LOGGED clears the notice, and the same words sent after it still reuse the request_id', async () => {
@@ -584,6 +618,23 @@ describe('demo_full stops the wall at once', () => {
     const requests = worker.sent.length;
     await session.say('walk-in 45');
     expect(worker.sent).toHaveLength(requests);
+  });
+
+  it('a retry answered demo_full after a timeout stops with no NOT LOGGED left under the field', async () => {
+    const worker = fakeWorker({ toolsCall: NEVER_ANSWERS });
+    const session = sessionOn(worker);
+    await session.start();
+    await session.say(WALK_IN);
+    expect(session.getState().notLogged).not.toBeNull();
+
+    worker.routes.toolsCall = toolError('demo_full', 'The demo is full for today.');
+    await session.say(WALK_IN);
+
+    const state = session.getState();
+    expect(state.phase).toBe('stopped');
+    expect(state.stopMessage).toBe(DEMO_FULL_MESSAGE);
+    expect(state.notLogged).toBeNull();
+    expect(state.pendingRetries).toEqual([]);
   });
 
   it('a new mint answered demo_full after a gone kitchen stops with the demo-full message', async () => {

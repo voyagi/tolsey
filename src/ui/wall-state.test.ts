@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ToolCallResult } from '../client/mcp-client';
 import type { Outcome } from '../contract/log-reading';
 import { WALL_PROFILE } from './profile';
-import { NEW_KITCHEN_SENTENCE, STOPPED_MESSAGE } from './wall-copy';
+import { DEMO_FULL_MESSAGE, NEW_KITCHEN_SENTENCE, STOPPED_MESSAGE } from './wall-copy';
 import { controlsEnabled, initialWallState, statusWrites, wallReducer, type WallEvent, type WallState } from './wall-state';
 
 const SAID = 'the walk-in reads 38';
@@ -163,6 +163,15 @@ function failed(reason: string, requestId = 'request-1'): WallEvent {
   return { type: 'callFailed', said: SAID, reason, requestId, initials: 'AB' };
 }
 
+// Other words typed, sent and lost after an earlier call was lost too.
+function failedAgain(said: string, requestId: string): WallEvent[] {
+  return [
+    { type: 'edited', text: said },
+    { type: 'sent', said },
+    { type: 'callFailed', said, reason: 'Tolsey answered with an error (status 500).', requestId, initials: 'AB' },
+  ];
+}
+
 describe('a call that did not land', () => {
   const sentWithPass = reduce(WITH_PASS, { type: 'edited', text: SAID }, { type: 'sent', said: SAID });
 
@@ -176,7 +185,29 @@ describe('a call that did not land', () => {
 
   it('callFailed keeps the words and request_id for a retry of the same words', () => {
     const state = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
-    expect(state.pendingRetry).toEqual({ words: SAID, requestId: 'request-7', initials: 'AB' });
+    expect(state.pendingRetries).toEqual([{ words: SAID, requestId: 'request-7', initials: 'AB' }]);
+  });
+
+  it('a second call that did not land keeps the retry of the first, newest last', () => {
+    const first = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
+    const second = reduce(first, ...failedAgain('walk-in 45', 'request-8'));
+    expect(second.pendingRetries).toEqual([
+      { words: SAID, requestId: 'request-7', initials: 'AB' },
+      { words: 'walk-in 45', requestId: 'request-8', initials: 'AB' },
+    ]);
+  });
+
+  it('the same words failing again keep one retry for them', () => {
+    const once = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
+    const twice = reduce(once, { type: 'sent', said: SAID }, failed('Tolsey answered with an error (status 500).', 'request-7'));
+    expect(twice.pendingRetries).toEqual([{ words: SAID, requestId: 'request-7', initials: 'AB' }]);
+  });
+
+  it('after two calls that did not land, NOT LOGGED stays only while the field holds the newest words', () => {
+    const first = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
+    const second = reduce(first, ...failedAgain('walk-in 45', 'request-8'));
+    expect(reduce(second, { type: 'edited', text: 'walk-in 45' }).notLogged).toEqual({ reason: 'Tolsey answered with an error (status 500).' });
+    expect(reduce(second, { type: 'edited', text: SAID }).notLogged).toBeNull();
   });
 
   it('callFailed never sets a pass, even from an empty one', () => {
@@ -184,25 +215,38 @@ describe('a call that did not land', () => {
     expect(fromEmpty.pass).toBeNull();
   });
 
-  it('a result from the server clears NOT LOGGED and the pending retry', () => {
+  it('a result for the same words from the same cook clears NOT LOGGED and their pending retry', () => {
     const notLogged = reduce(sentWithPass, failed('Tolsey did not answer in time.'));
     const state = received(notLogged, resultOf('in_range'));
     expect(state.notLogged).toBeNull();
-    expect(state.pendingRetry).toBeNull();
+    expect(state.pendingRetries).toEqual([]);
+  });
+
+  it('a result for other words clears NOT LOGGED and keeps the pending retry for the words that did not land', () => {
+    const notLogged = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
+    const state = received(notLogged, resultOf('in_range'), 'the walk-in reads 39');
+    expect(state.notLogged).toBeNull();
+    expect(state.pendingRetries).toEqual([{ words: SAID, requestId: 'request-7', initials: 'AB' }]);
+  });
+
+  it('a result for the same words from another cook keeps the pending retry of the cook whose call did not land', () => {
+    const notLogged = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
+    const state = reduce(notLogged, { type: 'sent', said: SAID }, { type: 'resultReceived', said: SAID, result: resultOf('in_range'), initials: 'MR' });
+    expect(state.pendingRetries).toEqual([{ words: SAID, requestId: 'request-7', initials: 'AB' }]);
   });
 
   it('a local reply clears NOT LOGGED and keeps the pending retry for the words that did not land', () => {
     const notLogged = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
     const state = reduce(notLogged, { type: 'localReplied', said: 'hello', reply: 'Say a check and its number.', initials: 'AB' });
     expect(state.notLogged).toBeNull();
-    expect(state.pendingRetry).toEqual({ words: SAID, requestId: 'request-7', initials: 'AB' });
+    expect(state.pendingRetries).toEqual([{ words: SAID, requestId: 'request-7', initials: 'AB' }]);
   });
 
   it('an edit into other words clears NOT LOGGED and keeps the pending retry for the words that did not land', () => {
     const notLogged = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
     const state = reduce(notLogged, { type: 'edited', text: 'the walk-in reads 39' });
     expect(state.notLogged).toBeNull();
-    expect(state.pendingRetry).toEqual({ words: SAID, requestId: 'request-7', initials: 'AB' });
+    expect(state.pendingRetries).toEqual([{ words: SAID, requestId: 'request-7', initials: 'AB' }]);
   });
 
   it('an edit that leaves the words that did not land keeps NOT LOGGED', () => {
@@ -216,7 +260,7 @@ describe('a call that did not land', () => {
     const state = reduce(notLogged, { type: 'kitchenReplaced', said: SAID, initials: 'AB' });
     expect(state.exchange).toEqual({ said: SAID, reply: NEW_KITCHEN_SENTENCE, source: 'wall', cook: 'AB' });
     expect(state.draft).toBe(SAID);
-    expect(state.pendingRetry).toBeNull();
+    expect(state.pendingRetries).toEqual([]);
     expect(state.openPrompt).toBeNull();
     expect(state.inFlight).toBe(false);
     expect(state.pass).toBe(WITH_PASS.pass);
@@ -229,6 +273,16 @@ describe('a call that did not land', () => {
     expect(state.inFlight).toBe(false);
     expect(state.pass).toBe(WITH_PASS.pass);
     expect(controlsEnabled(state)).toBe(false);
+  });
+
+  // The wall refuses every send once stopped, so a notice telling the cook to send the words again
+  // would describe a field that can no longer send.
+  it('stopped after a call that did not land drops NOT LOGGED and every pending retry', () => {
+    const notLogged = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
+    const state = reduce(notLogged, { type: 'sent', said: SAID }, { type: 'stopped', message: DEMO_FULL_MESSAGE });
+    expect(state.notLogged).toBeNull();
+    expect(state.pendingRetries).toEqual([]);
+    expect(state.stopMessage).toBe(DEMO_FULL_MESSAGE);
   });
 });
 

@@ -11,7 +11,7 @@ import type { DueNowOutput } from '../contract/due-now';
 import type { KitchenProfile } from '../domain/rule';
 import { intentFor } from './intent';
 import { DEMO_FULL_MESSAGE, failedAnswerReason, NO_ANSWER_REASON, STOPPED_MESSAGE, UNREACHED_REASON } from './wall-copy';
-import { initialWallState, wallReducer, type WallEvent, type WallState } from './wall-state';
+import { initialWallState, retryFor, wallReducer, type WallEvent, type WallState } from './wall-state';
 
 export interface WallSessionOptions {
   baseUrl: URL;
@@ -219,11 +219,10 @@ export function createWallSession(options: WallSessionOptions): WallSession {
     await refreshOpenChecks();
   }
 
-  // Unchanged words from the same cook after a call that did not land keep their request_id, so a
+  // Words from the same cook that did not land keep their request_id, whatever was sent between, so a
   // call the server stored before its answer was lost is answered from the record, never stored twice.
   function requestIdFor(text: string, initials: string): string {
-    const retry = state.pendingRetry;
-    return retry !== null && retry.words === text && retry.initials === initials ? retry.requestId : newId();
+    return retryFor(state.pendingRetries, text, initials)?.requestId ?? newId();
   }
 
   // One call in flight at a time: a second say while the first is out sends nothing.
