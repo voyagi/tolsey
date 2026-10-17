@@ -409,6 +409,20 @@ describe('the open-checks board shows what the record lists', () => {
   });
 });
 
+describe('words and replies are shown as text, never as markup', () => {
+  it('shows <b>x</b> in what was said and in the reply literally, with no b element in the exchange', () => {
+    const said = 'the walk-in reads 38 <b>x</b>';
+    const reply = 'Walk-in, <b>x</b>';
+    const markup = render({ ...READY, exchange: { said, reply, source: 'server', cook: 'AB' } });
+    const exchange = markup.slice(...spanOf(markup, /<section class="exchange"/, 'section'));
+
+    expect(exchange).toContain('the walk-in reads 38 &lt;b&gt;x&lt;/b&gt;');
+    expect(exchange).toContain('Walk-in, &lt;b&gt;x&lt;/b&gt;');
+    expect(exchange).not.toMatch(/<b\b/);
+    expect(decoded(textOf(exchange))).toContain(said);
+  });
+});
+
 describe("the Limits note, What's next and the footer", () => {
   const markup = render(READY);
   const text = decoded(textOf(markup));
