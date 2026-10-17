@@ -98,7 +98,8 @@ function isOpenCheck(entry: unknown): entry is OpenCheck {
 }
 
 // The list is shown only as the record gave it: an error, a failed call or a malformed answer gives
-// null, and the page then keeps the list it had rather than guessing one.
+// null, and the page then keeps the list it had for this kitchen (none after a replacement) rather
+// than guessing one.
 async function fetchOpenChecks(session: McpSession): Promise<OpenCheck[] | null> {
   try {
     const result = await session.callTool(DUE_NOW, {});
@@ -207,7 +208,7 @@ export function createWallSession(options: WallSessionOptions): WallSession {
       stop(error instanceof DemoFull ? DEMO_FULL_MESSAGE : STOPPED_MESSAGE);
       return;
     }
-    // The list on screen belonged to the kitchen that closed; the new kitchen's record replaces it.
+    // The reducer dropped the closed kitchen's list; the new kitchen's record fills it.
     await refreshOpenChecks();
   }
 

@@ -735,4 +735,20 @@ describe('the open checks come from due_now at load and after every answered cal
     expect(dueNowCalls().map((request) => request.path)).toEqual([MINTED[0].mcpPath, MINTED[1].mcpPath]);
     expect(session.getState().openChecks).toEqual([]);
   });
+
+  it("shows no list, never the closed kitchen's, when the new kitchen's due_now fails", async () => {
+    const { worker, record, dueNowCalls } = recordWorker();
+    record.open = REACH_IN_TWO_OPEN;
+    const session = sessionOn(worker);
+    await session.start();
+    expect(session.getState().openChecks).toEqual(REACH_IN_TWO_OPEN);
+    record.logReading = KITCHEN_CLOSED;
+    record.dueNow = () => asJson({ error: 'internal' }, 500);
+
+    await session.say(WALK_IN);
+
+    expect(session.getState().exchange?.reply).toBe(NEW_KITCHEN_SENTENCE);
+    expect(dueNowCalls().map((request) => request.path)).toEqual([MINTED[0].mcpPath, MINTED[1].mcpPath]);
+    expect(session.getState().openChecks).toBeNull();
+  });
 });

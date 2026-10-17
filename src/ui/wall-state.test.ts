@@ -315,6 +315,12 @@ describe('the open checks, as the record lists them', () => {
     const after = reduce(listed, { type: 'sent', said: SAID }, failed('Tolsey did not answer in time.'));
     expect(after.openChecks).toBe(listed.openChecks);
   });
+
+  it("kitchenReplaced drops the closed kitchen's list, so no list shows until the new record answers", () => {
+    const listed = reduce(READY, loaded(REACH_IN_TWO));
+    const after = reduce(listed, { type: 'sent', said: SAID }, { type: 'kitchenReplaced', said: SAID });
+    expect(after.openChecks).toBeNull();
+  });
 });
 
 describe('controlsEnabled', () => {

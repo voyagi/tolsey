@@ -142,6 +142,8 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
         notLogged: { reason: event.reason },
         pendingRetry: { words: event.said, requestId: event.requestId, initials: event.initials },
       };
+    // The open checks belonged to the kitchen that closed, so they go with it: the new kitchen's list
+    // shows only once its own record answers.
     case 'kitchenReplaced':
       return {
         ...state,
@@ -151,6 +153,7 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
         notLogged: null,
         pendingRetry: null,
         openPrompt: null,
+        openChecks: null,
       };
     case 'stopped':
       return { ...state, phase: 'stopped', stopMessage: event.message, inFlight: false };
