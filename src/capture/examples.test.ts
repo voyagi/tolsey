@@ -43,7 +43,7 @@ function fixture(files: Record<string, unknown>, listed: string[] = Object.keys(
 function cleanCapture(): Record<string, unknown> {
   return {
     where: 'deployed',
-    host: CANONICAL_HOST,
+    canonicalHost: CANONICAL_HOST,
     startedAt: '2026-10-19T16:01:00.000Z',
     steps: [{ said: 'the walk-in reads 38', outcome: 'in_range', serverTime: '2026-10-19T16:01:02.120Z' }],
     exchanges: [
@@ -123,26 +123,26 @@ describe('PRIV-02: what a captured run may hold', () => {
     ['a file the capture did not write', 'unlisted_file', () => fixture({ [CAPTURE_FILE]: cleanCapture(), 'notes.json': { said: 'hello' } }, [CAPTURE_FILE])],
   ];
 
-  it.fails.each(planted)('is red on %s, with exactly one problem of kind %s', (_name, kind, make) => {
+  it.each(planted)('is red on %s, with exactly one problem of kind %s', (_name, kind, make) => {
     expect(kindsOf(privacyProblems(make(), ROSTER))).toEqual([kind]);
   });
 
-  it.fails('is green on a clean capture-shaped fixture', () => {
+  it('is green on a clean capture-shaped fixture', () => {
     const check = privacyProblems(fixture({ [CAPTURE_FILE]: cleanCapture() }), ROSTER);
     expect(check).toEqual({ status: 'checked', files: [CAPTURE_FILE], problems: [] });
   });
 
-  it.fails('is red when the manifest lists no capture file', () => {
+  it('is red when the manifest lists no capture file', () => {
     expect(kindsOf(privacyProblems(fixture({}, []), ROSTER))).toEqual(['empty']);
   });
 
-  it.fails('says absent, never clean, when there is no examples folder', () => {
+  it('says absent, never clean, when there is no examples folder', () => {
     const check = privacyProblems(join(scratch, 'no-such-folder'), ROSTER);
     expect(check.status).toBe('absent');
     expect('problems' in check).toBe(false);
   });
 
-  it.fails('holds the real examples/ folder to the rule: absent until the capture runs, then checked and clean', () => {
+  it('holds the real examples/ folder to the rule: absent until the capture runs, then checked and clean', () => {
     const check = privacyProblems('examples', ROSTER);
     if (check.status === 'absent') {
       expect(existsSync('examples')).toBe(false);
@@ -154,7 +154,7 @@ describe('PRIV-02: what a captured run may hold', () => {
 });
 
 describe('recordingFetch keeps two headers and the parsed bodies', () => {
-  it.fails('records method, path, status, both bodies and only content-type and mcp-protocol-version, and still answers the caller', async () => {
+  it('records method, path, status, both bodies and only content-type and mcp-protocol-version, and still answers the caller', async () => {
     const inner: FetchLike = async () =>
       new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { ok: true } }), {
         status: 200,
@@ -215,7 +215,11 @@ function fakeWorker(failOnLogCall?: number): FakeWorker {
     if (body.method === 'initialize') {
       return json({ jsonrpc: '2.0', id: body.id, result: { protocolVersion: '2025-11-25', capabilities: {}, serverInfo: { name: 'tolsey', version: '0.1.0' } } });
     }
-    if (body.method === 'tools/list') return json({ jsonrpc: '2.0', id: body.id, result: { tools: [{ name: 'log_reading' }, { name: 'due_now' }] } });
+    if (body.method === 'tools/list') {
+      // Shaped like the real answer: a JSON Schema meta-schema URL and a property named initials.
+      const inputSchema = { $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object', properties: { initials: { type: 'string' } } };
+      return json({ jsonrpc: '2.0', id: body.id, result: { tools: [{ name: 'log_reading', inputSchema }, { name: 'due_now', inputSchema }] } });
+    }
     if (body.params.name === 'due_now') {
       const structuredContent = { contractVersion: 1, businessDay: '2026-10-19', timeZone: 'America/Chicago', openChecks: [] };
       return json({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text: 'No checks are open.' }], structuredContent } });
@@ -253,13 +257,13 @@ function filesIn(dir: string): string[] {
 }
 
 describe('runCapture writes a run only when the whole run lands and passes PRIV-02', () => {
-  it.fails('writes no file when a step fails partway', async () => {
+  it('writes no file when a step fails partway', async () => {
     const { run, outDir } = captureRun(fakeWorker(2), IN_SERVICE);
     await expect(run).rejects.toThrow(/reach-in two is fine/);
     expect(filesIn(outDir)).toEqual([]);
   });
 
-  it.fails('writes the capture and its manifest after a full run, each file passing the check', async () => {
+  it('writes the capture and its manifest after a full run, each file passing the check', async () => {
     const worker = fakeWorker();
     const sleeps: number[] = [];
     const { run, outDir } = captureRun(worker, IN_SERVICE, sleeps);
@@ -269,8 +273,10 @@ describe('runCapture writes a run only when the whole run lands and passes PRIV-
     expect(privacyProblems(outDir, ROSTER)).toEqual({ status: 'checked', files: [CAPTURE_FILE], problems: [] });
     const capture = JSON.parse(readFileSync(join(outDir, CAPTURE_FILE), 'utf8'));
     expect(capture.where).toBe('deployed');
-    expect(capture.host).toBe(CANONICAL_HOST);
+    expect(capture.canonicalHost).toBe(CANONICAL_HOST);
     expect(capture.steps.map((step: { outcome: string }) => step.outcome)).toEqual(['in_range', 'refused', 'in_range']);
+    const listed = capture.exchanges.find((exchange: { request: { body: { method?: string } } }) => exchange.request.body?.method === 'tools/list');
+    expect(listed.response.body.result.tools).toEqual([{ name: 'log_reading' }, { name: 'due_now' }]);
     expect(capture.steps.map((step: { serverTime: string }) => step.serverTime)).toEqual([
       '2026-10-19T16:01:00.000Z',
       '2026-10-19T16:02:00.000Z',
@@ -278,7 +284,7 @@ describe('runCapture writes a run only when the whole run lands and passes PRIV-
     ]);
   });
 
-  it.fails('mints a fresh kitchen labelled capture and never calls the demo kitchen at /mcp', async () => {
+  it('mints a fresh kitchen labelled capture and never calls the demo kitchen at /mcp', async () => {
     const worker = fakeWorker();
     await captureRun(worker, IN_SERVICE).run;
     expect(worker.mintBodies).toEqual([{ label: 'capture' }]);
@@ -286,14 +292,14 @@ describe('runCapture writes a run only when the whole run lands and passes PRIV-
     expect(worker.paths.filter((path) => path.startsWith('/mcp/k/')).length).toBeGreaterThan(0);
   });
 
-  it.fails('waits at least the gap between its three steps', async () => {
+  it('waits at least the gap between its three steps', async () => {
     const sleeps: number[] = [];
     await captureRun(fakeWorker(), IN_SERVICE, sleeps).run;
     expect(sleeps).toHaveLength(2);
     for (const ms of sleeps) expect(ms).toBeGreaterThanOrEqual(TEST_GAP_MS);
   });
 
-  it.fails('refuses to start outside 07:00 to 22:00 in Chicago, before any request', async () => {
+  it('refuses to start outside 07:00 to 22:00 in Chicago, before any request', async () => {
     const worker = fakeWorker();
     const { run, outDir } = captureRun(worker, BEFORE_SERVICE);
     await expect(run).rejects.toThrow(/07:00 to 22:00/);

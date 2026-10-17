@@ -35,15 +35,16 @@ Wrangler with `persist: false`, and every test database gets the SQL files in `m
 in order before a test touches it (`openTestD1()` in `src/test-support/d1.ts`). The `e2e` project
 needs a build, which `npm run test:e2e` runs itself.
 
-### The five Vitest projects
+### The six Vitest projects
 
 | Project | Collects | Runs against |
 |---------|----------|--------------|
-| `unit` | `src/domain/**/*.test.ts`, `src/contract/**/*.test.ts`, `src/client/**/*.test.ts`, `src/ui/**/*.test.ts` | Pure functions, no storage |
+| `unit` | `src/domain/**/*.test.ts`, `src/contract/**/*.test.ts`, `src/client/**/*.test.ts`, `src/ui/**/*.test.ts`, `src/capture/**/*.test.ts` except `*.capture.test.ts` | Pure functions and fixture folders, no storage |
 | `store` | `src/store/**/*.test.ts` | Both store adapters, D1 from `getPlatformProxy` |
 | `conformance` | `src/server/**/*.test.ts` except `*.e2e.test.ts` | The Worker in process (`target: 'in-process'`) |
 | `e2e` | `src/server/**/*.e2e.test.ts` and `src/server/conformance.test.ts` | The built Worker in workerd (`target: 'workerd'`), 60 second test and hook timeouts |
 | `deployed` | `src/server/conformance.test.ts` | A deployed Worker (`target: 'deployed'`) |
+| `capture` | `src/capture/**/*.capture.test.ts` | The deployed Worker at `tolsey.taranity.com`, run by hand with `npm run test:capture`, never by `npm test` or CI; 10 minute test timeout |
 
 `src/server/conformance.test.ts` is the one file that runs in three projects. It reads its target with
 Vitest's `inject('target')` and gets a `Target` from `resolveTarget()` in `src/test-support/target.ts`:
@@ -104,6 +105,30 @@ npm run test:deployed
 
 The project fails at once with a message naming `TOLSEY_MCP_URL` when it is unset. CI does not run
 this project.
+
+One captured run of the deployed Worker, for `examples/`:
+
+```bash
+npm run test:capture
+```
+
+Run it after a deploy, between 07:00 and 22:00 in America/Chicago (the demo kitchen's schedule); it
+refuses to start outside those hours. `src/capture/deployed-run.capture.test.ts` drives the wall's own
+session through `runCapture` in `src/test-support/examples.ts`: it mints a fresh scratch kitchen with
+the label `capture`, never calls the demo kitchen at `/mcp`, and takes three steps a minute apart in
+real time (a logged reading, "reach-in two is fine" refused, then "reach-in two reads 38"). The
+recorder keeps only the `content-type` and `mcp-protocol-version` headers and the server's times as
+given, and a `tools/list` answer as the tool names only. The run writes `deployed-run.json` and
+`manifest.json` into the examples folder only after every step landed and the PRIV-02 check below passed on the
+finished files; a run that fails partway writes nothing.
+
+PRIV-02 runs in `npm test` and CI as `src/capture/examples.test.ts` (`unit` project). Its
+`privacyProblems` is the same function the capture runs before writing. It is red on a planted
+fixture of each kind (initials off the roster, an IPv4 or IPv6 literal, a request header name, a
+host other than `tolsey.taranity.com`, a file the manifest does not list) and on a manifest that
+lists nothing, green on a clean capture-shaped fixture, and reports a missing `examples/` folder as
+absent, never as clean. Until the first capture, the real `examples/` is absent; after it, the test
+requires at least one listed file and no problem.
 
 Coverage:
 
@@ -255,7 +280,7 @@ projects only; the workerd run adds nothing to it.
 npm run gate:test-count
 ```
 
-The script builds the Worker, then `scripts/check-test-count.mjs --floor 1531` runs the `unit`,
+The script builds the Worker, then `scripts/check-test-count.mjs --floor 1606` runs the `unit`,
 `store`, `conformance` and `e2e` projects with Vitest's JSON reporter, writing the report to a new
 temporary folder each time. The `e2e` project runs the built Worker, as `npm run test:e2e` does. The
 floor is set in the `gate:test-count` script in `package.json`. The gate refuses the run when:
@@ -264,7 +289,8 @@ floor is set in the `gate:test-count` script in `package.json`. The gate refuses
   to collect (each named, before anything is counted);
 - any test is skipped or todo;
 - fewer tests passed than the floor;
-- a tracked test file under `src` is absent from the report.
+- a tracked test file under `src` is absent from the report, except a `*.capture.test.ts` file, which
+  only `npm run test:capture` runs, by hand (the clean line says how many were left out).
 
 Exit codes: 0 clean, 1 findings, 2 unknown (no report, an unparsable or empty report, Vitest not
 installed, or no `--floor`). `node scripts/check-test-count.mjs --selftest` proves each refusal

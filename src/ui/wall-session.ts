@@ -19,6 +19,8 @@ export interface WallSessionOptions {
   fetch?: FetchLike;
   newId?: () => string;
   timeoutMs?: number;
+  // The capture mints with { label: 'capture' } so its kitchen is told apart from a visitor's.
+  mintBody?: Record<string, string>;
 }
 
 export interface WallSession {
@@ -146,7 +148,7 @@ export function createWallSession(options: WallSessionOptions): WallSession {
   }
 
   async function connect(): Promise<void> {
-    const minted = await attempt('Could not create a kitchen', () => mintKitchen(baseUrl, fetchFn, {}, clientOptions));
+    const minted = await attempt('Could not create a kitchen', () => mintKitchen(baseUrl, fetchFn, options.mintBody ?? {}, clientOptions));
     kitchenId = minted.id;
     const session = await attempt('Could not open the MCP session', () =>
       openMcpSession(new URL(minted.mcpPath, baseUrl), fetchFn, clientOptions),

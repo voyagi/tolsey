@@ -39,6 +39,10 @@ const REPORT_NAME = 'vitest-count.json';
 const PROJECTS = ['unit', 'store', 'conformance', 'e2e'];
 const TIMEOUT_MS = 20 * 60 * 1000;
 const TEST_FILE_SPECS = [':(glob)src/**/*.test.ts', ':(glob)src/**/*.test.tsx', ':(glob)src/**/*.spec.ts', ':(glob)src/**/*.spec.tsx'];
+// The capture project's files drive the deployed Worker in real time and write examples/, so they are
+// run by hand (npm run test:capture) and never by this gate's run. Named by their own suffix, so a
+// test file anywhere else that no project collects is still refused.
+const RUN_BY_HAND = /\.capture\.test\.tsx?$/;
 
 function parseFloor(argv) {
   const at = argv.indexOf('--floor');
@@ -122,9 +126,9 @@ function countFindings(cwd, report, floor, tracked) {
   }
   if (passed < floor) findings.push(`only ${passed} tests passed, below the floor of ${floor}`);
   for (const path of tracked) {
-    if (!seen.has(path)) findings.push(`${path}: tracked but not in the report, so no Vitest project collects it`);
+    if (!seen.has(path) && !RUN_BY_HAND.test(path)) findings.push(`${path}: tracked but not in the report, so no Vitest project collects it`);
   }
-  return { passed, findings };
+  return { passed, findings, byHand: tracked.filter((path) => RUN_BY_HAND.test(path)).length };
 }
 
 function run(cwd, argv) {
@@ -166,13 +170,14 @@ function judgeRun(cwd, floor, tracked, reportPath) {
     for (const f of failed) console.error(`  ${f}`);
     return 1;
   }
-  const { passed, findings } = countFindings(cwd, report, floor, tracked);
+  const { passed, findings, byHand } = countFindings(cwd, report, floor, tracked);
   if (findings.length) {
     console.error(`[test-count] FINDINGS: ${findings.length}. ${passed} tests passed (floor ${floor}):`);
     for (const f of findings) console.error(`  ${f}`);
     return 1;
   }
-  console.log(`[test-count] CLEAN: ${passed} tests passed (floor ${floor}) in ${report.testResults.length} files; every tracked test file was collected and no test was skipped.`);
+  const handNote = byHand > 0 ? ` (${byHand} capture file(s) run only by hand left out)` : '';
+  console.log(`[test-count] CLEAN: ${passed} tests passed (floor ${floor}) in ${report.testResults.length} files; every tracked test file was collected${handNote} and no test was skipped.`);
   return 0;
 }
 
@@ -291,6 +296,14 @@ function selftest() {
     root = makeRoot(['src/ui/x.test.tsx']);
     check('a tracked src/ui/x.test.tsx absent from the report exits 1 naming it', runCli(root, { fixture: report(passing(root)) }),
       1, /src\/ui\/x\.test\.tsx: tracked but not in the report/);
+
+    root = makeRoot(['src/capture/e.capture.test.ts']);
+    check('a tracked capture file run only by hand, absent from the report, is CLEAN and said to be left out',
+      runCli(root, { fixture: report(passing(root)) }), 0, /CLEAN: 4 tests passed .*1 capture file\(s\) run only by hand left out/);
+
+    root = makeRoot(['src/capture/f.test.ts']);
+    check('a tracked src/capture test file that is not a capture file, absent from the report, exits 1 naming it',
+      runCli(root, { fixture: report(passing(root)) }), 1, /src\/capture\/f\.test\.ts: tracked but not in the report/);
 
     root = makeRoot();
     check('an empty report is UNKNOWN, exit 2', runCli(root, { fixture: report([]) }), 2, /UNKNOWN: the report lists no test files/);
