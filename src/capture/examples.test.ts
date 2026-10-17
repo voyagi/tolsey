@@ -237,7 +237,20 @@ function fakeWorker(failOnLogCall?: number): FakeWorker {
     const refused = String(body.params.arguments.words).includes('is fine');
     const structuredContent = refused
       ? { contractVersion: 1, outcome: 'refused', verdict: 'refused', serverTime: `2026-10-19T16:0${logCalls}:00.000Z`, businessDay: '2026-10-19' }
-      : { contractVersion: 1, outcome: 'in_range', verdict: 'in range', recordCode: `261019-00${logCalls}`, initials: 'AB', value: 38, serverTime: `2026-10-19T16:0${logCalls}:00.000Z`, businessDay: '2026-10-19' };
+      : {
+          contractVersion: 1,
+          outcome: 'in_range',
+          verdict: 'in range',
+          lineId: `line-${logCalls}`,
+          recordCode: `261019-00${logCalls}`,
+          checkPoint: { id: 'walk_in', name: 'Walk-in' },
+          initials: 'AB',
+          value: 38,
+          unit: 'F',
+          rule: { id: 'cold-holding', comparator: 'at_most', limit: 41, unit: 'F', sourceKind: 'food_code' },
+          serverTime: `2026-10-19T16:0${logCalls}:00.000Z`,
+          businessDay: '2026-10-19',
+        };
     const text = refused ? 'I need the number on the thermometer. What does reach-in two read?' : 'Walk-in, 38, in range, AB';
     return json({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text }], structuredContent } });
   };

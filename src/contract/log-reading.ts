@@ -1,14 +1,12 @@
 import { z } from 'zod';
 import demoProfile from '../../data/kitchens/demo.json';
+import { CONTRACT_VERSION, OUTCOME_FIELDS, OUTCOMES } from './log-reading-shape';
 import { HIGHEST_READING_F, LOWEST_READING_F } from './reading-range';
 import { WORDS_MAX_CHARS } from './words-limit';
 
-export const LOG_READING = 'log_reading';
-/** @public The version every log_reading result carries, for the cards and captures of phase 2 to check. */
-export const CONTRACT_VERSION = 1;
+export { CONTRACT_VERSION, OUTCOMES, type Outcome } from './log-reading-shape';
 
-export const OUTCOMES = ['in_range', 'out_of_range', 'refused', 'held', 'not_covered', 'nothing_to_fix'] as const;
-export type Outcome = (typeof OUTCOMES)[number];
+export const LOG_READING = 'log_reading';
 
 type IdList = [string, ...string[]];
 
@@ -101,29 +99,8 @@ const OutputObjectSchema = z
   })
   .strict();
 
-type OutputField = keyof z.infer<typeof OutputObjectSchema>;
-
-interface OutcomeFields {
-  requires: readonly OutputField[];
-  forbids: readonly OutputField[];
-}
-
-const LINE_FIELDS: readonly OutputField[] = ['lineId', 'recordCode', 'checkPoint', 'value', 'unit', 'initials'];
-
-// Refusing additional properties says nothing about which fields an outcome must carry, and the SDK
-// validates structuredContent only against this schema, so each outcome's shape is held here.
-const OUTCOME_FIELDS: Record<Outcome, OutcomeFields> = {
-  in_range: { requires: [...LINE_FIELDS, 'rule'], forbids: ['prompt'] },
-  out_of_range: { requires: [...LINE_FIELDS, 'rule'], forbids: ['prompt'] },
-  not_covered: { requires: LINE_FIELDS, forbids: ['rule', 'prompt'] },
-  refused: { requires: [], forbids: ['value', 'unit', 'rule', 'supersedesLineId'] },
-  held: { requires: ['prompt'], forbids: ['lineId', 'recordCode', 'rule', 'supersedesLineId'] },
-  nothing_to_fix: {
-    requires: [],
-    forbids: ['lineId', 'recordCode', 'value', 'unit', 'rule', 'prompt', 'supersedesLineId'],
-  },
-};
-
+// Each outcome's required and forbidden fields come from the shared table, the one the page checks
+// an answer against too.
 function checkOutcomeFields(result: z.infer<typeof OutputObjectSchema>, ctx: z.RefinementCtx): void {
   const { requires, forbids } = OUTCOME_FIELDS[result.outcome];
   for (const field of requires) {

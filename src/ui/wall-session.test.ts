@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { FetchLike } from '../client/mcp-client';
 import { WALL_PROFILE } from './profile';
 import { createWallSession, type WallSession } from './wall-session';
-import { DEMO_FULL_MESSAGE, NEW_KITCHEN_SENTENCE, STOPPED_MESSAGE } from './wall-copy';
+import { DEMO_FULL_MESSAGE, failedAnswerReason, NEW_KITCHEN_SENTENCE, STOPPED_MESSAGE } from './wall-copy';
 import { controlsEnabled } from './wall-state';
 
 const BASE = new URL('http://wall.test/');
@@ -13,9 +13,19 @@ const MINTED = KITCHEN_IDS.map((id) => ({
   expiresAt: '2026-10-17T10:00:00.000Z',
   closesAt: '2026-10-17T08:43:00.000Z',
 }));
+// What every log_reading result carries, and what a result that records a walk-in line carries besides.
+const RESULT_BASE = { contractVersion: 1, serverTime: '2026-10-16T13:00:00.000Z', businessDay: '2026-10-16', timeZone: 'America/Chicago' };
+const WALK_IN_LINE = {
+  lineId: 'line-1',
+  recordCode: '261016-001',
+  checkPoint: { id: 'walk_in', name: 'Walk-in' },
+  unit: 'F',
+  initials: 'AB',
+  rule: { id: 'cold-holding', comparator: 'at_most', limit: 41, unit: 'F', sourceKind: 'food_code' },
+};
 const IN_RANGE = {
   content: [{ type: 'text', text: 'Walk-in, 38, in range, AB' }],
-  structuredContent: { outcome: 'in_range', verdict: 'in range', value: 38 },
+  structuredContent: { ...RESULT_BASE, ...WALK_IN_LINE, outcome: 'in_range', verdict: 'in range', value: 38 },
 };
 const WALK_IN = 'the walk-in reads 38';
 const EXPIRED_TEXT = 'Tolsey already logged this call earlier, record 261016-001. Use a new request_id only for a new reading.';
@@ -58,7 +68,7 @@ function heldOn(promptId: string): Route {
   return (body) =>
     answer(body, {
       content: [{ type: 'text', text: 'Say it one digit at a time. What does the walk-in read?' }],
-      structuredContent: { outcome: 'held', verdict: 'held', value: 15, prompt: { kind: 'digit_repeat', id: promptId } },
+      structuredContent: { ...RESULT_BASE, outcome: 'held', verdict: 'held', value: 15, prompt: { kind: 'digit_repeat', id: promptId } },
     });
 }
 
@@ -264,7 +274,7 @@ describe('the log_reading arguments', () => {
 describe('who is logging', () => {
   const HELD = {
     content: [{ type: 'text', text: 'Say it one digit at a time. What does the walk-in read?' }],
-    structuredContent: { outcome: 'held', verdict: 'held', value: 15, prompt: { kind: 'digit_repeat', id: 'prompt-1' } },
+    structuredContent: { ...RESULT_BASE, outcome: 'held', verdict: 'held', value: 15, prompt: { kind: 'digit_repeat', id: 'prompt-1' } },
   };
 
   it('a switch from AB to MR puts MR on the next call', async () => {
@@ -446,6 +456,35 @@ describe('a call that does not land shows NOT LOGGED, keeps the words and leaves
     await session.start();
     await session.say(WALK_IN);
     expect(session.getState().notLogged).toEqual({ reason: reusedText });
+  });
+
+  // Only an answer in the result's shape is logged: one from a server of another contract version, or
+  // one sent wrong, keeps the pass, the words and their request_id for a retry.
+  it.each([
+    ['no structured result', { content: IN_RANGE.content }],
+    ['another contract version', { ...IN_RANGE, structuredContent: { ...IN_RANGE.structuredContent, contractVersion: 2 } }],
+    ['an outcome the contract does not know', { ...IN_RANGE, structuredContent: { ...IN_RANGE.structuredContent, outcome: 'logged' } }],
+    ['a logged outcome without its line', { ...IN_RANGE, structuredContent: { ...RESULT_BASE, outcome: 'in_range', verdict: 'in range', value: 45 } }],
+    [
+      'a field its outcome forbids',
+      { ...IN_RANGE, structuredContent: { ...RESULT_BASE, outcome: 'held', verdict: 'held', value: 45, lineId: 'line-9', prompt: { kind: 'number', id: 'p-2' } } },
+    ],
+  ])('an answer with %s is NOT LOGGED, keeps the pass and the words, and the retry reuses the request_id', async (_shape, result) => {
+    const worker = fakeWorker();
+    const session = await loggedOnce(worker);
+    const passBefore = session.getState().pass;
+    worker.routes.toolsCall = (body) => answer(body, result);
+
+    await session.say('walk-in 45');
+
+    const state = session.getState();
+    expect(state.notLogged).toEqual({ reason: failedAnswerReason(undefined) });
+    expect(state.pass).toBe(passBefore);
+    expect(state.openPrompt).toBeNull();
+    expect(state.draft).toBe('walk-in 45');
+    worker.routes.toolsCall = WORKING.toolsCall;
+    await session.say('walk-in 45');
+    expect(worker.argsOfCall(2).request_id).toBe(worker.argsOfCall(1).request_id);
   });
 });
 
@@ -700,7 +739,7 @@ function dueNowResult(openChecks: OpenCheck[]) {
 }
 
 function loggedResult(outcome: string, text: string, extra: Record<string, unknown> = {}) {
-  return { content: [{ type: 'text', text }], structuredContent: { outcome, verdict: outcome, ...extra } };
+  return { content: [{ type: 'text', text }], structuredContent: { ...RESULT_BASE, outcome, verdict: outcome, ...extra } };
 }
 
 // A Worker that lists due_now: it answers the list the test keeps in `record.open`, unless the test
@@ -742,7 +781,7 @@ describe('the open checks come from due_now at load and after every answered cal
   });
 
   it.each([
-    ['in_range', loggedResult('in_range', 'Walk-in, 38, in range, AB', { value: 38 })],
+    ['in_range', loggedResult('in_range', 'Walk-in, 38, in range, AB', { ...WALK_IN_LINE, value: 38 })],
     ['refused', loggedResult('refused', 'I need the number on the thermometer. What does reach-in two read?')],
     ['held', loggedResult('held', 'Say it one digit at a time. What does the walk-in read?', { prompt: { kind: 'digit_repeat', id: 'p-1' } })],
     ['nothing_to_fix', loggedResult('nothing_to_fix', 'There is nothing to fix.')],

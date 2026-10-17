@@ -8,6 +8,7 @@ import {
   type ToolCallResult,
 } from '../client/mcp-client';
 import type { DueNowOutput } from '../contract/due-now';
+import { hasResultShape } from '../contract/log-reading-shape';
 import type { KitchenProfile } from '../domain/rule';
 import { intentFor } from './intent';
 import { DEMO_FULL_MESSAGE, failedAnswerReason, NO_ANSWER_REASON, STOPPED_MESSAGE, UNREACHED_REASON } from './wall-copy';
@@ -125,10 +126,14 @@ function callKeyOf(args: Record<string, unknown>): string {
   return JSON.stringify(Object.entries(args).sort(([a], [b]) => (a < b ? -1 : 1)));
 }
 
+// An answer counts as logged only in the result's shape. One without it, from a server of another
+// contract version or sent wrong, takes the failure path, so the words and their request_id stay for a
+// retry instead of being cleared as logged.
 async function callLogReading(session: McpSession, args: Record<string, unknown>): Promise<CallOutcome> {
   try {
     const result = await session.callTool(LOG_READING, args);
-    return result.isError === true ? refusalOutcome(result) : { kind: 'landed', result };
+    if (result.isError === true) return refusalOutcome(result);
+    return hasResultShape(result.structuredContent) ? { kind: 'landed', result } : { kind: 'failed', reason: failedAnswerReason(undefined) };
   } catch (error) {
     return failureOutcome(error);
   }

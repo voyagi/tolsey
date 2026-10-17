@@ -127,6 +127,7 @@ retry window before retention age, are set out in ADR 0002 under "Write model".
 | `createWorker`, `WorkerEnv` | `src/server/worker.ts` | Worker entry: `fetch` routing and front checks, `scheduled` sweep; takes a `Clock` and an optional store factory so tests can inject both |
 | `createServer`, `ServerDeps`, `Clock` | `src/server/mcp.ts` | Builds the per-request `McpServer` and registers `log_reading` and `due_now`; reads the clock once per tool call and passes it down |
 | `LogReadingInputSchema`, `LogReadingOutputSchema` | `src/contract/log-reading.ts` | Zod schemas for the tool's input and `structuredContent`, including which fields each outcome must and must not carry |
+| `OUTCOME_FIELDS`, `hasResultShape` | `src/contract/log-reading-shape.ts` | The contract version, the outcomes and each outcome's required and forbidden fields, free of zod; the schema builds from them, and the wall takes an answer as logged only when it has that shape |
 | `DueNowInputSchema`, `DueNowOutputSchema` | `src/contract/due-now.ts` | Zod schemas for `due_now`: an empty input object, and the open checks of the day with its business day and time zone |
 | `TOOL_NAMES`, `TOOL_DESCRIPTIONS`, `UI_RESOURCE_URIS` | `src/contract/tools.ts` | The full tool set and card resource URIs, fixed ahead of registration |
 | `decideLogReading`, `Decision`, `DecisionContext` | `src/domain/log-reading.ts`, `src/domain/decision.ts` | Pure decision from the call and the context the adapter read: roster check, correction, prompt answer or fresh reading |
