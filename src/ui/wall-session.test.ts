@@ -389,13 +389,54 @@ describe('a call that does not land shows NOT LOGGED, keeps the words and leaves
     expect(session.getState().draft).toBe('walk-in 45');
   });
 
-  it('request_id_expired shows the server text and never a pass', async () => {
-    const worker = fakeWorker({ toolsCall: toolError('request_id_expired', EXPIRED_TEXT) });
+  // The server stored the first call before its answer was lost, so a retry past the window is an
+  // answer that the words are in the record, never a NOT LOGGED that would keep sending the same id.
+  it('request_id_expired answers a retry as already logged: no NOT LOGGED, no pass, and the same words next get a new request_id', async () => {
+    const worker = fakeWorker({ toolsCall: NEVER_ANSWERS });
     const session = sessionOn(worker);
     await session.start();
     await session.say(WALK_IN);
-    expect(session.getState().notLogged).toEqual({ reason: EXPIRED_TEXT });
-    expect(session.getState().pass).toBeNull();
+    expect(session.getState().notLogged).not.toBeNull();
+
+    worker.routes.toolsCall = toolError('request_id_expired', EXPIRED_TEXT);
+    await session.say(WALK_IN);
+
+    expect(worker.argsOfCall(1).request_id).toBe(worker.argsOfCall(0).request_id);
+    const state = session.getState();
+    expect(state.notLogged).toBeNull();
+    expect(state.pendingRetry).toBeNull();
+    expect(state.draft).toBe('');
+    expect(state.exchange).toEqual({ said: WALK_IN, reply: EXPIRED_TEXT, source: 'server', cook: 'AB' });
+    expect(state.announcement).toBe(EXPIRED_TEXT);
+    expect(state.pass).toBeNull();
+
+    worker.routes.toolsCall = WORKING.toolsCall;
+    await session.say(WALK_IN);
+    expect(worker.argsOfCall(2).request_id).not.toBe(worker.argsOfCall(1).request_id);
+  });
+
+  it('request_id_expired never moves the pass or opens a question, whatever it carries', async () => {
+    const worker = fakeWorker();
+    const session = await loggedOnce(worker);
+    const passBefore = session.getState().pass;
+    worker.routes.toolsCall = toolError('request_id_expired', EXPIRED_TEXT, {
+      structuredContent: { outcome: 'out_of_range', verdict: 'out of range', value: 45, prompt: { kind: 'number', id: 'p-9' } },
+    });
+
+    await session.say('walk-in 45');
+
+    expect(session.getState().pass).toBe(passBefore);
+    expect(session.getState().openPrompt).toBeNull();
+    expect(session.getState().exchange?.reply).toBe(EXPIRED_TEXT);
+  });
+
+  it('request_id_reused stays NOT LOGGED, so only the expired code reads as already logged', async () => {
+    const reusedText = 'Tolsey could not log that: this request_id was already used for a different call. Call again with a new request_id.';
+    const worker = fakeWorker({ toolsCall: toolError('request_id_reused', reusedText) });
+    const session = sessionOn(worker);
+    await session.start();
+    await session.say(WALK_IN);
+    expect(session.getState().notLogged).toEqual({ reason: reusedText });
   });
 });
 

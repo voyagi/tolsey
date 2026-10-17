@@ -198,6 +198,18 @@ describe('a call that did not land', () => {
     expect(state.pendingRetry).toEqual({ words: SAID, requestId: 'request-7', initials: 'AB' });
   });
 
+  it('an edit into other words clears NOT LOGGED and keeps the pending retry for the words that did not land', () => {
+    const notLogged = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
+    const state = reduce(notLogged, { type: 'edited', text: 'the walk-in reads 39' });
+    expect(state.notLogged).toBeNull();
+    expect(state.pendingRetry).toEqual({ words: SAID, requestId: 'request-7', initials: 'AB' });
+  });
+
+  it('an edit that leaves the words that did not land keeps NOT LOGGED', () => {
+    const notLogged = reduce(sentWithPass, failed('Tolsey did not answer in time.'));
+    expect(reduce(notLogged, { type: 'edited', text: SAID }).notLogged).toEqual({ reason: 'Tolsey did not answer in time.' });
+  });
+
   it('kitchenReplaced says the new kitchen in the exchange, keeps the words and drops the retry and the open question', () => {
     const asked = received(WITH_PASS, resultOf('held'));
     const notLogged = reduce(asked, { type: 'edited', text: SAID }, { type: 'sent', said: SAID }, failed('x'));
@@ -249,7 +261,7 @@ describe('who is logging', () => {
   });
 });
 
-describe('the status region is written once per logged reading or refusal and by nothing else', () => {
+describe('the status region speaks each answer to a send once, and nothing else', () => {
   const sentAndReceived = (result: ToolCallResult, said = SAID): WallEvent[] => [
     { type: 'sent', said },
     { type: 'resultReceived', said, result, initials: 'AB' },
@@ -259,22 +271,40 @@ describe('the status region is written once per logged reading or refusal and by
     expect(initialWallState(WALL_PROFILE).announcement).toBe('');
   });
 
-  it('counts exactly 2 writes across a logged reading, a refusal and a held question', () => {
+  it('counts exactly 3 writes across a logged reading, a refusal and a held question', () => {
     const events = [...sentAndReceived(resultOf('in_range')), ...sentAndReceived(resultOf('refused')), ...sentAndReceived(resultOf('held'))];
-    expect(statusWrites(events, READY)).toBe(2);
+    expect(statusWrites(events, READY)).toBe(3);
   });
 
-  it('writes the server reply of a logged reading', () => {
-    expect(received(READY, resultOf('out_of_range')).announcement).toBe(REPLIES.out_of_range);
+  it.each<[Outcome]>([['in_range'], ['out_of_range'], ['not_covered'], ['refused'], ['held'], ['nothing_to_fix']])(
+    'writes the server reply of a %s result once',
+    (outcome) => {
+      const state = received(WITH_PASS, resultOf(outcome));
+      expect(state.announcement).toBe(REPLIES[outcome]);
+      expect(state.announcementSeq - WITH_PASS.announcementSeq).toBe(1);
+    },
+  );
+
+  it('a result with no reply text writes nothing', () => {
+    const silent: ToolCallResult = { content: [], structuredContent: { ...COMMON, outcome: 'in_range', ...STRUCTURED.in_range } };
+    expect(statusWrites(sentAndReceived(silent), WITH_PASS)).toBe(0);
+  });
+
+  it.each<[string, WallEvent[], string]>([
+    ['NOT LOGGED with its reason', [{ type: 'sent', said: SAID }, failed('Tolsey did not answer in time.')], 'NOT LOGGED. Tolsey did not answer in time.'],
+    ['a local reply', [{ type: 'localReplied', said: 'hello', reply: 'Say a check and its number.', initials: 'AB' }], 'Say a check and its number.'],
+    ['a replaced kitchen', [{ type: 'sent', said: SAID }, { type: 'kitchenReplaced', said: SAID, initials: 'AB' }], NEW_KITCHEN_SENTENCE],
+    ['a stopped wall', [{ type: 'sent', said: SAID }, { type: 'stopped', message: STOPPED_MESSAGE }], STOPPED_MESSAGE],
+  ])('speaks %s once', (_event, events, sentence) => {
+    expect(statusWrites(events, WITH_PASS)).toBe(1);
+    expect(events.reduce(wallReducer, WITH_PASS).announcement).toBe(sentence);
   });
 
   it.each<[string, WallEvent[]]>([
-    ['a local reply', [{ type: 'localReplied', said: 'hello', reply: 'Say a check and its number.', initials: 'AB' }]],
-    ['a call that did not land', [{ type: 'sent', said: SAID }, failed('Tolsey did not answer in time.')]],
-    ['a replaced kitchen', [{ type: 'sent', said: SAID }, { type: 'kitchenReplaced', said: SAID, initials: 'AB' }]],
     ['a cook switch', [{ type: 'cookSelected', initials: 'MR' }]],
-    ['a held question', sentAndReceived(resultOf('held'))],
-    ['nothing to fix', sentAndReceived(resultOf('nothing_to_fix'))],
+    ['an edit', [{ type: 'edited', text: 'walk-in 1' }]],
+    ['a send still out', [{ type: 'sent', said: SAID }]],
+    ['a restart', [{ type: 'starting' }, { type: 'started' }]],
   ])('%s adds no write', (_event, events) => {
     expect(statusWrites(events, WITH_PASS)).toBe(0);
     expect(events.reduce(wallReducer, WITH_PASS).announcement).toBe(WITH_PASS.announcement);

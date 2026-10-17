@@ -11,7 +11,8 @@
 // Content Security Policy refuses an injected script tag. In the Light run a fresh page is
 // walked by keyboard alone: every chip, the field, Send, each cook on the roster, each theme button and the footer's
 // link to the privacy notice must take focus with a visible ring, and Enter on two chips must log a reading and get a refusal. The one status region must
-// be written exactly twice across a logged reading, a refusal, a held question and a theme change, and afterwards
+// be written exactly three times across a logged reading, a refusal, a held question and a theme change (once per
+// answer, never for the theme), and afterwards
 // the browser may hold the tolsey-theme key and nothing else, since the privacy notice says so.
 //
 // WIRING: verify:ship only, after the build; local, never CI (dev-browser is a machine CLI). Run `npx vite build`
@@ -44,7 +45,7 @@ const NOT_LOGGED_TEXT = 'NOT LOGGED';
 const ROSTER_SIZE = 4;
 const THEME_BUTTONS = 3;
 const MIN_RING_PX = 2;
-const EXPECTED_STATUS_WRITES = 2;
+const EXPECTED_STATUS_WRITES = 3;
 const ALLOWED_STORAGE_KEYS = new Set(['tolsey-theme']);
 const PLANT_FLAG = '--plant-missing-label';
 const AXE_FILE = 'tolsey-axe.min.js';
@@ -445,7 +446,8 @@ function stateFailures(results) {
     const notLogged = run.states.find((entry) => entry.state === 'not-logged');
     if (notLogged !== undefined && !notLogged.panel.includes(NOT_LOGGED_TEXT)) failures.push(`${run.theme}: the NOT LOGGED panel reads "${notLogged.panel}"`);
     if (notLogged !== undefined && notLogged.field !== PHRASES.notLogged) failures.push(`${run.theme}: the field lost the words after NOT LOGGED ("${notLogged.field}")`);
-    // NOT LOGGED is not a live region by design; a screen reader meets it as the field's description instead.
+    // The status region speaks NOT LOGGED once when it appears; the field's description keeps it with the words for
+    // a screen reader that comes back to the field later.
     const description = run.description?.after.description ?? '';
     if (!description.includes(NOT_LOGGED_TEXT)) failures.push(`${run.theme}: the field's accessible description is "${description}", without ${NOT_LOGGED_TEXT}`);
   }

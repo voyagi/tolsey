@@ -39,6 +39,7 @@ export interface WallSession {
 const LOG_READING = 'log_reading';
 const DUE_NOW = 'due_now';
 const DEMO_FULL = 'demo_full';
+const REQUEST_ID_EXPIRED = 'request_id_expired';
 const KITCHEN_GONE_STATUS = 404;
 const KITCHEN_ENDED: ReadonlySet<unknown> = new Set(['kitchen_closed', 'kitchen_full']);
 const SCREEN_ID_PREFIX = 'wall-';
@@ -75,9 +76,13 @@ async function attempt<T>(failedStep: string, run: () => Promise<T>): Promise<T>
   }
 }
 
-// A refusal is never shown as logged: only a result without isError reaches the reducer as one.
+// A refusal is never shown as logged: only a result without isError reaches the reducer as one. An
+// expired retry is the one refusal that is an answer: the server stored the words before their answer
+// was lost, so it reaches the reducer with its text alone, clears NOT LOGGED and the retry, and can
+// never move the pass.
 function refusalOutcome(result: ToolCallResult): CallOutcome {
   const code = result._meta?.error;
+  if (code === REQUEST_ID_EXPIRED) return { kind: 'landed', result: { content: result.content } };
   if (code === DEMO_FULL) return { kind: 'demo_full' };
   if (KITCHEN_ENDED.has(code)) return { kind: 'kitchen_ended' };
   return { kind: 'failed', reason: result.content[0]?.text || failedAnswerReason(undefined) };

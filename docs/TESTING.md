@@ -190,8 +190,8 @@ list names its rule, its state and why. It checks that the field's accessible de
 NOT LOGGED text once that panel shows. In the Light run a fresh page is walked by keyboard alone: every chip, the field,
 Send, each cook on the roster, each theme button and the footer's one link, to the privacy notice,
 must take focus with a visible ring of at least 2 px, and Enter on two chips must log a reading and get a refusal. The one status region must be
-empty at load and written exactly twice across a logged reading, a refusal, a held question and a
-theme change, and afterwards the browser may hold the `tolsey-theme` key and nothing else (no other
+empty at load and written exactly three times across a logged reading, a refusal, a held question
+and a theme change (once per answer, never for the theme), and afterwards the browser may hold the `tolsey-theme` key and nothing else (no other
 storage, no cookie). A console message about the Content Security Policy fails the run. The walk is
 written to `reports/a11y-live/keyboard-walk.json` (git-ignored). It exits 1 on any of those failures
 and 2 when it could not audit: no build, no dev-browser CLI, axe-core not installed, a navigation that
@@ -280,7 +280,7 @@ projects only; the workerd run adds nothing to it.
 npm run gate:test-count
 ```
 
-The script builds the Worker, then `scripts/check-test-count.mjs --floor 1609` runs the `unit`,
+The script builds the Worker, then `scripts/check-test-count.mjs --floor 1622` runs the `unit`,
 `store`, `conformance` and `e2e` projects with Vitest's JSON reporter, writing the report to a new
 temporary folder each time. The `e2e` project runs the built Worker, as `npm run test:e2e` does. The
 floor is set in the `gate:test-count` script in `package.json`. The gate refuses the run when:

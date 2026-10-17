@@ -3,7 +3,7 @@ import type { DueNowOutput } from '../contract/due-now';
 import type { LogReadingOutput, Outcome } from '../contract/log-reading';
 import type { KitchenProfile } from '../domain/rule';
 import type { OpenPrompt } from './intent';
-import { NEW_KITCHEN_SENTENCE } from './wall-copy';
+import { NEW_KITCHEN_SENTENCE, NOT_LOGGED } from './wall-copy';
 
 type WallPhase = 'starting' | 'ready' | 'start_failed' | 'stopped';
 
@@ -57,7 +57,6 @@ export type WallEvent =
   | { type: 'resultReceived'; said: string; result: ToolCallResult; initials: string };
 
 const LOGGED: ReadonlySet<string> = new Set<LoggedOutcome>(['in_range', 'out_of_range', 'not_covered']);
-const ANNOUNCED: ReadonlySet<string> = new Set<Outcome>(['in_range', 'out_of_range', 'not_covered', 'refused']);
 
 export function initialWallState(profile: KitchenProfile): WallState {
   return {
@@ -97,11 +96,14 @@ function passFrom(structured: Partial<LogReadingOutput> | undefined, previous: P
   return { outcome: outcome as LoggedOutcome, lineId, recordCode, checkPoint, value, unit, verdict, rule, initials };
 }
 
-// The status region's only writer. The sequence number moves on every record event, so a screen
-// reader hears a second reading even when its sentence matches the one before.
-function announced(state: WallState, outcome: Outcome | undefined, reply: string): Pick<WallState, 'announcement' | 'announcementSeq'> {
-  if (outcome === undefined || !ANNOUNCED.has(outcome)) return { announcement: state.announcement, announcementSeq: state.announcementSeq };
-  return { announcement: reply, announcementSeq: state.announcementSeq + 1 };
+// The status region's only writer, called once for each answer to a send: focus stays on the chip or
+// the field the cook used, so nothing else tells a screen reader what came back, a question included.
+// A list refresh, a theme change, a cook switch and an edit are not answers and never call it. The
+// sequence number moves on every answer, so a screen reader hears a second one even when its sentence
+// matches the one before.
+function spoken(state: WallState, sentence: string): Pick<WallState, 'announcement' | 'announcementSeq'> {
+  if (sentence === '') return { announcement: state.announcement, announcementSeq: state.announcementSeq };
+  return { announcement: sentence, announcementSeq: state.announcementSeq + 1 };
 }
 
 function afterResult(state: WallState, said: string, result: ToolCallResult, initials: string): WallState {
@@ -109,7 +111,7 @@ function afterResult(state: WallState, said: string, result: ToolCallResult, ini
   const reply = result.content[0]?.text ?? '';
   return {
     ...state,
-    ...announced(state, structured?.outcome, reply),
+    ...spoken(state, reply),
     inFlight: false,
     draft: '',
     exchange: { said, reply, source: 'server', cook: initials },
@@ -132,13 +134,15 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
       return state.inFlight ? state : { ...state, inFlight: true };
     case 'resultReceived':
       return afterResult(state, event.said, event.result, event.initials);
+    // In this case and the next, the field moves on to other words, so NOT LOGGED no longer describes it.
+    // The pending retry stays: the words that did not land may still be stored, and resending them must
+    // reuse their request_id.
     case 'edited':
-      return { ...state, draft: event.text };
-    // The field moves on to new words, so NOT LOGGED no longer describes it. The pending retry stays:
-    // the words that did not land may still be stored, and resending them must reuse their request_id.
+      return { ...state, draft: event.text, notLogged: event.text === state.pendingRetry?.words ? state.notLogged : null };
     case 'localReplied':
       return {
         ...state,
+        ...spoken(state, event.reply),
         draft: '',
         exchange: { said: event.said, reply: event.reply, source: 'wall', cook: event.initials },
         notLogged: null,
@@ -147,6 +151,7 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
     case 'callFailed':
       return {
         ...state,
+        ...spoken(state, `${NOT_LOGGED}. ${event.reason}`),
         inFlight: false,
         draft: event.said,
         notLogged: { reason: event.reason },
@@ -157,6 +162,7 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
     case 'kitchenReplaced':
       return {
         ...state,
+        ...spoken(state, NEW_KITCHEN_SENTENCE),
         inFlight: false,
         draft: event.said,
         exchange: { said: event.said, reply: NEW_KITCHEN_SENTENCE, source: 'wall', cook: event.initials },
@@ -166,10 +172,10 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
         openChecks: null,
       };
     case 'stopped':
-      return { ...state, phase: 'stopped', stopMessage: event.message, inFlight: false };
+      return { ...state, ...spoken(state, event.message), phase: 'stopped', stopMessage: event.message, inFlight: false };
     case 'cookSelected':
       return state.roster.includes(event.initials) ? { ...state, cook: event.initials } : state;
-    // A list refresh is not a record event, so it never writes the status region.
+    // A list refresh is not an answer to a send, so it never writes the status region.
     case 'openChecksLoaded':
       return { ...state, openChecks: event.openChecks };
   }

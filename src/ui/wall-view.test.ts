@@ -234,10 +234,14 @@ describe('one polite status region', () => {
     expect(markup.slice(from, to).replace(/<[^>]*>/g, '')).toBe(reply);
   });
 
-  it('stays empty after a held question', () => {
+  // Focus stays on the chip or the field after a send, so the region is the only way a screen reader
+  // hears the question.
+  it('holds the question of a held reading', () => {
     const reply = 'Say it one digit at a time. What does the walk-in read?';
     const state = afterResult(READY, 'walk-in 15', result('held', reply, { verdict: 'held', value: 15, prompt: { kind: 'digit_repeat', id: 'p-1' } }));
-    expect(render(state)).toMatch(/<div role="status" aria-live="polite"><\/div>/);
+    const markup = render(state);
+    const [from, to] = spanOf(markup, /<div role="status" aria-live="polite">/, 'div');
+    expect(markup.slice(from, to).replace(/<[^>]*>/g, '')).toBe(reply);
   });
 });
 
@@ -289,7 +293,21 @@ describe('a call that did not land', () => {
     expect(markup).toContain(reason);
     expect(markup).toMatch(/<input\b[^>]*id="cook-words"[^>]*value="walk-in 45"/);
     expect(markup).toContain('261016-001');
-    expect(markup).toMatch(/<div role="status" aria-live="polite"><\/div>/);
+    const [from, to] = spanOf(markup, /<div role="status" aria-live="polite">/, 'div');
+    expect(markup.slice(from, to).replace(/<[^>]*>/g, '')).toBe(`NOT LOGGED. ${reason}`);
+  });
+
+  it('an edit into other words leaves no NOT LOGGED under the field and nothing describing the field', () => {
+    const said = 'walk-in 45';
+    const state = [
+      { type: 'edited', text: said } as const,
+      { type: 'sent', said } as const,
+      { type: 'callFailed', said, reason: 'Tolsey did not answer in time.', requestId: 'r-1', initials: 'AB' } as const,
+      { type: 'edited', text: 'walk-in 44' } as const,
+    ].reduce(wallReducer, READY);
+    const markup = render(state);
+    expect(markup).not.toMatch(/<p id="not-logged"/);
+    expect(markup).not.toMatch(/<input\b[^>]*id="cook-words"[^>]*aria-describedby=/);
   });
 
   it('a local reply after it leaves no NOT LOGGED under the field and nothing describing the field', () => {
