@@ -113,7 +113,8 @@ npm run test:capture
 ```
 
 Run it after a deploy, between 07:00 and 22:00 in America/Chicago (the demo kitchen's schedule); it
-refuses to start outside those hours. `src/capture/deployed-run.capture.test.ts` drives the wall's own
+refuses to start outside those hours, and writes nothing when its last answer arrives after 22:00
+there, network time included. `src/capture/deployed-run.capture.test.ts` drives the wall's own
 session through `runCapture` in `src/test-support/examples.ts`: it mints a fresh scratch kitchen with
 the label `capture`, never calls the demo kitchen at `/mcp`, and takes three steps a minute apart in
 real time (a logged reading, "reach-in two is fine" refused, then "reach-in two reads 38"). The
@@ -124,10 +125,10 @@ finished files; a run that fails partway writes nothing.
 
 PRIV-02 runs in `npm test` and CI as `src/capture/examples.test.ts` (`unit` project). Its
 `privacyProblems` is the same function the capture runs before writing. It is red on a planted
-fixture of each kind (initials off the roster, an IPv4 or IPv6 literal, a request header name, a
-host other than `tolsey.taranity.com`, a file the manifest does not list) and on a manifest that
-lists nothing, green on a clean capture-shaped fixture, and reports a missing `examples/` folder as
-absent, never as clean. Until the first capture, the real `examples/` is absent; after it, the test
+fixture of each kind (initials off the roster, an IPv4 or IPv6 literal with or without a port, a
+request header name, a host other than `tolsey.taranity.com`, a file the manifest does not list)
+and on a manifest that lists nothing, green on a clean capture-shaped fixture, and reports a missing
+`examples/` folder as absent, never as clean. Until the first capture, the real `examples/` is absent; after it, the test
 requires at least one listed file and no problem.
 
 Coverage:
@@ -280,7 +281,7 @@ projects only; the workerd run adds nothing to it.
 npm run gate:test-count
 ```
 
-The script builds the Worker, then `scripts/check-test-count.mjs --floor 1641` runs the `unit`,
+The script builds the Worker, then `scripts/check-test-count.mjs --floor 1645` runs the `unit`,
 `store`, `conformance` and `e2e` projects with Vitest's JSON reporter, writing the report to a new
 temporary folder each time. The `e2e` project runs the built Worker, as `npm run test:e2e` does. The
 floor is set in the `gate:test-count` script in `package.json`. The gate refuses the run when:

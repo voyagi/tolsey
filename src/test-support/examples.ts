@@ -47,6 +47,8 @@ export type PrivacyCheck = { status: 'absent' } | { status: 'checked'; files: st
 
 // Characters an IP literal can be made of. Every run of them is tested with isIP, so a time such as
 // 04:30:00, a UUID or a version such as 0.1.0 is never mistaken for an address by its shape alone.
+// Each piece between colons is tested too, so an IPv4 address with a port (203.0.113.7:443) is found
+// while a whole IPv6 run is still tested as one.
 const NOT_IP_CHARACTERS = /[^0-9A-Fa-f.:]+/;
 const URL_PATTERN = /https?:\/\/[^\s"'<>)\]]+/gi;
 // Any run inside a value shaped like a host name, its last label alphabetic and two characters or
@@ -58,6 +60,7 @@ function holdsIpLiteral(text: string): boolean {
   return text
     .split(NOT_IP_CHARACTERS)
     .filter((run) => run !== '')
+    .flatMap((run) => [run, ...run.split(':')])
     .some((run) => [run, run.replace(/\.+$/, ''), run.replace(/^\.+/, '')].some((candidate) => isIP(candidate) !== 0));
 }
 
@@ -228,7 +231,7 @@ function minutesOf(clock: string): number {
 }
 
 // The demo kitchen's service hours are its schedule's first and last check times: a run outside
-// them would print times no kitchen keeps.
+// them would print times no kitchen keeps. The message names whichever end fell outside.
 function assertInService(from: number, to: number, profile: KitchenProfile): void {
   const times = profile.schedule.flatMap((entry) => entry.times).sort((a, b) => a.localeCompare(b));
   const [open, close] = [times[0], times.at(-1) ?? times[0]];
@@ -236,8 +239,9 @@ function assertInService(from: number, to: number, profile: KitchenProfile): voi
     const local = localParts(instant, profile.timeZone);
     return local.hour * 60 + local.minute;
   };
-  if (localMinutes(from) < minutesOf(open) || localMinutes(to) > minutesOf(close) || localMinutes(to) < localMinutes(from)) {
-    const local = localParts(from, profile.timeZone);
+  const startsOutside = localMinutes(from) < minutesOf(open) || localMinutes(from) > minutesOf(close);
+  if (startsOutside || localMinutes(to) > minutesOf(close) || localMinutes(to) < localMinutes(from)) {
+    const local = localParts(startsOutside ? from : to, profile.timeZone);
     const shown = `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`;
     throw new Error(`the capture runs only from ${open} to ${close} in ${profile.timeZone}, and it is ${shown} there`);
   }
@@ -339,6 +343,9 @@ export async function runCapture(options: CaptureOptions): Promise<void> {
     await session.say(step.words);
     steps.push(stepOf(index + 1, step.words, step.outcomes, session.getState(), recorder.exchanges));
   }
+  // The check before the first request counts only the gaps; this one holds the run to the moment
+  // its last answer arrived, network time included.
+  assertInService(startedAt, now(), profile);
   const capture = {
     where: 'deployed',
     canonicalHost: baseUrl.hostname,

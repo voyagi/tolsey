@@ -118,6 +118,8 @@ describe('PRIV-02: what a captured run may hold', () => {
     ['initials off the roster', 'initials_off_roster', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (exchangeOf(c).request.body.params.arguments.initials = 'AK')) })],
     ['an IPv4 literal', 'ip_literal', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (c.note = 'seen from 203.0.113.7')) })],
     ['an IPv6 literal', 'ip_literal', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (c.note = 'client 2001:db8::1 called')) })],
+    ['an IPv4 literal with a port', 'ip_literal', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (c.note = 'client 203.0.113.7:443 called')) })],
+    ['a bracketed IPv6 literal with a port', 'ip_literal', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (c.note = 'client [2001:db8::1]:443 called')) })],
     ['a request header name', 'header_name', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (exchangeOf(c).request.headers['user-agent'] = 'Mozilla/5.0')) })],
     ['a hostname other than the canonical one', 'foreign_host', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (c.source = 'https://example.com/run')) })],
     ['a bare hostname inside prose', 'foreign_host', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (c.note = 'served by example.com today')) })],
@@ -311,5 +313,39 @@ describe('runCapture writes a run only when the whole run lands and passes PRIV-
     await expect(run).rejects.toThrow(/07:00 to 22:00/);
     expect(worker.paths).toEqual([]);
     expect(filesIn(outDir)).toEqual([]);
+  });
+
+  // The gaps alone predict the end; each request here also takes 20 seconds of clock time.
+  function slowRun(startedAt: number) {
+    let clock = startedAt;
+    const worker = fakeWorker();
+    const outDir = join(scratch, `out-${(fixtureCount += 1)}`);
+    const run = runCapture({
+      baseUrl: new URL(`https://${CANONICAL_HOST}`),
+      fetch: async (url, init) => {
+        clock += 20_000;
+        return worker.fetch(url, init);
+      },
+      now: () => clock,
+      sleep: async () => {},
+      gapMs: TEST_GAP_MS,
+      outDir,
+      profile: WALL_PROFILE,
+    });
+    return { run, outDir, worker };
+  }
+
+  it('writes no file when the run starts in service but its last answer lands after 22:00 in Chicago', async () => {
+    // 21:59:30 in Chicago: the gaps predict an end in the same minute, the requests carry it past 22:00.
+    const { run, outDir, worker } = slowRun(Date.parse('2026-10-20T02:59:30.000Z'));
+    await expect(run).rejects.toThrow(/07:00 to 22:00 in America\/Chicago, and it is 22:0\d there/);
+    expect(worker.paths.length).toBeGreaterThan(0);
+    expect(filesIn(outDir)).toEqual([]);
+  });
+
+  it('still writes a slow run whose last answer lands before 22:00 in Chicago', async () => {
+    const { run, outDir } = slowRun(Date.parse('2026-10-20T02:00:00.000Z'));
+    await run;
+    expect(filesIn(outDir)).toEqual([CAPTURE_FILE, 'manifest.json']);
   });
 });
