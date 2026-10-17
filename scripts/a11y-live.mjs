@@ -6,11 +6,11 @@
 // in the browser. This drives the built wall through the dev-browser CLI in Light and Dark and, in each theme, takes
 // it through its four states: initial, a logged reading, a refused numberless check, and NOT LOGGED (the MCP route
 // blocked in the browser, so the call fails the way a dropped connection does), each audited only once the
-// open-checks board shows the list the record gives in that state. axe-core audits each of the eight
-// state and theme pairs against WCAG 2.0, 2.1 and 2.2 A and AA, injected with page.evaluate because the page's
+// open-checks board shows the list the record gives in that state, then opens the privacy notice. axe-core audits
+// each of the ten state and theme pairs against WCAG 2.0, 2.1 and 2.2 A and AA, injected with page.evaluate because the page's
 // Content Security Policy refuses an injected script tag. In the Light run a fresh page is
-// walked by keyboard alone: every chip, the field, Send, each cook on the roster and each theme button must take
-// focus with a visible ring, and Enter on two chips must log a reading and get a refusal. The one status region must
+// walked by keyboard alone: every chip, the field, Send, each cook on the roster, each theme button and the footer's
+// link to the privacy notice must take focus with a visible ring, and Enter on two chips must log a reading and get a refusal. The one status region must
 // be written exactly twice across a logged reading, a refusal, a held question and a theme change, and afterwards
 // the browser may hold the tolsey-theme key and nothing else, since the privacy notice says so.
 //
@@ -27,7 +27,9 @@ import { join } from 'node:path';
 import { CannotRun, DEV_BROWSER_DIR, runDevBrowser, withBuiltWall } from './wall-browser.mjs';
 
 const THEMES = ['light', 'dark'];
-const STATES = ['initial', 'logged', 'refused', 'not-logged'];
+// The privacy notice is audited as one more state: it is public beside the wall, and its accessibility statement
+// names this check.
+const STATES = ['initial', 'logged', 'refused', 'not-logged', 'privacy'];
 const REPORT_DIR = 'reports/a11y-live';
 const TIMEOUT_SECONDS = 300;
 const BROWSER_NAME = 'tolsey-a11y-live';
@@ -204,6 +206,12 @@ async function runStates() {
     field: await page.evaluate(() => document.querySelector('#cook-words').value),
   });
   await page.unroute('**/mcp/**');
+
+  const notice = await page.goto(BASE + '/privacy?theme=' + THEME);
+  result.navigations.push(notice === null ? null : notice.status());
+  await page.waitForSelector('main.sheet', { timeout: 30000 });
+  await page.waitForFunction(() => document.querySelector('.theme-switch button[aria-pressed="true"]') !== null, null, { timeout: 30000 });
+  await checkpoint(page, 'privacy', { title: await page.evaluate(() => document.querySelector('h1').textContent) });
 }
 
 // What a control is to the walk: a stable key, plus the ring the user sees. A roster radio is visually hidden, so

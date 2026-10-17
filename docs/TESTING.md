@@ -84,8 +84,9 @@ npm run test:e2e
 This runs `vite build`, then `vitest run --project e2e`. The e2e files cover routing of the built
 Worker (`routing.e2e.test.ts`), the hourly retention sweep (`retention.e2e.test.ts`), the built
 Worker's `/mcp` endpoint, shipped allowlist and D1 binding (`built-worker.e2e.test.ts`), the wall's
-MCP client and session logging and refusing against the built Worker (`wall-client.e2e.test.ts`), and
-`Intl` parity between workerd and Node (`intl-parity.e2e.test.ts`, which starts a test-only Worker from
+MCP client and session logging and refusing against the built Worker (`wall-client.e2e.test.ts`), the
+static pages' headers, the privacy notice's DEMO-06 elements and the pre-paint script's CSP hash
+recomputed from the built pages (`pages.e2e.test.ts`), and `Intl` parity between workerd and Node (`intl-parity.e2e.test.ts`, which starts a test-only Worker from
 `src/test-support/intl-probe.wrangler.jsonc`).
 
 Conformance against a deployed Worker:
@@ -152,9 +153,10 @@ npm run a11y:live
 
 `scripts/a11y-live.mjs` uses the same harness and drives the wall in Light and Dark through four
 states: initial, a logged reading, a refused numberless check, and NOT LOGGED (the MCP route blocked
-in the browser). Each audit waits until the open-checks board shows the list the record gives in
-that state: empty at load and after the logged reading, holding reach-in two after the refusal. In
-each of the eight state and theme pairs it runs axe-core (`axe-core` `4.14.0`, a
+in the browser), then opens the privacy notice at `/privacy` as a fifth state. Each wall audit waits
+until the open-checks board shows the list the record gives in that state: empty at load and after
+the logged reading, holding reach-in two after the refusal. In each of the ten state and theme pairs
+it runs axe-core (`axe-core` `4.14.0`, a
 devDependency copied into the page with `page.evaluate`, since the page's Content Security Policy
 refuses an injected script tag) over the WCAG 2.0, 2.1 and 2.2 A and AA rules, with `target-size` and
 `label-content-name-mismatch` named so that they run, since axe ships them switched off. Any violation

@@ -1,0 +1,187 @@
+@import './tokens.css';
+
+/* The privacy notice is a Read page: the record's sheet laid out for reading, on board stock under board heads, in the
+   wall's tokens and faces and its three themes. The top bar carries the way back to the wall and the theme switch. */
+
+.read-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 22px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 18px 30px 14px;
+  background: var(--ground);
+}
+.read-top .wordmark {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 900;
+  font-stretch: 80%;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-right: auto;
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--steel);
+}
+.back:hover {
+  color: var(--ink);
+}
+
+.sheet {
+  display: grid;
+  gap: 26px;
+  max-width: 1180px;
+  margin: 0 auto 24px;
+  padding: 26px 30px 30px;
+  background: var(--stock);
+  box-shadow: var(--lift);
+}
+.sheet-title {
+  margin: 0;
+  padding-bottom: 10px;
+  border-bottom: 3px solid var(--ink);
+  font-size: 2.75rem;
+  font-weight: 900;
+  font-stretch: 80%;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+.lede {
+  max-width: 65ch;
+  margin: 0;
+  font-size: 1.1875rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+.sheet section {
+  display: grid;
+  gap: 12px;
+}
+.sheet-head {
+  margin: 0;
+  padding-bottom: 6px;
+  border-bottom: 3px solid var(--ink);
+  font-size: 1.625rem;
+  font-weight: 900;
+  font-stretch: 80%;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+.sheet p {
+  max-width: 70ch;
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+.long-link {
+  overflow-wrap: anywhere;
+}
+
+/* The facts table reads like a day sheet: mono heads in steel, one hairline per row, the kind of data in the row's
+   first cell at the Row type. */
+.facts {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+.facts th,
+.facts td {
+  padding: 10px 14px 10px 0;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--hair);
+}
+.facts thead th {
+  padding-top: 0;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--steel);
+  border-bottom: 2px solid var(--ink);
+}
+.facts tbody th {
+  width: 24%;
+  font-size: 1.125rem;
+  font-weight: 800;
+  font-stretch: 85%;
+  line-height: 1.3;
+}
+
+/* On a phone each row restacks as a block; the head row is clipped rather than removed, so its column names stay in the
+   accessibility tree, and each cell says its column in label type. */
+@media (max-width: 900px) {
+  .read-top {
+    gap: 10px 14px;
+    padding: 14px 16px 12px;
+  }
+  .back {
+    margin-right: 0;
+  }
+  .sheet {
+    gap: 22px;
+    margin-bottom: 0;
+    padding: 18px 16px 24px;
+  }
+  .sheet-title {
+    font-size: 2.25rem;
+  }
+  .sheet-head {
+    font-size: 1.5rem;
+  }
+  .facts thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .facts tr {
+    display: grid;
+    gap: 6px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--hair);
+  }
+  .facts th,
+  .facts td {
+    padding: 0;
+    border-bottom: 0;
+  }
+  .facts tbody th {
+    width: auto;
+  }
+  .facts td::before {
+    content: attr(data-label);
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--steel);
+  }
+}
+
+@media print {
+  .read-top .theme {
+    display: none;
+  }
+  .sheet {
+    box-shadow: none;
+  }
+}

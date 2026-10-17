@@ -54,7 +54,10 @@ validated once in `src/server/data.ts` and handed to the MCP adapter and the dom
 
 1. **Routing.** `wrangler.jsonc` sends `/mcp`, `/mcp/*` and `/api/*` to the Worker first
    (`run_worker_first`); every other path goes to the asset binding with single-page-application
-   fallback. `familyOf` in `worker.ts` mirrors that list.
+   fallback. `familyOf` in `worker.ts` mirrors that list. `/privacy` is served from `privacy.html`
+   before that fallback runs. The static pages carry the Content-Security-Policy, nosniff and
+   no-referrer headers from `public/_headers`, while Worker answers on `/mcp` and `/api` keep the
+   headers the Worker sets, since the asset binding applies `_headers` only to the responses it builds.
 2. **Front checks.** `parseAllowlist` (`src/server/allowlist.ts`) reads `ALLOWED_HOSTNAMES`; a
    missing or malformed list answers 503 `allowlist_unconfigured`. The SDK's
    `hostHeaderValidationResponse` and `originValidationResponse` then check the request against the
@@ -184,8 +187,14 @@ src/
   contract/      Tool names, descriptions, annotations, card URIs and the log_reading and due_now schemas
   store/         The Store port, the D1 adapter and the in-memory adapter
   client/        Fetch-based MCP client shared by the wall and the capture
-  ui/            The wall page: React components, the session, the intent layer
+  ui/            The wall page (React components, the session, the intent layer) and the privacy page's
+                 theme switch and styles
   test-support/  Shared test harnesses, fixtures and counting or gated store wrappers
+index.html       The wall's HTML shell, holding the pre-paint theme script the CSP allows by its hash
+privacy.html     The privacy notice, a second static page in the Vite build, with the same script
+public/
+  fonts/         Self-hosted Mona Sans and JetBrains Mono with their licence
+  _headers       The Content-Security-Policy, nosniff and no-referrer headers for every static page
 data/
   kitchens/      The demo kitchen profile: roster, foods, check points, schedule, vocabulary
   rules/         The rule table (FDA Food Code 2022 rows, with sources)

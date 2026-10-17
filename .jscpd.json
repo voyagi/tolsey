@@ -18,6 +18,7 @@
     "verify-ship.mjs",
     "**/*.md",
     "**/docs/**",
-    "design/mockups/**"
+    "design/mockups/**",
+    "privacy.html"
   ]
 }
