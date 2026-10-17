@@ -191,6 +191,13 @@ describe('a call that did not land', () => {
     expect(state.pendingRetry).toBeNull();
   });
 
+  it('a local reply clears NOT LOGGED and keeps the pending retry for the words that did not land', () => {
+    const notLogged = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
+    const state = reduce(notLogged, { type: 'localReplied', said: 'hello', reply: 'Say a check and its number.', initials: 'AB' });
+    expect(state.notLogged).toBeNull();
+    expect(state.pendingRetry).toEqual({ words: SAID, requestId: 'request-7', initials: 'AB' });
+  });
+
   it('kitchenReplaced says the new kitchen in the exchange, keeps the words and drops the retry and the open question', () => {
     const asked = received(WITH_PASS, resultOf('held'));
     const notLogged = reduce(asked, { type: 'edited', text: SAID }, { type: 'sent', said: SAID }, failed('x'));

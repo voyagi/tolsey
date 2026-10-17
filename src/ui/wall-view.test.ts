@@ -292,6 +292,19 @@ describe('a call that did not land', () => {
     expect(markup).toMatch(/<div role="status" aria-live="polite"><\/div>/);
   });
 
+  it('a local reply after it leaves no NOT LOGGED under the field and nothing describing the field', () => {
+    const said = 'walk-in 45';
+    const state = [
+      { type: 'edited', text: said } as const,
+      { type: 'sent', said } as const,
+      { type: 'callFailed', said, reason: 'Tolsey did not answer in time.', requestId: 'r-1', initials: 'AB' } as const,
+      { type: 'localReplied', said: 'hello', reply: 'Say a check and its number.', initials: 'AB' } as const,
+    ].reduce(wallReducer, READY);
+    const markup = render(state);
+    expect(markup).not.toContain('NOT LOGGED');
+    expect(markup).not.toMatch(/<input\b[^>]*id="cook-words"[^>]*aria-describedby=/);
+  });
+
   it('a stopped wall shows its message and disables every control', () => {
     const message = 'The demo is full for today. Try again tomorrow.';
     const markup = render(wallReducer(READY, { type: 'stopped', message }));

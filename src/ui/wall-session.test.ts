@@ -417,6 +417,22 @@ describe('a retry of the same words reuses the request_id', () => {
     expect(worker.argsOfCall(2).request_id).not.toBe(worker.argsOfCall(1).request_id);
   });
 
+  it('a local reply after a NOT LOGGED clears the notice, and the same words sent after it still reuse the request_id', async () => {
+    const worker = fakeWorker({ toolsCall: NEVER_ANSWERS });
+    const session = sessionOn(worker);
+    await session.start();
+    await session.say(WALK_IN);
+    expect(session.getState().notLogged).not.toBeNull();
+
+    await session.say('hello');
+    expect(session.getState().exchange?.source).toBe('wall');
+    expect(session.getState().notLogged).toBeNull();
+
+    worker.routes.toolsCall = WORKING.toolsCall;
+    await session.say(WALK_IN);
+    expect(worker.argsOfCall(1).request_id).toBe(worker.argsOfCall(0).request_id);
+  });
+
   it('edited words after a NOT LOGGED are a new utterance with a new request_id', async () => {
     const worker = fakeWorker({ toolsCall: NEVER_ANSWERS });
     const session = sessionOn(worker);

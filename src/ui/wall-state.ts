@@ -134,8 +134,15 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
       return afterResult(state, event.said, event.result, event.initials);
     case 'edited':
       return { ...state, draft: event.text };
+    // The field moves on to new words, so NOT LOGGED no longer describes it. The pending retry stays:
+    // the words that did not land may still be stored, and resending them must reuse their request_id.
     case 'localReplied':
-      return { ...state, draft: '', exchange: { said: event.said, reply: event.reply, source: 'wall', cook: event.initials } };
+      return {
+        ...state,
+        draft: '',
+        exchange: { said: event.said, reply: event.reply, source: 'wall', cook: event.initials },
+        notLogged: null,
+      };
     // Never touches the pass: a call that did not land must not look logged.
     case 'callFailed':
       return {
