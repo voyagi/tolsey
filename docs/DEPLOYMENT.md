@@ -23,9 +23,10 @@ There is no Dockerfile and no other hosting config in the repository.
 
 ## Before the first deploy
 
-The first deploy needs these steps first. Steps 1 and 2 are done: the `tolsey` database exists under
-the EU jurisdiction and `wrangler.jsonc` carries its id. A move to another Cloudflare account repeats
-them.
+The first deploy needs these steps first. All four were done before the first deploy on 2026-10-16
+(Worker version `3312102a`): the `tolsey` database exists under the EU jurisdiction, `wrangler.jsonc`
+carries its id, the custom domain and `ALLOWED_HOSTNAMES` name the deployed hostname, and the hourly
+Cron Trigger fit the account's allowance. A move to another Cloudflare account repeats them.
 
 ### 1. Create the D1 database
 
@@ -272,16 +273,23 @@ day's write budget (`dailyRowCap` in `data/store/limits.json`). The hourly sweep
 kitchen like any other. The deployed target has no storage reader, so it asserts only what an
 outside client can see.
 
-`docs/adr/0002-storage.md` and `docs/privacy-accountability.md` also list checks that only the first
-deploy can make:
+`docs/adr/0002-storage.md` and `docs/privacy-accountability.md` also list checks that only a deployed
+Worker can make. The first deploy on 2026-10-16 made three of them, and the two documents record the
+results:
 
-- Record the verdict of the first `wrangler d1 migrations apply DB --remote` in the ADR, in
-  particular whether remote D1 accepts the `0002` triggers.
-- Confirm that a successful request leaves no per-request log line.
-- Read the stored fields of one `[mcp]` fault line (a `text/plain` POST to a scratch kitchen writes
-  one on demand, as "logs a text/plain POST through onerror" in `src/server/logging.test.ts` shows),
-  and correct the privacy record to what it holds.
-- Measure the rows-read and rows-written figures again on remote D1.
+- The verdict of the first `wrangler d1 migrations apply DB --remote`: it applied `0001` to `0004`
+  with no refusal, so remote D1 accepted the `0002` triggers (ADR 0002, "Append-only guard").
+- The stored fields of one `[mcp]` fault line, read in the Workers Logs dashboard (a `text/plain` POST
+  to a scratch kitchen writes one on demand, as "logs a text/plain POST through onerror" in
+  `src/server/logging.test.ts` shows). The privacy record states what it holds (Security).
+- The rows read and written by each insert and upsert on remote D1, measured with `wrangler d1
+  insights` over two `npm run test:deployed` runs (ADR 0002, "Rows written per write").
+
+Two are still open:
+
+- Confirm in the Workers Logs dashboard that a successful request leaves no per-request log line.
+- Measure the rows a retention delete touches on remote D1. No kitchen reached its retention age
+  within the measured hour, so remote deletes are not measured yet.
 
 ## Rollback procedure
 
