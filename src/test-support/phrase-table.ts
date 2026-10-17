@@ -48,6 +48,11 @@ export const PHRASE_TABLE: readonly PhraseRow[] = [
   localReply('one five'),
   call('1 5', { value: 15, pending_prompt_id: DIGIT_REPEAT.id }, DIGIT_REPEAT),
   call('one five', { value: 15, pending_prompt_id: DIGIT_REPEAT.id }, DIGIT_REPEAT),
+  call('it reads one five', { value: 15, pending_prompt_id: DIGIT_REPEAT.id }, DIGIT_REPEAT),
+  // A digit word beside a whole number word is part of that number, never a digit of its own.
+  call('twenty one', { pending_prompt_id: NUMBER.id }, NUMBER),
+  call('fifteen two', { pending_prompt_id: DIGIT_REPEAT.id }, DIGIT_REPEAT),
+  call('one hundred', { pending_prompt_id: NUMBER.id }, NUMBER),
   call('38', { value: 38, pending_prompt_id: NUMBER.id }, NUMBER),
   call("it's fine", { pending_prompt_id: NUMBER.id }, NUMBER),
   call('the walk-in reads 38', { check_point: 'walk_in', value: 38, pending_prompt_id: NUMBER.id }, NUMBER),

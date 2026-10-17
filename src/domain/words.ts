@@ -325,6 +325,13 @@ export const DIGIT_OF_WORD: ReadonlyMap<string, string> = new Map(
   ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'].map((word, digit) => [word, String(digit)]),
 );
 
+// Whether the parts hold a number word other than the ten digit words ("twenty", "fifteen",
+// "hundred"). A digit word beside one belongs to that number ("twenty one", "one hundred"), so the wall
+// reads no digit words from such an answer.
+export function saysWholeNumberWord(parts: readonly string[]): boolean {
+  return parts.some((part) => NUMBER_WORDS.has(part) && !DIGIT_OF_WORD.has(part));
+}
+
 // Past the last part the lookup finds nothing, which ends the run.
 function digitWordsAt(parts: readonly string[], at: number): string {
   let digits = '';

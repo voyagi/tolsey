@@ -1,5 +1,5 @@
 import type { KitchenProfile } from '../domain/rule';
-import { DIGIT_OF_WORD, joinDigits, namedInWords, partsWithoutNames, saysCorrection, tokensOf } from '../domain/words';
+import { DIGIT_OF_WORD, joinDigits, namedInWords, partsWithoutNames, saysCorrection, saysWholeNumberWord, tokensOf } from '../domain/words';
 import { LOCAL_REPLY } from './wall-copy';
 
 export type OpenPrompt = { kind: string; id: string };
@@ -17,10 +17,13 @@ function onlyOne<T>(items: readonly T[]): T | undefined {
 }
 
 // Only an answer may spell its number one digit at a time, as the digit repeat asks the cook to; outside
-// a question number words are not read at all, so "one five" alone names no figure.
+// a question number words are not read at all, so "one five" alone names no figure. An answer with a
+// whole number word in it ("twenty one", "one hundred") has its digit words left unread too, so the
+// call goes without a value rather than with the last digit as the reading.
 function figureParts(tokens: readonly string[], profile: KitchenProfile, openPrompt: OpenPrompt | null): string[] {
   const parts = partsWithoutNames(tokens, profile);
-  return openPrompt === null ? parts : joinDigits(parts.map((part) => DIGIT_OF_WORD.get(part) ?? part));
+  if (openPrompt === null || saysWholeNumberWord(parts)) return parts;
+  return joinDigits(parts.map((part) => DIGIT_OF_WORD.get(part) ?? part));
 }
 
 // The words go out exactly as given: the server judges them beside the value, so cleaning them up
