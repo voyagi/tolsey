@@ -19,6 +19,33 @@ export const DEVICE_LABEL = 'simulated Alexa+';
 
 export const KEPT_IN_BROWSER = 'Kept in this browser';
 
+// What the demo is not, said on the page beside it. Every line is a fact about what runs today, never
+// a promise: a cut feature is named only under the What's next heading.
+export const LIMITS_HEADING = 'Limits';
+
+export const LIMITS: readonly string[] = [
+  'This is a simulated Alexa+ screen in a browser, not a real device.',
+  "The cook's words are typed or picked here. Speech recognition in a loud kitchen is not tested.",
+  'There are no sensors. A cook reads the thermometer and says the number.',
+  'Readings are in °F, and a number said with no unit is taken as °F.',
+  'The rules are the FDA Food Code 2022 defaults, plus house rules named as such on the pass.',
+  '/mcp needs no sign-in, so every write lands in a scratch kitchen that expires within 24 hours.',
+];
+
+export const WHATS_NEXT_HEADING = "What's next, not built yet";
+
+export const WHATS_NEXT: readonly string[] = [
+  'Corrective actions with a clock',
+  'The full schedule',
+  'MCP Apps cards',
+  'Voice sign-in',
+  'The full number grammar',
+  'The printable day sheet',
+  'The replay',
+];
+
+export const PRIVACY_LINK_TEXT = 'Privacy';
+
 export const NOT_LOGGED = 'NOT LOGGED';
 
 export const OPEN_CHECKS_HEADING = 'Open checks';

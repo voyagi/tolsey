@@ -3,10 +3,18 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { ToolCallResult } from '../client/mcp-client';
 import { PHRASE_TABLE } from '../test-support/phrase-table';
-import { DeviceFrame } from './DeviceFrame';
 import { intentFor } from './intent';
 import { WALL_PROFILE } from './profile';
-import { DEVICE_LABEL, SPEAKER_LABEL, TAUGHT_PHRASES } from './wall-copy';
+import {
+  DEVICE_LABEL,
+  LIMITS,
+  LIMITS_HEADING,
+  PRIVACY_LINK_TEXT,
+  SPEAKER_LABEL,
+  TAUGHT_PHRASES,
+  WHATS_NEXT,
+  WHATS_NEXT_HEADING,
+} from './wall-copy';
 import { initialWallState, wallReducer, type WallState } from './wall-state';
 import { WallView } from './WallView';
 
@@ -294,12 +302,15 @@ describe('a call that did not land', () => {
 });
 
 describe('the simulated device frame', () => {
-  const framed = renderToStaticMarkup(createElement(DeviceFrame, null, createElement(WallView, { state: READY, actions: ACTIONS })));
-
-  it('says simulated Alexa+ exactly once and holds the wall inside it', () => {
+  // The page draws its own frame; the Limits note beside it says simulated Alexa+ again, on purpose,
+  // so the count is taken inside the frame.
+  it.fails('says simulated Alexa+ exactly once and holds the wall inside it', () => {
+    const page = render(READY);
+    const framed = page.slice(...spanOf(page, /<div class="device">/, 'div'));
     expect(DEVICE_LABEL).toBe('simulated Alexa+');
     expect(framed.split('simulated Alexa+')).toHaveLength(2);
     expect(framed).toContain('Who is logging');
+    expect(framed).toContain('<main');
   });
 
   it('labels the answer with the speaker label on its own', () => {
@@ -327,7 +338,7 @@ describe('markup the page CSP and the static look allow', () => {
     { ...READY, openChecks: [{ id: 'reach_in_2', name: 'Reach-in two' }] },
     { ...READY, openChecks: [] },
   ];
-  const markups = states.map((state) => renderToStaticMarkup(createElement(DeviceFrame, null, createElement(WallView, { state, actions: ACTIONS }))));
+  const markups = states.map(render);
 
   it('renders no style attribute in any state', () => {
     for (const markup of markups) expect(markup).not.toContain('style="');
@@ -395,6 +406,46 @@ describe('the open-checks board shows what the record lists', () => {
 
     expect(markup.match(/role="status"/g)).toHaveLength(1);
     expect(inside(status, spanOf(markup, new RegExp(BOARD.source), 'section'))).toBe(false);
+  });
+});
+
+describe("the Limits note, What's next and the footer", () => {
+  const markup = render(READY);
+  const text = decoded(textOf(markup));
+
+  function sectionHeadedBy(heading: string): string {
+    const opener = new RegExp(`<h2 id="([^"]+)"[^>]*>${heading.replaceAll("'", '&#x27;')}</h2>`).exec(markup);
+    if (opener === null) throw new Error(`no h2 reading ${heading}`);
+    return markup.slice(...spanOf(markup, new RegExp(`<section\\b[^>]*aria-labelledby="${opener[1]}"`), 'section'));
+  }
+
+  it.fails('holds the six Limits lines and the seven names of what comes next, each as the copy module words it', () => {
+    expect(LIMITS).toHaveLength(6);
+    expect(WHATS_NEXT).toHaveLength(7);
+    for (const line of [...LIMITS, ...WHATS_NEXT]) expect(text).toContain(line);
+  });
+
+  it.fails('lists every Limits line under the Limits heading', () => {
+    const limits = decoded(sectionHeadedBy(LIMITS_HEADING));
+    for (const line of LIMITS) expect(limits).toContain(`<li>${line}</li>`);
+  });
+
+  it.fails("lists every What's next name under a heading that says they are not built yet", () => {
+    expect(WHATS_NEXT_HEADING).toMatch(/not built yet/);
+    const next = decoded(sectionHeadedBy(WHATS_NEXT_HEADING));
+    for (const name of WHATS_NEXT) expect(next).toContain(`<li>${name}</li>`);
+    for (const line of LIMITS) expect(next).not.toContain(line);
+  });
+
+  it.fails('sets the note outside the simulated device, so it never pushes the pass, the reply or the field down', () => {
+    const [, deviceEnds] = spanOf(markup, /<div class="device">/, 'div');
+    expect(markup.indexOf(LIMITS[1].replaceAll("'", '&#x27;'))).toBeGreaterThan(deviceEnds);
+  });
+
+  it.fails('links the privacy notice from a footer that sits outside main', () => {
+    const footer = markup.slice(...spanOf(markup, /<footer\b/, 'footer'));
+    expect(footer).toContain(`<a href="/privacy">${PRIVACY_LINK_TEXT}</a>`);
+    expect(inside(markup.indexOf('<footer'), spanOf(markup, /<main\b/, 'main'))).toBe(false);
   });
 });
 
