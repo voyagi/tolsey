@@ -129,7 +129,7 @@ function PassView({ pass }: { pass: Pass | null }) {
   );
 }
 
-function ExchangeView({ exchange, cook }: { exchange: Exchange | null; cook: string }) {
+function ExchangeView({ exchange }: { exchange: Exchange | null }) {
   if (exchange === null) {
     return (
       <div className="exchange exchange--empty">
@@ -140,7 +140,7 @@ function ExchangeView({ exchange, cook }: { exchange: Exchange | null; cook: str
   return (
     <section className="exchange" aria-label="Conversation">
       <p>
-        <span className="label">{`Cook ${cook}`}</span>
+        <span className="label">{`Cook ${exchange.cook}`}</span>
         <span className="said">{exchange.said}</span>
       </p>
       <p>
@@ -293,7 +293,7 @@ export function WallView({ state, actions }: { state: WallState; actions: WallAc
         <div className="talk">
           <h2 className="talk-head">Say the reading</h2>
           <Notices state={state} actions={actions} />
-          <ExchangeView exchange={state.exchange} cook={state.cook} />
+          <ExchangeView exchange={state.exchange} />
           <p className="hint">
             {HINT_BEFORE}
             <q>{EXAMPLE_PHRASE}</q>

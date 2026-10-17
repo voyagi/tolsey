@@ -7,10 +7,13 @@ import { NEW_KITCHEN_SENTENCE } from './wall-copy';
 
 type WallPhase = 'starting' | 'ready' | 'start_failed' | 'stopped';
 
+// The cook is the one who said the words, taken when they were sent: the roster can move on while
+// the call is out, and the words stay theirs.
 interface Exchange {
   said: string;
   reply: string;
   source: 'server' | 'wall';
+  cook: string;
 }
 
 type LoggedOutcome = Extract<Outcome, 'in_range' | 'out_of_range' | 'not_covered'>;
@@ -43,15 +46,15 @@ export type WallEvent =
   | { type: 'openChecksLoaded'; openChecks: readonly OpenCheck[] }
   | { type: 'cookSelected'; initials: string }
   | { type: 'callFailed'; said: string; reason: string; requestId: string; initials: string }
-  | { type: 'kitchenReplaced'; said: string }
+  | { type: 'kitchenReplaced'; said: string; initials: string }
   | { type: 'stopped'; message: string }
   | { type: 'edited'; text: string }
-  | { type: 'localReplied'; said: string; reply: string }
+  | { type: 'localReplied'; said: string; reply: string; initials: string }
   | { type: 'starting' }
   | { type: 'started' }
   | { type: 'startFailed'; error: string }
   | { type: 'sent'; said: string }
-  | { type: 'resultReceived'; said: string; result: ToolCallResult };
+  | { type: 'resultReceived'; said: string; result: ToolCallResult; initials: string };
 
 const LOGGED: ReadonlySet<string> = new Set<LoggedOutcome>(['in_range', 'out_of_range', 'not_covered']);
 const ANNOUNCED: ReadonlySet<string> = new Set<Outcome>(['in_range', 'out_of_range', 'not_covered', 'refused']);
@@ -101,7 +104,7 @@ function announced(state: WallState, outcome: Outcome | undefined, reply: string
   return { announcement: reply, announcementSeq: state.announcementSeq + 1 };
 }
 
-function afterResult(state: WallState, said: string, result: ToolCallResult): WallState {
+function afterResult(state: WallState, said: string, result: ToolCallResult, initials: string): WallState {
   const structured = result.structuredContent as Partial<LogReadingOutput> | undefined;
   const reply = result.content[0]?.text ?? '';
   return {
@@ -109,7 +112,7 @@ function afterResult(state: WallState, said: string, result: ToolCallResult): Wa
     ...announced(state, structured?.outcome, reply),
     inFlight: false,
     draft: '',
-    exchange: { said, reply, source: 'server' },
+    exchange: { said, reply, source: 'server', cook: initials },
     pass: passFrom(structured, state.pass),
     openPrompt: structured?.prompt ?? null,
     notLogged: null,
@@ -128,11 +131,11 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
     case 'sent':
       return state.inFlight ? state : { ...state, inFlight: true };
     case 'resultReceived':
-      return afterResult(state, event.said, event.result);
+      return afterResult(state, event.said, event.result, event.initials);
     case 'edited':
       return { ...state, draft: event.text };
     case 'localReplied':
-      return { ...state, draft: '', exchange: { said: event.said, reply: event.reply, source: 'wall' } };
+      return { ...state, draft: '', exchange: { said: event.said, reply: event.reply, source: 'wall', cook: event.initials } };
     // Never touches the pass: a call that did not land must not look logged.
     case 'callFailed':
       return {
@@ -149,7 +152,7 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
         ...state,
         inFlight: false,
         draft: event.said,
-        exchange: { said: event.said, reply: NEW_KITCHEN_SENTENCE, source: 'wall' },
+        exchange: { said: event.said, reply: NEW_KITCHEN_SENTENCE, source: 'wall', cook: event.initials },
         notLogged: null,
         pendingRetry: null,
         openPrompt: null,

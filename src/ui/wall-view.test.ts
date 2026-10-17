@@ -51,7 +51,7 @@ function result(outcome: string, text: string, fields: Record<string, unknown>):
 function afterResult(state: WallState, said: string, answer: ToolCallResult): WallState {
   return [
     { type: 'sent', said } as const,
-    { type: 'resultReceived', said, result: answer } as const,
+    { type: 'resultReceived', said, result: answer, initials: 'AB' } as const,
   ].reduce(wallReducer, state);
 }
 
@@ -250,6 +250,14 @@ describe('who is logging, on the top bar', () => {
     const checked = radios.filter((radio) => radio.includes('checked=""'));
     expect(checked).toHaveLength(1);
     expect(checked[0]).toContain('value="MR"');
+  });
+
+  it('labels the words in the conversation with the cook who said them, not the cook selected since', () => {
+    const answered = afterResult(READY, 'the walk-in reads 38', result('in_range', 'Walk-in, 38, in range, AB', { verdict: 'in range', value: 38 }));
+    const markup = render(wallReducer(answered, { type: 'cookSelected', initials: 'MR' }));
+    const [from, to] = spanOf(markup, /<section class="exchange"/, 'section');
+    expect(markup.slice(from, to)).toContain('<span class="label">Cook AB</span>');
+    expect(markup.slice(from, to)).not.toContain('Cook MR');
   });
 
   it('sits in the top bar, before the conversation', () => {

@@ -194,7 +194,7 @@ export function createWallSession(options: WallSessionOptions): WallSession {
     await start();
   }
 
-  async function replaceKitchen(said: string): Promise<void> {
+  async function replaceKitchen(said: string, initials: string): Promise<void> {
     mcp = null;
     if (replacementUsed) {
       stop(STOPPED_MESSAGE);
@@ -203,7 +203,7 @@ export function createWallSession(options: WallSessionOptions): WallSession {
     replacementUsed = true;
     try {
       await connect();
-      dispatch({ type: 'kitchenReplaced', said });
+      dispatch({ type: 'kitchenReplaced', said, initials });
     } catch (error) {
       stop(error instanceof DemoFull ? DEMO_FULL_MESSAGE : STOPPED_MESSAGE);
       return;
@@ -225,11 +225,13 @@ export function createWallSession(options: WallSessionOptions): WallSession {
     if (session === null || state.phase !== 'ready' || state.inFlight) return;
     const intent = intentFor(text, profile, state.openPrompt);
     if (intent.kind === 'none') return;
+    // Taken once, before anything is awaited: the call and the exchange both keep this cook even if
+    // the roster moves while the call is out.
+    const initials = state.cook;
     if (intent.kind === 'local_reply') {
-      dispatch({ type: 'localReplied', said: text, reply: intent.text });
+      dispatch({ type: 'localReplied', said: text, reply: intent.text, initials });
       return;
     }
-    const initials = state.cook;
     const requestId = requestIdFor(text, initials);
     dispatch({ type: 'edited', text });
     dispatch({ type: 'sent', said: text });
@@ -237,14 +239,14 @@ export function createWallSession(options: WallSessionOptions): WallSession {
     switch (outcome.kind) {
       case 'landed':
         replacementUsed = false;
-        dispatch({ type: 'resultReceived', said: text, result: outcome.result });
+        dispatch({ type: 'resultReceived', said: text, result: outcome.result, initials });
         await refreshOpenChecks();
         return;
       case 'failed':
         dispatch({ type: 'callFailed', said: text, reason: outcome.reason, requestId, initials });
         return;
       case 'kitchen_ended':
-        await replaceKitchen(text);
+        await replaceKitchen(text, initials);
         return;
       case 'demo_full':
         stop(DEMO_FULL_MESSAGE);

@@ -283,6 +283,23 @@ describe('who is logging', () => {
     expect(session.getState().cook).toBe('MR');
   });
 
+  it.each<[string, Route]>([
+    ['a logged reading', (body) => answer(body, IN_RANGE)],
+    ['a closed kitchen that is replaced', KITCHEN_CLOSED],
+  ])('after %s, the conversation names the cook who said the words, not one switched to while the call was out', async (_answer, route) => {
+    const call = heldBack<Response>();
+    const worker = fakeWorker({ toolsCall: () => call.promise });
+    const session = createWallSession({ baseUrl: BASE, profile: WALL_PROFILE, fetch: worker.fetchFn });
+    await session.start();
+    const said = session.say(WALK_IN);
+    await settle();
+    session.selectCook('MR');
+    call.release(await route({ id: worker.callsOf('tools/call')[0].body?.id }));
+    await said;
+    expect(session.getState().cook).toBe('MR');
+    expect(session.getState().exchange).toMatchObject({ said: WALK_IN, cook: 'AB' });
+  });
+
   it('a switch after a held question applies to the answer call', async () => {
     const worker = fakeWorker({ toolsCall: (body) => answer(body, HELD) });
     const session = sessionOn(worker);
@@ -426,7 +443,7 @@ describe('a gone or closed kitchen is replaced once', () => {
     expect(worker.mintCount()).toBe(2);
     expect(session.kitchenId).toBe(KITCHEN_IDS[1]);
     expect(session.getState().phase).toBe('ready');
-    expect(session.getState().exchange).toEqual({ said: 'walk-in 45', reply: NEW_KITCHEN_SENTENCE, source: 'wall' });
+    expect(session.getState().exchange).toEqual({ said: 'walk-in 45', reply: NEW_KITCHEN_SENTENCE, source: 'wall', cook: 'AB' });
     expect(session.getState().draft).toBe('walk-in 45');
 
     worker.routes.toolsCall = WORKING.toolsCall;

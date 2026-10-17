@@ -61,7 +61,7 @@ function reduce(state: WallState, ...events: WallEvent[]): WallState {
 const READY = reduce(initialWallState(WALL_PROFILE), { type: 'started' });
 
 function received(state: WallState, result: ToolCallResult, said = SAID): WallState {
-  return reduce(state, { type: 'sent', said }, { type: 'resultReceived', said, result });
+  return reduce(state, { type: 'sent', said }, { type: 'resultReceived', said, result, initials: 'AB' });
 }
 
 const WITH_PASS = received(READY, resultOf('in_range'));
@@ -73,7 +73,7 @@ describe('a result of each outcome', () => {
       const result = resultOf(outcome);
       const state = received(WITH_PASS, result, 'the words sent');
       const { lineId, recordCode, checkPoint, value, unit, verdict, rule, initials } = result.structuredContent ?? {};
-      expect(state.exchange).toEqual({ said: 'the words sent', reply: REPLIES[outcome], source: 'server' });
+      expect(state.exchange).toEqual({ said: 'the words sent', reply: REPLIES[outcome], source: 'server', cook: 'AB' });
       expect(state.pass).toStrictEqual({ outcome, lineId, recordCode, checkPoint, value, unit, verdict, rule, initials });
     },
   );
@@ -82,7 +82,7 @@ describe('a result of each outcome', () => {
     'a %s result sets the exchange and leaves the pass as it was',
     (outcome) => {
       const state = received(WITH_PASS, resultOf(outcome), 'reach-in two is fine');
-      expect(state.exchange).toEqual({ said: 'reach-in two is fine', reply: REPLIES[outcome], source: 'server' });
+      expect(state.exchange).toEqual({ said: 'reach-in two is fine', reply: REPLIES[outcome], source: 'server', cook: 'AB' });
       expect(state.pass).toBe(WITH_PASS.pass);
     },
   );
@@ -131,10 +131,10 @@ describe('the open question', () => {
 
   it('a local reply changes neither the open question nor the pass', () => {
     const asked = received(WITH_PASS, resultOf('held'));
-    const state = reduce(asked, { type: 'localReplied', said: 'hello', reply: 'Say a check and its number.' });
+    const state = reduce(asked, { type: 'localReplied', said: 'hello', reply: 'Say a check and its number.', initials: 'AB' });
     expect(state.openPrompt).toBe(asked.openPrompt);
     expect(state.pass).toBe(asked.pass);
-    expect(state.exchange).toEqual({ said: 'hello', reply: 'Say a check and its number.', source: 'wall' });
+    expect(state.exchange).toEqual({ said: 'hello', reply: 'Say a check and its number.', source: 'wall', cook: 'AB' });
   });
 });
 
@@ -150,7 +150,7 @@ describe('the words in the field', () => {
 
   it('a local reply clears the draft', () => {
     const typed = reduce(READY, { type: 'edited', text: 'hello' });
-    expect(reduce(typed, { type: 'localReplied', said: 'hello', reply: 'Say a check.' }).draft).toBe('');
+    expect(reduce(typed, { type: 'localReplied', said: 'hello', reply: 'Say a check.', initials: 'AB' }).draft).toBe('');
   });
 
   it('a call that never answered keeps the draft', () => {
@@ -194,8 +194,8 @@ describe('a call that did not land', () => {
   it('kitchenReplaced says the new kitchen in the exchange, keeps the words and drops the retry and the open question', () => {
     const asked = received(WITH_PASS, resultOf('held'));
     const notLogged = reduce(asked, { type: 'edited', text: SAID }, { type: 'sent', said: SAID }, failed('x'));
-    const state = reduce(notLogged, { type: 'kitchenReplaced', said: SAID });
-    expect(state.exchange).toEqual({ said: SAID, reply: NEW_KITCHEN_SENTENCE, source: 'wall' });
+    const state = reduce(notLogged, { type: 'kitchenReplaced', said: SAID, initials: 'AB' });
+    expect(state.exchange).toEqual({ said: SAID, reply: NEW_KITCHEN_SENTENCE, source: 'wall', cook: 'AB' });
     expect(state.draft).toBe(SAID);
     expect(state.pendingRetry).toBeNull();
     expect(state.openPrompt).toBeNull();
@@ -227,12 +227,25 @@ describe('who is logging', () => {
     const state = reduce(READY, { type: 'cookSelected', initials: 'MR' }, { type: 'cookSelected', initials });
     expect(state.cook).toBe('MR');
   });
+
+  // Each event that writes the exchange is sent with AB's initials after the roster has moved to MR,
+  // as when the cook is switched while the call is out, so the exchange can only say AB by taking the
+  // event's own initials.
+  it.each<[string, WallEvent[]]>([
+    ['a server result', [{ type: 'sent', said: SAID }, { type: 'resultReceived', said: SAID, result: resultOf('in_range'), initials: 'AB' }]],
+    ['a local reply', [{ type: 'localReplied', said: 'hello', reply: 'Say a check and its number.', initials: 'AB' }]],
+    ['a replaced kitchen', [{ type: 'sent', said: SAID }, { type: 'kitchenReplaced', said: SAID, initials: 'AB' }]],
+  ])('%s names the cook who said the words, not the cook selected since', (_event, events) => {
+    const state = reduce(READY, { type: 'cookSelected', initials: 'MR' }, ...events, { type: 'cookSelected', initials: 'JT' });
+    expect(state.cook).toBe('JT');
+    expect(state.exchange?.cook).toBe('AB');
+  });
 });
 
 describe('the status region is written once per logged reading or refusal and by nothing else', () => {
   const sentAndReceived = (result: ToolCallResult, said = SAID): WallEvent[] => [
     { type: 'sent', said },
-    { type: 'resultReceived', said, result },
+    { type: 'resultReceived', said, result, initials: 'AB' },
   ];
 
   it('is empty at load', () => {
@@ -249,9 +262,9 @@ describe('the status region is written once per logged reading or refusal and by
   });
 
   it.each<[string, WallEvent[]]>([
-    ['a local reply', [{ type: 'localReplied', said: 'hello', reply: 'Say a check and its number.' }]],
+    ['a local reply', [{ type: 'localReplied', said: 'hello', reply: 'Say a check and its number.', initials: 'AB' }]],
     ['a call that did not land', [{ type: 'sent', said: SAID }, failed('Tolsey did not answer in time.')]],
-    ['a replaced kitchen', [{ type: 'sent', said: SAID }, { type: 'kitchenReplaced', said: SAID }]],
+    ['a replaced kitchen', [{ type: 'sent', said: SAID }, { type: 'kitchenReplaced', said: SAID, initials: 'AB' }]],
     ['a cook switch', [{ type: 'cookSelected', initials: 'MR' }]],
     ['a held question', sentAndReceived(resultOf('held'))],
     ['nothing to fix', sentAndReceived(resultOf('nothing_to_fix'))],
@@ -303,7 +316,7 @@ describe('the open checks, as the record lists them', () => {
   it('across a refusal and the list refresh after it, the status count rises by exactly 1', () => {
     const events: WallEvent[] = [
       { type: 'sent', said: 'reach-in two is fine' },
-      { type: 'resultReceived', said: 'reach-in two is fine', result: resultOf('refused') },
+      { type: 'resultReceived', said: 'reach-in two is fine', result: resultOf('refused'), initials: 'AB' },
       loaded(REACH_IN_TWO),
     ];
     expect(statusWrites(events, READY)).toBe(1);
@@ -318,7 +331,7 @@ describe('the open checks, as the record lists them', () => {
 
   it("kitchenReplaced drops the closed kitchen's list, so no list shows until the new record answers", () => {
     const listed = reduce(READY, loaded(REACH_IN_TWO));
-    const after = reduce(listed, { type: 'sent', said: SAID }, { type: 'kitchenReplaced', said: SAID });
+    const after = reduce(listed, { type: 'sent', said: SAID }, { type: 'kitchenReplaced', said: SAID, initials: 'AB' });
     expect(after.openChecks).toBeNull();
   });
 });
