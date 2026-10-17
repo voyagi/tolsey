@@ -1,15 +1,22 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openMcpSession } from '../client/mcp-client';
 import { messagesIn } from '../client/messages';
 import { businessDay } from '../domain/business-day';
 import { D1Store } from '../store/d1-store';
 import type { D1Like, StoredLine } from '../store/port';
+import { CAPTURE_FILE, privacyProblems, runCapture } from '../test-support/examples';
 import { builtWorkerHarness, type FetchLike } from '../test-support/target';
 import { WALL_PROFILE } from '../ui/profile';
 import { createWallSession, type WallSession } from '../ui/wall-session';
 
 const WALK_IN = 'the walk-in reads 38';
 const REACH_IN_TWO = 'reach-in two is fine';
+// 11:01 in Chicago, inside the demo kitchen's schedule, so the capture's own hours check lets it run
+// whenever the suite does. The Worker keeps its real clock.
+const IN_SERVICE = Date.parse('2026-10-19T16:01:00.000Z');
 // Long enough that a mint or an initialize in workerd under a full suite never trips it, short enough
 // to keep the held answer's wait small.
 const LATE_ANSWER_TIMEOUT_MS = 2_000;
@@ -307,6 +314,29 @@ describe('the wall session against the built Worker in workerd, lines read strai
       expect(session.getState().notLogged).toBeNull();
       expect(session.getState().pass).toMatchObject({ checkPoint: { id: 'walk_in' }, value: 38, outcome: 'in_range' });
     });
+  });
+
+  // The capture's own three steps against the built Worker, so PRIV-02 is held to what this server
+  // really answers and never refuses a run of it. The base is renamed to localhost, the name a local
+  // run answers on, because the capture records its host and an address is a problem by itself.
+  it('captures a run of the built Worker that passes PRIV-02', async () => {
+    const outDir = mkdtempSync(join(tmpdir(), 'tolsey-capture-e2e-'));
+    const local = new URL(baseUrl);
+    local.hostname = 'localhost';
+    try {
+      await runCapture({
+        baseUrl: local,
+        fetch: (url, init) => fetch(url, init),
+        now: () => IN_SERVICE,
+        sleep: async () => {},
+        gapMs: 0,
+        outDir,
+        profile: WALL_PROFILE,
+      });
+      expect(privacyProblems(outDir, WALL_PROFILE.roster)).toEqual({ status: 'checked', files: [CAPTURE_FILE], problems: [] });
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
   });
 
   it('gives two sessions started one after the other two kitchens, each holding only its own line', async () => {

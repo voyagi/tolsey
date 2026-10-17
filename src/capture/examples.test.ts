@@ -120,6 +120,7 @@ describe('PRIV-02: what a captured run may hold', () => {
     ['an IPv6 literal', 'ip_literal', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (c.note = 'client 2001:db8::1 called')) })],
     ['a request header name', 'header_name', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (exchangeOf(c).request.headers['user-agent'] = 'Mozilla/5.0')) })],
     ['a hostname other than the canonical one', 'foreign_host', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (c.source = 'https://example.com/run')) })],
+    ['a bare hostname inside prose', 'foreign_host', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (c.note = 'served by example.com today')) })],
     ['a file the capture did not write', 'unlisted_file', () => fixture({ [CAPTURE_FILE]: cleanCapture(), 'notes.json': { said: 'hello' } }, [CAPTURE_FILE])],
   ];
 
@@ -130,6 +131,11 @@ describe('PRIV-02: what a captured run may hold', () => {
   it('is green on a clean capture-shaped fixture', () => {
     const check = privacyProblems(fixture({ [CAPTURE_FILE]: cleanCapture() }), ROSTER);
     expect(check).toEqual({ status: 'checked', files: [CAPTURE_FILE], problems: [] });
+  });
+
+  it('stays green on the canonical host, a decimal, a version and "e.g." inside prose', () => {
+    const capture = withPlanted((c) => (c.note = `served by ${CANONICAL_HOST}, e.g. at 38.5 on version 0.1.0.`));
+    expect(privacyProblems(fixture({ [CAPTURE_FILE]: capture }), ROSTER)).toEqual({ status: 'checked', files: [CAPTURE_FILE], problems: [] });
   });
 
   it('is red when the manifest lists no capture file', () => {

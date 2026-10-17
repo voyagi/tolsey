@@ -49,9 +49,10 @@ export type PrivacyCheck = { status: 'absent' } | { status: 'checked'; files: st
 // 04:30:00, a UUID or a version such as 0.1.0 is never mistaken for an address by its shape alone.
 const NOT_IP_CHARACTERS = /[^0-9A-Fa-f.:]+/;
 const URL_PATTERN = /https?:\/\/[^\s"'<>)\]]+/gi;
-// A whole value shaped like a host name with an alphabetic last label, so a dotted version or a
-// decimal never reads as one.
-const HOST_SHAPE = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z][a-z0-9-]*$/i;
+// Any run inside a value shaped like a host name, its last label alphabetic and two characters or
+// more, so a dotted version, a decimal or an "e.g." never reads as one, and a host named in a
+// sentence is found as surely as one standing alone.
+const HOST_SHAPE = /(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z][a-z0-9-]*[a-z0-9]/gi;
 
 function holdsIpLiteral(text: string): boolean {
   return text
@@ -69,7 +70,7 @@ function foreignHostsIn(text: string): string[] {
       hosts.push(url);
     }
   }
-  if (HOST_SHAPE.test(text)) hosts.push(text.toLowerCase());
+  for (const [host] of text.matchAll(HOST_SHAPE)) hosts.push(host.toLowerCase());
   return hosts.filter((host) => host !== CANONICAL_HOST);
 }
 
