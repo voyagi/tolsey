@@ -40,9 +40,11 @@ const PROJECTS = ['unit', 'store', 'conformance', 'e2e'];
 const TIMEOUT_MS = 20 * 60 * 1000;
 const TEST_FILE_SPECS = [':(glob)src/**/*.test.ts', ':(glob)src/**/*.test.tsx', ':(glob)src/**/*.spec.ts', ':(glob)src/**/*.spec.tsx'];
 // The capture project's files drive the deployed Worker in real time and write examples/, so they are
-// run by hand (npm run test:capture) and never by this gate's run. Named by their own suffix, so a
-// test file anywhere else that no project collects is still refused.
-const RUN_BY_HAND = /\.capture\.test\.tsx?$/;
+// run by hand (npm run test:capture) and never by this gate's run. Matched to that project's include
+// in vitest.config.ts (the selftest pins it), so a file named like a capture test anywhere else, which
+// no project collects, is still refused.
+const CAPTURE_INCLUDE = 'src/capture/**/*.capture.test.ts';
+const RUN_BY_HAND = /^src\/capture\/.+\.capture\.test\.ts$/;
 
 function parseFloor(argv) {
   const at = argv.indexOf('--floor');
@@ -304,6 +306,17 @@ function selftest() {
     root = makeRoot(['src/capture/f.test.ts']);
     check('a tracked src/capture test file that is not a capture file, absent from the report, exits 1 naming it',
       runCli(root, { fixture: report(passing(root)) }), 1, /src\/capture\/f\.test\.ts: tracked but not in the report/);
+
+    root = makeRoot(['src/server/g.capture.test.ts']);
+    check('a tracked file named like a capture file outside src/capture, absent from the report, exits 1 naming it',
+      runCli(root, { fixture: report(passing(root)) }), 1, /src\/server\/g\.capture\.test\.ts: tracked but not in the report/);
+
+    // RUN_BY_HAND leaves out exactly what the capture project collects, so moving that include must
+    // turn this gate's selftest red rather than leave a file no project runs counted as by hand.
+    const vitestConfig = readFileSync(join(dirname(self), '..', 'vitest.config.ts'), 'utf8');
+    const includeKept = vitestConfig.includes(`const CAPTURE_FILES = '${CAPTURE_INCLUDE}';`);
+    check('vitest.config.ts collects the capture project from the same files RUN_BY_HAND leaves out',
+      { code: includeKept ? 0 : 1, out: `capture include ${CAPTURE_INCLUDE}` }, 0, /capture include/);
 
     root = makeRoot();
     check('an empty report is UNKNOWN, exit 2', runCli(root, { fixture: report([]) }), 2, /UNKNOWN: the report lists no test files/);
