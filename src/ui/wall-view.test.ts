@@ -59,7 +59,7 @@ function result(outcome: string, text: string, fields: Record<string, unknown>):
 function afterResult(state: WallState, said: string, answer: ToolCallResult): WallState {
   return [
     { type: 'sent', said } as const,
-    { type: 'resultReceived', said, result: answer, initials: 'AB' } as const,
+    { type: 'resultReceived', said, result: answer, initials: 'AB', callKey: `AB|${said}` } as const,
   ].reduce(wallReducer, state);
 }
 
@@ -286,7 +286,7 @@ describe('a call that did not land', () => {
     const state = [
       { type: 'edited', text: said } as const,
       { type: 'sent', said } as const,
-      { type: 'callFailed', said, reason, requestId: 'r-1', initials: 'AB' } as const,
+      { type: 'callFailed', said, reason, requestId: 'r-1', initials: 'AB', callKey: `AB|${said}` } as const,
     ].reduce(wallReducer, { ...READY, pass: IN_RANGE_PASS });
     const markup = render(state);
     expect(markup).toContain('NOT LOGGED');
@@ -302,7 +302,7 @@ describe('a call that did not land', () => {
     const state = [
       { type: 'edited', text: said } as const,
       { type: 'sent', said } as const,
-      { type: 'callFailed', said, reason: 'Tolsey did not answer in time.', requestId: 'r-1', initials: 'AB' } as const,
+      { type: 'callFailed', said, reason: 'Tolsey did not answer in time.', requestId: 'r-1', initials: 'AB', callKey: `AB|${said}` } as const,
       { type: 'edited', text: 'walk-in 44' } as const,
     ].reduce(wallReducer, READY);
     const markup = render(state);
@@ -315,7 +315,7 @@ describe('a call that did not land', () => {
     const state = [
       { type: 'edited', text: said } as const,
       { type: 'sent', said } as const,
-      { type: 'callFailed', said, reason: 'Tolsey did not answer in time.', requestId: 'r-1', initials: 'AB' } as const,
+      { type: 'callFailed', said, reason: 'Tolsey did not answer in time.', requestId: 'r-1', initials: 'AB', callKey: `AB|${said}` } as const,
       { type: 'localReplied', said: 'hello', reply: 'Say a check and its number.', initials: 'AB' } as const,
     ].reduce(wallReducer, READY);
     const markup = render(state);
@@ -355,7 +355,7 @@ describe('markup the page CSP and the static look allow', () => {
   const failed = [
     { type: 'edited', text: 'walk-in 45' } as const,
     { type: 'sent', said: 'walk-in 45' } as const,
-    { type: 'callFailed', said: 'walk-in 45', reason: 'Tolsey did not answer in time.', requestId: 'r-1', initials: 'AB' } as const,
+    { type: 'callFailed', said: 'walk-in 45', reason: 'Tolsey did not answer in time.', requestId: 'r-1', initials: 'AB', callKey: 'AB|walk-in 45' } as const,
   ].reduce(wallReducer, READY);
   const states: WallState[] = [
     initialWallState(WALL_PROFILE),

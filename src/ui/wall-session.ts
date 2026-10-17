@@ -118,6 +118,13 @@ async function fetchOpenChecks(session: McpSession): Promise<OpenCheck[] | null>
   }
 }
 
+// The server knows a retry by every argument but request_id, the question answered included, so the
+// wall keys its retries the same way: the same words under another question, or from another cook, are
+// another call. screen_id is left out because it never changes within a session.
+function callKeyOf(args: Record<string, unknown>): string {
+  return JSON.stringify(Object.entries(args).sort(([a], [b]) => (a < b ? -1 : 1)));
+}
+
 async function callLogReading(session: McpSession, args: Record<string, unknown>): Promise<CallOutcome> {
   try {
     const result = await session.callTool(LOG_READING, args);
@@ -219,10 +226,10 @@ export function createWallSession(options: WallSessionOptions): WallSession {
     await refreshOpenChecks();
   }
 
-  // Words from the same cook that did not land keep their request_id, whatever was sent between, so a
-  // call the server stored before its answer was lost is answered from the record, never stored twice.
-  function requestIdFor(text: string, initials: string): string {
-    return retryFor(state.pendingRetries, text, initials)?.requestId ?? newId();
+  // A call that did not land keeps its request_id, whatever was sent between, so a call the server
+  // stored before its answer was lost is answered from the record, never stored twice.
+  function requestIdFor(callKey: string): string {
+    return retryFor(state.pendingRetries, callKey)?.requestId ?? newId();
   }
 
   // One call in flight at a time: a second say while the first is out sends nothing.
@@ -238,18 +245,20 @@ export function createWallSession(options: WallSessionOptions): WallSession {
       dispatch({ type: 'localReplied', said: text, reply: intent.text, initials });
       return;
     }
-    const requestId = requestIdFor(text, initials);
+    const args = { ...intent.args, initials };
+    const callKey = callKeyOf(args);
+    const requestId = requestIdFor(callKey);
     dispatch({ type: 'edited', text });
     dispatch({ type: 'sent', said: text });
-    const outcome = await callLogReading(session, { ...intent.args, initials, screen_id: screenId, request_id: requestId });
+    const outcome = await callLogReading(session, { ...args, screen_id: screenId, request_id: requestId });
     switch (outcome.kind) {
       case 'landed':
         replacementUsed = false;
-        dispatch({ type: 'resultReceived', said: text, result: outcome.result, initials });
+        dispatch({ type: 'resultReceived', said: text, result: outcome.result, initials, callKey });
         await refreshOpenChecks();
         return;
       case 'failed':
-        dispatch({ type: 'callFailed', said: text, reason: outcome.reason, requestId, initials });
+        dispatch({ type: 'callFailed', said: text, reason: outcome.reason, requestId, initials, callKey });
         return;
       case 'kitchen_ended':
         await replaceKitchen(text, initials);

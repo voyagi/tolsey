@@ -53,6 +53,15 @@ const KITCHEN_CLOSED = toolError('kitchen_closed', 'This kitchen has closed. Sta
 const KITCHEN_FULL = toolError('kitchen_full', 'This kitchen is full. Start a new kitchen to keep logging.');
 const NEVER_ANSWERS: Route = () => new Promise<Response>(() => undefined);
 
+// A held reading that asks for the digits again under the given question id.
+function heldOn(promptId: string): Route {
+  return (body) =>
+    answer(body, {
+      content: [{ type: 'text', text: 'Say it one digit at a time. What does the walk-in read?' }],
+      structuredContent: { outcome: 'held', verdict: 'held', value: 15, prompt: { kind: 'digit_repeat', id: promptId } },
+    });
+}
+
 const WORKING: Routes = {
   mint: (count) => asJson(MINTED[count - 1], 201),
   initialize: (body) => answer(body, { protocolVersion: '2025-11-25', capabilities: {}, serverInfo: { name: 'tolsey', version: '0.1.0' } }),
@@ -490,6 +499,32 @@ describe('a retry of the same words reuses the request_id', () => {
     await session.say('walk-in 45');
     expect(worker.argsOfCall(3).request_id).toBe(worker.argsOfCall(1).request_id);
     expect(session.getState().pendingRetries).toEqual([]);
+  });
+
+  // The server knows a retry by every argument but request_id, the question answered included, so the
+  // same words under a new question are a new call: borrowing the lost call's id would be refused as
+  // request_id_reused on every retry.
+  it('words lost under one question reuse their request_id under it, and said under a new question get a new one', async () => {
+    const worker = fakeWorker({ toolsCall: heldOn('p-1') });
+    const session = sessionOn(worker);
+    await session.start();
+    await session.say('walk-in 15');
+    expect(session.getState().openPrompt).toEqual({ kind: 'digit_repeat', id: 'p-1' });
+
+    worker.routes.toolsCall = NEVER_ANSWERS;
+    await session.say('1 5');
+    await session.say('1 5');
+    expect(worker.argsOfCall(1).pending_prompt_id).toBe('p-1');
+    expect(worker.argsOfCall(2).request_id).toBe(worker.argsOfCall(1).request_id);
+
+    worker.routes.toolsCall = heldOn('p-2');
+    await session.say('one five');
+    expect(session.getState().openPrompt).toEqual({ kind: 'digit_repeat', id: 'p-2' });
+
+    worker.routes.toolsCall = WORKING.toolsCall;
+    await session.say('1 5');
+    expect(worker.argsOfCall(4).pending_prompt_id).toBe('p-2');
+    expect(worker.argsOfCall(4).request_id).not.toBe(worker.argsOfCall(1).request_id);
   });
 
   it('a local reply after a NOT LOGGED clears the notice, and the same words sent after it still reuse the request_id', async () => {

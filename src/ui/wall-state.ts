@@ -24,12 +24,14 @@ type Pass = Partial<Pick<LogReadingOutput, PassField>> & { outcome: LoggedOutcom
 
 type OpenCheck = DueNowOutput['openChecks'][number];
 
-// Words that did not land and the request_id they went out under: the server may have stored them
-// before the answer was lost, so they keep that id until an answer for the same words and cook comes back.
+// A call that did not land and the request_id it went out under: the server may have stored it before
+// the answer was lost, so the same call keeps that id until an answer for it comes back. `callKey` is
+// the call as the server knows it (wall-session.ts builds it from every argument but request_id); the
+// words are kept for the field.
 interface PendingRetry {
   words: string;
   requestId: string;
-  initials: string;
+  callKey: string;
 }
 
 export interface WallState {
@@ -55,7 +57,7 @@ export interface WallState {
 export type WallEvent =
   | { type: 'openChecksLoaded'; openChecks: readonly OpenCheck[] }
   | { type: 'cookSelected'; initials: string }
-  | { type: 'callFailed'; said: string; reason: string; requestId: string; initials: string }
+  | { type: 'callFailed'; said: string; reason: string; requestId: string; initials: string; callKey: string }
   | { type: 'kitchenReplaced'; said: string; initials: string }
   | { type: 'stopped'; message: string }
   | { type: 'edited'; text: string }
@@ -64,7 +66,7 @@ export type WallEvent =
   | { type: 'started' }
   | { type: 'startFailed'; error: string }
   | { type: 'sent'; said: string }
-  | { type: 'resultReceived'; said: string; result: ToolCallResult; initials: string };
+  | { type: 'resultReceived'; said: string; result: ToolCallResult; initials: string; callKey: string };
 
 const LOGGED: ReadonlySet<string> = new Set<LoggedOutcome>(['in_range', 'out_of_range', 'not_covered']);
 
@@ -116,17 +118,17 @@ function spoken(state: WallState, sentence: string): Pick<WallState, 'announceme
   return { announcement: sentence, announcementSeq: state.announcementSeq + 1 };
 }
 
-export function retryFor(retries: readonly PendingRetry[], words: string, initials: string): PendingRetry | undefined {
-  return retries.find((retry) => retry.words === words && retry.initials === initials);
+export function retryFor(retries: readonly PendingRetry[], callKey: string): PendingRetry | undefined {
+  return retries.find((retry) => retry.callKey === callKey);
 }
 
-function withoutRetry(retries: readonly PendingRetry[], words: string, initials: string): readonly PendingRetry[] {
-  return retries.filter((retry) => retry.words !== words || retry.initials !== initials);
+function withoutRetry(retries: readonly PendingRetry[], callKey: string): readonly PendingRetry[] {
+  return retries.filter((retry) => retry.callKey !== callKey);
 }
 
-// Only an answer for the same words from the same cook settles their retry: an answer for other words
-// says nothing about whether these were stored.
-function afterResult(state: WallState, said: string, result: ToolCallResult, initials: string): WallState {
+// Only an answer for the same call settles its retry: an answer for another call, the same words under
+// another question or from another cook included, says nothing about whether this one was stored.
+function afterResult(state: WallState, said: string, result: ToolCallResult, initials: string, callKey: string): WallState {
   const structured = result.structuredContent as Partial<LogReadingOutput> | undefined;
   const reply = result.content[0]?.text ?? '';
   return {
@@ -138,7 +140,7 @@ function afterResult(state: WallState, said: string, result: ToolCallResult, ini
     pass: passFrom(structured, state.pass),
     openPrompt: structured?.prompt ?? null,
     notLogged: null,
-    pendingRetries: withoutRetry(state.pendingRetries, said, initials),
+    pendingRetries: withoutRetry(state.pendingRetries, callKey),
   };
 }
 
@@ -153,7 +155,7 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
     case 'sent':
       return state.inFlight ? state : { ...state, inFlight: true };
     case 'resultReceived':
-      return afterResult(state, event.said, event.result, event.initials);
+      return afterResult(state, event.said, event.result, event.initials, event.callKey);
     // In this case and the next, the field moves on to other words, so NOT LOGGED no longer describes it.
     // The pending retries stay: the words that did not land may still be stored, and resending them must
     // reuse their request_id.
@@ -176,8 +178,8 @@ export function wallReducer(state: WallState, event: WallEvent): WallState {
         draft: event.said,
         notLogged: { reason: event.reason },
         pendingRetries: [
-          ...withoutRetry(state.pendingRetries, event.said, event.initials),
-          { words: event.said, requestId: event.requestId, initials: event.initials },
+          ...withoutRetry(state.pendingRetries, event.callKey),
+          { words: event.said, requestId: event.requestId, callKey: event.callKey },
         ],
       };
     // The open checks belonged to the kitchen that closed, so they go with it: the new kitchen's list
