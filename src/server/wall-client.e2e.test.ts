@@ -180,6 +180,24 @@ describe('the wall session against the built Worker in workerd, lines read strai
       expect(held).toMatchObject({ kind: 'held' });
       expect(reading).toMatchObject({ kind: 'reading', checkPointId: 'walk_in', valueTenths: 150, answersId: held?.id });
     });
+
+    it('sends "wrong number" after a reading, and the record marks that line and asks for its number again', async () => {
+      const day = chicagoBusinessDay();
+      const calls: ToolCall[] = [];
+      const session = await startedSession(calls);
+      await session.say(WALK_IN);
+      await session.say('wrong number');
+
+      expect(calls).toHaveLength(2);
+      expect(calls[1].args).toMatchObject({ words: 'wrong number' });
+      expect(calls[1].structuredContent).toMatchObject({ outcome: 'held', prompt: { kind: 'number_after_wrong' } });
+      expect(session.getState().openPrompt).toMatchObject({ kind: 'number_after_wrong' });
+      const lines = await store.linesForDay(session.kitchenId as string, day);
+      const reading = lines.find((line) => line.requestId === calls[0].args.request_id);
+      const marker = lines.find((line) => line.requestId === calls[1].args.request_id);
+      expect(reading).toMatchObject({ kind: 'reading', checkPointId: 'walk_in' });
+      expect(marker).toMatchObject({ kind: 'wrong_number', refId: reading?.id });
+    });
   });
 
   describe('the open checks, as the record lists them (R4)', () => {

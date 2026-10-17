@@ -1,5 +1,5 @@
 import type { KitchenProfile } from '../domain/rule';
-import { DIGIT_OF_WORD, joinDigits, namedInWords, partsWithoutNames, tokensOf } from '../domain/words';
+import { DIGIT_OF_WORD, joinDigits, namedInWords, partsWithoutNames, saysCorrection, tokensOf } from '../domain/words';
 import { LOCAL_REPLY } from './wall-copy';
 
 export type OpenPrompt = { kind: string; id: string };
@@ -30,8 +30,9 @@ export function intentFor(text: string, profile: KitchenProfile, openPrompt: Ope
   const tokens = tokensOf(text);
   const checkPoint = onlyOne([...namedInWords(tokens, profile).checkPoints]);
   const figure = onlyOne(figureParts(tokens, profile, openPrompt).filter((part) => FIGURE.test(part)));
-  // With nothing to log and no question to answer, a call would only store an empty refusal.
-  if (openPrompt === null && checkPoint === undefined && figure === undefined) {
+  // With nothing to log and no question to answer, a call would only store an empty refusal. A
+  // correction names neither, because only the record knows which line it is about.
+  if (openPrompt === null && checkPoint === undefined && figure === undefined && !saysCorrection(text, profile)) {
     return { kind: 'local_reply', text: LOCAL_REPLY };
   }
   return {
