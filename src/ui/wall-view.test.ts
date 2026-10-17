@@ -2,6 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { ToolCallResult } from '../client/mcp-client';
+import { LogReadingInputSchema } from '../contract/log-reading';
 import { PHRASE_TABLE } from '../test-support/phrase-table';
 import { intentFor } from './intent';
 import { WALL_PROFILE } from './profile';
@@ -329,6 +330,18 @@ describe('a call that did not land', () => {
     expect(markup).toContain(message);
     for (const button of buttonsOf(markup)) expect(button).toContain('disabled=""');
     expect(markup).toMatch(/<input\b[^>]*id="cook-words"[^>]*disabled=""/);
+  });
+});
+
+// Words the server refuses can never land, however often they are sent again, so the field stops
+// at the length log_reading accepts, read here from the schema itself.
+describe('the words field', () => {
+  it('holds no more characters than log_reading accepts as words', () => {
+    const limit = Number(/<input\b[^>]*id="cook-words"[^>]*maxLength="(\d+)"/i.exec(render(READY))?.[1]);
+    const call = (words: string) => LogReadingInputSchema.safeParse({ words, screen_id: 'wall-1', request_id: 'r-1' }).success;
+    expect(limit).toBeGreaterThan(0);
+    expect(call('x'.repeat(limit))).toBe(true);
+    expect(call('x'.repeat(limit + 1))).toBe(false);
   });
 });
 

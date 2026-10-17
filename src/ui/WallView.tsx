@@ -1,4 +1,5 @@
 import type { RuleResult } from '../contract/log-reading';
+import { WORDS_MAX_CHARS } from '../contract/words-limit';
 import { formatValue } from '../domain/words';
 import { DeviceFrame } from './DeviceFrame';
 import { LimitsNote } from './LimitsNote';
@@ -242,7 +243,8 @@ function Notices({ state, actions }: { state: WallState; actions: WallActions })
 }
 
 // A call that did not land keeps its words in the field, and NOT LOGGED sits under them and
-// describes the field, so the reason is read with the words it is about.
+// describes the field, so the reason is read with the words it is about. The field stops at the
+// length the server accepts, so a pasted paragraph can never become words no retry will land.
 function WordsForm({ state, actions }: { state: WallState; actions: WallActions }) {
   return (
     <form
@@ -260,6 +262,7 @@ function WordsForm({ state, actions }: { state: WallState; actions: WallActions 
           id="cook-words"
           type="text"
           autoComplete="off"
+          maxLength={WORDS_MAX_CHARS}
           value={state.draft}
           disabled={state.phase !== 'ready'}
           readOnly={state.inFlight}

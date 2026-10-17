@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import demoProfile from '../../data/kitchens/demo.json';
 import { HIGHEST_READING_F, LOWEST_READING_F } from './reading-range';
+import { WORDS_MAX_CHARS } from './words-limit';
 
 export const LOG_READING = 'log_reading';
 /** @public The version every log_reading result carries, for the cards and captures of phase 2 to check. */
@@ -41,7 +42,7 @@ export const LogReadingInputSchema = z.object({
     .refine(hasAtMostOneDecimal, { message: 'value takes at most one decimal place' })
     .optional(),
   measured: z.enum(MEASURE_IDS).optional(),
-  words: z.string().max(200).optional(),
+  words: z.string().max(WORDS_MAX_CHARS).optional(),
   initials: z.string().max(8).optional(),
   screen_id: opaqueId().describe(
     'Names the screen or device the cook speaks to, as an opaque id such as a UUID. Send the same id on every ' +
