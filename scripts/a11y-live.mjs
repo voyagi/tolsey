@@ -219,6 +219,7 @@ async function focusInfo(page, cdp) {
     else if (element.matches('form.words button[type="submit"]')) key = 'send';
     else if (element.matches('input[name="cook"]')) key = 'roster:' + element.value;
     else if (element.closest('.theme-switch') !== null) key = 'theme:' + text;
+    else if (element.matches('.page-foot a')) key = 'link:' + text;
     const ring = element.classList.contains('visually-hidden') ? element.closest('label') : element;
     const style = getComputedStyle(ring);
     return {
@@ -274,6 +275,7 @@ async function runWalk() {
     if (document.querySelector('form.words button[type="submit"]') !== null) keys.push('send');
     for (const radio of document.querySelectorAll('input[name="cook"]')) keys.push('roster:' + radio.value);
     for (const button of document.querySelectorAll('.theme-switch button')) keys.push('theme:' + button.textContent.trim());
+    for (const link of document.querySelectorAll('.page-foot a')) keys.push('link:' + link.textContent.trim());
     return keys;
   });
 
@@ -452,6 +454,8 @@ function walkFailures(walk) {
   if (roster !== ROSTER_SIZE) failures.push(`keyboard walk: the roster has ${roster} cooks, expected ${ROSTER_SIZE}`);
   const themes = walk.required.filter((key) => key.startsWith('theme:')).length;
   if (themes !== THEME_BUTTONS) failures.push(`keyboard walk: the theme switch has ${themes} buttons, expected ${THEME_BUTTONS}`);
+  const footerLinks = walk.required.filter((key) => key.startsWith('link:')).length;
+  if (footerLinks !== 1) failures.push(`keyboard walk: the footer has ${footerLinks} links, expected the one to the privacy notice`);
   for (const step of walk.steps) {
     if (step.outlineStyle === 'none' || !(step.outlineWidth >= MIN_RING_PX)) {
       failures.push(`keyboard walk: ${step.key} shows no focus ring (${step.outlineStyle} ${step.outlineWidth}px on the ${step.ringOn})`);

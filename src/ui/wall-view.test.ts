@@ -304,7 +304,7 @@ describe('a call that did not land', () => {
 describe('the simulated device frame', () => {
   // The page draws its own frame; the Limits note beside it says simulated Alexa+ again, on purpose,
   // so the count is taken inside the frame.
-  it.fails('says simulated Alexa+ exactly once and holds the wall inside it', () => {
+  it('says simulated Alexa+ exactly once and holds the wall inside it', () => {
     const page = render(READY);
     const framed = page.slice(...spanOf(page, /<div class="device">/, 'div'));
     expect(DEVICE_LABEL).toBe('simulated Alexa+');
@@ -419,30 +419,30 @@ describe("the Limits note, What's next and the footer", () => {
     return markup.slice(...spanOf(markup, new RegExp(`<section\\b[^>]*aria-labelledby="${opener[1]}"`), 'section'));
   }
 
-  it.fails('holds the six Limits lines and the seven names of what comes next, each as the copy module words it', () => {
+  it('holds the six Limits lines and the seven names of what comes next, each as the copy module words it', () => {
     expect(LIMITS).toHaveLength(6);
     expect(WHATS_NEXT).toHaveLength(7);
     for (const line of [...LIMITS, ...WHATS_NEXT]) expect(text).toContain(line);
   });
 
-  it.fails('lists every Limits line under the Limits heading', () => {
+  it('lists every Limits line under the Limits heading', () => {
     const limits = decoded(sectionHeadedBy(LIMITS_HEADING));
     for (const line of LIMITS) expect(limits).toContain(`<li>${line}</li>`);
   });
 
-  it.fails("lists every What's next name under a heading that says they are not built yet", () => {
+  it("lists every What's next name under a heading that says they are not built yet", () => {
     expect(WHATS_NEXT_HEADING).toMatch(/not built yet/);
     const next = decoded(sectionHeadedBy(WHATS_NEXT_HEADING));
     for (const name of WHATS_NEXT) expect(next).toContain(`<li>${name}</li>`);
     for (const line of LIMITS) expect(next).not.toContain(line);
   });
 
-  it.fails('sets the note outside the simulated device, so it never pushes the pass, the reply or the field down', () => {
+  it('sets the note outside the simulated device, so it never pushes the pass, the reply or the field down', () => {
     const [, deviceEnds] = spanOf(markup, /<div class="device">/, 'div');
     expect(markup.indexOf(LIMITS[1].replaceAll("'", '&#x27;'))).toBeGreaterThan(deviceEnds);
   });
 
-  it.fails('links the privacy notice from a footer that sits outside main', () => {
+  it('links the privacy notice from a footer that sits outside main', () => {
     const footer = markup.slice(...spanOf(markup, /<footer\b/, 'footer'));
     expect(footer).toContain(`<a href="/privacy">${PRIVACY_LINK_TEXT}</a>`);
     expect(inside(markup.indexOf('<footer'), spanOf(markup, /<main\b/, 'main'))).toBe(false);

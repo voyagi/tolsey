@@ -161,8 +161,8 @@ refuses an injected script tag) over the WCAG 2.0, 2.1 and 2.2 A and AA rules, w
 fails the run, and so does any result axe could not decide unless the script's `ALLOWED_INCOMPLETE`
 list names its rule, its state and why. It checks that the field's accessible description holds the
 NOT LOGGED text once that panel shows. In the Light run a fresh page is walked by keyboard alone: every chip, the field,
-Send, each cook on the roster and each theme button must take focus with a visible ring of at least
-2 px, and Enter on two chips must log a reading and get a refusal. The one status region must be
+Send, each cook on the roster, each theme button and the footer's one link, to the privacy notice,
+must take focus with a visible ring of at least 2 px, and Enter on two chips must log a reading and get a refusal. The one status region must be
 empty at load and written exactly twice across a logged reading, a refusal, a held question and a
 theme change, and afterwards the browser may hold the `tolsey-theme` key and nothing else (no other
 storage, no cookie). A console message about the Content Security Policy fails the run. The walk is

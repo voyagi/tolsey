@@ -546,6 +546,82 @@
   box-shadow: none;
 }
 
+/* Under the device, the page's own word on the demo: what runs today under Limits, what does not yet beside it. It is
+   a board laid flat, read after the demo rather than during it, so the names still to come sit in steel: listed, not
+   lit, since nothing about them needs a hand. */
+.limits {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 18px 22px;
+  max-width: 1344px;
+  margin: 0 auto;
+  padding: 18px 24px 22px;
+  background: var(--stock);
+  box-shadow: var(--lift);
+}
+.limits-part {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+}
+.limits-head {
+  margin: 0;
+  padding-bottom: 6px;
+  border-bottom: 3px solid var(--ink);
+  font-size: 1.625rem;
+  font-weight: 900;
+  font-stretch: 80%;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+.limits-lines,
+.next-names {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.limits-lines li {
+  max-width: 70ch;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--hair);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.next-names li {
+  padding: 7px 0;
+  border-bottom: 1px solid var(--hair);
+  font-size: 1.375rem;
+  font-weight: 800;
+  font-stretch: 80%;
+  line-height: 1.3;
+  color: var(--steel);
+}
+
+.page-foot {
+  display: flex;
+  max-width: 1344px;
+  margin: 0 auto;
+  padding: 10px 24px 20px;
+  background: var(--ground);
+}
+.page-foot a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--steel);
+}
+.page-foot a:hover {
+  color: var(--ink);
+}
+
 @media (forced-colors: active) {
   .control,
   .chip,
@@ -680,6 +756,17 @@
   .seg--code b {
     font-size: 0.8125rem;
     overflow-wrap: anywhere;
+  }
+  .limits {
+    grid-template-columns: minmax(0, 1fr);
+    margin-top: 8px;
+    padding: 14px 16px 16px;
+  }
+  .limits-head {
+    font-size: 1.5rem;
+  }
+  .page-foot {
+    padding: 10px 16px 20px;
   }
   .scan {
     height: 24px;

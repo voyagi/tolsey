@@ -1,5 +1,7 @@
 import type { RuleResult } from '../contract/log-reading';
 import { formatValue } from '../domain/words';
+import { DeviceFrame } from './DeviceFrame';
+import { LimitsNote } from './LimitsNote';
 import { ScanBand } from './ScanBand';
 import { ThemeSwitch } from './ThemeSwitch';
 import {
@@ -11,6 +13,7 @@ import {
   NOT_LOGGED,
   OPEN_CHECKS_HEADING,
   OPEN_TILE,
+  PRIVACY_LINK_TEXT,
   SPEAKER_LABEL,
 } from './wall-copy';
 import { controlsEnabled, type WallState } from './wall-state';
@@ -276,7 +279,23 @@ function WordsForm({ state, actions }: { state: WallState; actions: WallActions 
   );
 }
 
+// The device fills the first screen, so the Limits note and the footer after it start below the fold
+// and can never push the pass, the reply or the field out of view.
 export function WallView({ state, actions }: { state: WallState; actions: WallActions }) {
+  return (
+    <>
+      <DeviceFrame>
+        <WallScreen state={state} actions={actions} />
+      </DeviceFrame>
+      <LimitsNote />
+      <footer className="page-foot">
+        <a href="/privacy">{PRIVACY_LINK_TEXT}</a>
+      </footer>
+    </>
+  );
+}
+
+function WallScreen({ state, actions }: { state: WallState; actions: WallActions }) {
   const enabled = controlsEnabled(state);
   return (
     <div className="screen">
