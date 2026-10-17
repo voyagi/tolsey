@@ -1,0 +1,303 @@
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, describe, expect, it } from 'vitest';
+import type { FetchLike } from '../client/mcp-client';
+import {
+  CANONICAL_HOST,
+  KEPT_HEADERS,
+  privacyProblems,
+  recordingFetch,
+  runCapture,
+  type PrivacyCheck,
+} from '../test-support/examples';
+import { WALL_PROFILE } from '../ui/profile';
+
+const ROSTER = WALL_PROFILE.roster;
+const CAPTURE_FILE = 'deployed-run.json';
+const KITCHEN = '0123456789abcdef0123456789abcdef';
+// 11:01 in Chicago (CDT, UTC minus 5): inside the demo kitchen's 07:00 to 22:00 schedule.
+const IN_SERVICE = Date.parse('2026-10-19T16:01:00.000Z');
+// 00:30 in Chicago: before the first scheduled check.
+const BEFORE_SERVICE = Date.parse('2026-10-19T05:30:00.000Z');
+const TEST_GAP_MS = 5;
+
+const scratch = mkdtempSync(join(tmpdir(), 'tolsey-examples-'));
+let fixtureCount = 0;
+
+afterAll(() => {
+  rmSync(scratch, { recursive: true, force: true });
+});
+
+function fixture(files: Record<string, unknown>, listed: string[] = Object.keys(files)): string {
+  fixtureCount += 1;
+  const dir = join(scratch, `fixture-${fixtureCount}`);
+  mkdirSync(dir, { recursive: true });
+  for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), JSON.stringify(content, null, 2));
+  writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ files: listed }));
+  return dir;
+}
+
+// Shaped like a real capture: ISO times that read like IPv6 to a careless regex, UUIDs, record codes,
+// a dotted version, the two kept header names and the canonical host.
+function cleanCapture(): Record<string, unknown> {
+  return {
+    where: 'deployed',
+    host: CANONICAL_HOST,
+    startedAt: '2026-10-19T16:01:00.000Z',
+    steps: [{ said: 'the walk-in reads 38', outcome: 'in_range', serverTime: '2026-10-19T16:01:02.120Z' }],
+    exchanges: [
+      {
+        method: 'POST',
+        path: `/mcp/k/${KITCHEN}`,
+        status: 200,
+        request: {
+          headers: { 'content-type': 'application/json', 'mcp-protocol-version': '2025-11-25' },
+          body: {
+            jsonrpc: '2.0',
+            id: 3,
+            method: 'tools/call',
+            params: {
+              name: 'log_reading',
+              arguments: {
+                check_point: 'walk_in',
+                value: 38,
+                words: 'the walk-in reads 38',
+                initials: 'AB',
+                screen_id: 'wall-3f2a9c1e-8b7d-4e6f-a1b2-c3d4e5f60718',
+                request_id: '9e8d7c6b-5a49-4382-9170-6f5e4d3c2b1a',
+              },
+            },
+          },
+        },
+        response: {
+          headers: { 'content-type': 'application/json' },
+          body: {
+            jsonrpc: '2.0',
+            id: 3,
+            result: {
+              content: [{ type: 'text', text: 'Walk-in, 38, in range, AB' }],
+              structuredContent: {
+                contractVersion: 1,
+                outcome: 'in_range',
+                recordCode: '261019-001',
+                initials: 'AB',
+                serverTime: '2026-10-19T16:01:02.120Z',
+                businessDay: '2026-10-19',
+                note: 'opened at 04:30:00 local',
+              },
+            },
+          },
+        },
+      },
+      { method: 'POST', path: '/mcp/k/x', status: 200, request: { body: { params: { clientInfo: { name: 'tolsey-wall', version: '0.1.0' } } } } },
+    ],
+  };
+}
+
+function withPlanted(path: (capture: Record<string, unknown>) => void): Record<string, unknown> {
+  const capture = cleanCapture();
+  path(capture);
+  return capture;
+}
+
+interface PlantedExchange {
+  request: { headers: Record<string, string>; body: { params: { arguments: Record<string, unknown> } } };
+}
+
+function exchangeOf(capture: Record<string, unknown>): PlantedExchange {
+  return (capture.exchanges as PlantedExchange[])[0];
+}
+
+function kindsOf(check: PrivacyCheck): string[] {
+  return check.status === 'checked' ? check.problems.map((problem) => problem.kind) : [];
+}
+
+describe('PRIV-02: what a captured run may hold', () => {
+  const planted: [string, string, () => string][] = [
+    ['initials off the roster', 'initials_off_roster', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (exchangeOf(c).request.body.params.arguments.initials = 'AK')) })],
+    ['an IPv4 literal', 'ip_literal', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (c.note = 'seen from 203.0.113.7')) })],
+    ['an IPv6 literal', 'ip_literal', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (c.note = 'client 2001:db8::1 called')) })],
+    ['a request header name', 'header_name', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (exchangeOf(c).request.headers['user-agent'] = 'Mozilla/5.0')) })],
+    ['a hostname other than the canonical one', 'foreign_host', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (c.source = 'https://example.com/run')) })],
+    ['a file the capture did not write', 'unlisted_file', () => fixture({ [CAPTURE_FILE]: cleanCapture(), 'notes.json': { said: 'hello' } }, [CAPTURE_FILE])],
+  ];
+
+  it.fails.each(planted)('is red on %s, with exactly one problem of kind %s', (_name, kind, make) => {
+    expect(kindsOf(privacyProblems(make(), ROSTER))).toEqual([kind]);
+  });
+
+  it.fails('is green on a clean capture-shaped fixture', () => {
+    const check = privacyProblems(fixture({ [CAPTURE_FILE]: cleanCapture() }), ROSTER);
+    expect(check).toEqual({ status: 'checked', files: [CAPTURE_FILE], problems: [] });
+  });
+
+  it.fails('is red when the manifest lists no capture file', () => {
+    expect(kindsOf(privacyProblems(fixture({}, []), ROSTER))).toEqual(['empty']);
+  });
+
+  it.fails('says absent, never clean, when there is no examples folder', () => {
+    const check = privacyProblems(join(scratch, 'no-such-folder'), ROSTER);
+    expect(check.status).toBe('absent');
+    expect('problems' in check).toBe(false);
+  });
+
+  it.fails('holds the real examples/ folder to the rule: absent until the capture runs, then checked and clean', () => {
+    const check = privacyProblems('examples', ROSTER);
+    if (check.status === 'absent') {
+      expect(existsSync('examples')).toBe(false);
+      return;
+    }
+    expect(check.files.length).toBeGreaterThan(0);
+    expect(check.problems).toEqual([]);
+  });
+});
+
+describe('recordingFetch keeps two headers and the parsed bodies', () => {
+  it.fails('records method, path, status, both bodies and only content-type and mcp-protocol-version, and still answers the caller', async () => {
+    const inner: FetchLike = async () =>
+      new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { ok: true } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json', 'mcp-protocol-version': '2025-11-25', 'cf-ray': '8d1f', server: 'cloudflare', 'mcp-session-id': 's-1' },
+      });
+    const recorder = recordingFetch(inner);
+    const answer = await recorder.fetch(new URL(`https://${CANONICAL_HOST}/mcp/k/${KITCHEN}`), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-11-25', 'mcp-session-id': 's-1' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+    });
+
+    expect(await answer.json()).toEqual({ jsonrpc: '2.0', id: 1, result: { ok: true } });
+    expect(recorder.exchanges).toEqual([
+      {
+        method: 'POST',
+        path: `/mcp/k/${KITCHEN}`,
+        status: 200,
+        request: {
+          headers: { 'content-type': 'application/json', 'mcp-protocol-version': '2025-11-25' },
+          body: { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} },
+        },
+        response: {
+          headers: { 'content-type': 'application/json', 'mcp-protocol-version': '2025-11-25' },
+          body: { jsonrpc: '2.0', id: 1, result: { ok: true } },
+        },
+      },
+    ]);
+    expect(KEPT_HEADERS).toEqual(['content-type', 'mcp-protocol-version']);
+  });
+});
+
+interface FakeWorker {
+  fetch: FetchLike;
+  paths: string[];
+  mintBodies: unknown[];
+}
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cf-ray': '8d1f' } });
+}
+
+// A scripted Worker: it mints, initializes, lists both tools, answers due_now, and judges the three
+// capture phrases. failOnLogCall makes that log_reading call never reach it.
+function fakeWorker(failOnLogCall?: number): FakeWorker {
+  const paths: string[] = [];
+  const mintBodies: unknown[] = [];
+  let logCalls = 0;
+  const fetch: FetchLike = async (url, init) => {
+    const path = new URL(String(url)).pathname;
+    paths.push(path);
+    const body = JSON.parse(String(init?.body ?? '{}'));
+    if (path === '/api/kitchens') {
+      mintBodies.push(body);
+      return json({ id: KITCHEN, mcpPath: `/mcp/k/${KITCHEN}`, expiresAt: '2026-10-20T15:46:00.000Z', closesAt: '2026-10-20T15:42:00.000Z' }, 201);
+    }
+    if (body.method === 'notifications/initialized') return new Response(null, { status: 202 });
+    if (body.method === 'initialize') {
+      return json({ jsonrpc: '2.0', id: body.id, result: { protocolVersion: '2025-11-25', capabilities: {}, serverInfo: { name: 'tolsey', version: '0.1.0' } } });
+    }
+    if (body.method === 'tools/list') return json({ jsonrpc: '2.0', id: body.id, result: { tools: [{ name: 'log_reading' }, { name: 'due_now' }] } });
+    if (body.params.name === 'due_now') {
+      const structuredContent = { contractVersion: 1, businessDay: '2026-10-19', timeZone: 'America/Chicago', openChecks: [] };
+      return json({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text: 'No checks are open.' }], structuredContent } });
+    }
+    logCalls += 1;
+    if (logCalls === failOnLogCall) throw new TypeError('fetch failed');
+    const refused = String(body.params.arguments.words).includes('is fine');
+    const structuredContent = refused
+      ? { contractVersion: 1, outcome: 'refused', verdict: 'refused', serverTime: `2026-10-19T16:0${logCalls}:00.000Z`, businessDay: '2026-10-19' }
+      : { contractVersion: 1, outcome: 'in_range', verdict: 'in range', recordCode: `261019-00${logCalls}`, initials: 'AB', value: 38, serverTime: `2026-10-19T16:0${logCalls}:00.000Z`, businessDay: '2026-10-19' };
+    const text = refused ? 'I need the number on the thermometer. What does reach-in two read?' : 'Walk-in, 38, in range, AB';
+    return json({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text }], structuredContent } });
+  };
+  return { fetch, paths, mintBodies };
+}
+
+function captureRun(worker: FakeWorker, now: number, sleeps: number[] = []) {
+  const outDir = join(scratch, `out-${(fixtureCount += 1)}`);
+  const run = runCapture({
+    baseUrl: new URL(`https://${CANONICAL_HOST}`),
+    fetch: worker.fetch,
+    now: () => now,
+    sleep: async (ms) => {
+      sleeps.push(ms);
+    },
+    gapMs: TEST_GAP_MS,
+    outDir,
+    profile: WALL_PROFILE,
+  });
+  return { run, outDir };
+}
+
+function filesIn(dir: string): string[] {
+  return existsSync(dir) ? readdirSync(dir).sort() : [];
+}
+
+describe('runCapture writes a run only when the whole run lands and passes PRIV-02', () => {
+  it.fails('writes no file when a step fails partway', async () => {
+    const { run, outDir } = captureRun(fakeWorker(2), IN_SERVICE);
+    await expect(run).rejects.toThrow(/reach-in two is fine/);
+    expect(filesIn(outDir)).toEqual([]);
+  });
+
+  it.fails('writes the capture and its manifest after a full run, each file passing the check', async () => {
+    const worker = fakeWorker();
+    const sleeps: number[] = [];
+    const { run, outDir } = captureRun(worker, IN_SERVICE, sleeps);
+    await run;
+
+    expect(filesIn(outDir)).toEqual([CAPTURE_FILE, 'manifest.json']);
+    expect(privacyProblems(outDir, ROSTER)).toEqual({ status: 'checked', files: [CAPTURE_FILE], problems: [] });
+    const capture = JSON.parse(readFileSync(join(outDir, CAPTURE_FILE), 'utf8'));
+    expect(capture.where).toBe('deployed');
+    expect(capture.host).toBe(CANONICAL_HOST);
+    expect(capture.steps.map((step: { outcome: string }) => step.outcome)).toEqual(['in_range', 'refused', 'in_range']);
+    expect(capture.steps.map((step: { serverTime: string }) => step.serverTime)).toEqual([
+      '2026-10-19T16:01:00.000Z',
+      '2026-10-19T16:02:00.000Z',
+      '2026-10-19T16:03:00.000Z',
+    ]);
+  });
+
+  it.fails('mints a fresh kitchen labelled capture and never calls the demo kitchen at /mcp', async () => {
+    const worker = fakeWorker();
+    await captureRun(worker, IN_SERVICE).run;
+    expect(worker.mintBodies).toEqual([{ label: 'capture' }]);
+    expect(worker.paths).not.toContain('/mcp');
+    expect(worker.paths.filter((path) => path.startsWith('/mcp/k/')).length).toBeGreaterThan(0);
+  });
+
+  it.fails('waits at least the gap between its three steps', async () => {
+    const sleeps: number[] = [];
+    await captureRun(fakeWorker(), IN_SERVICE, sleeps).run;
+    expect(sleeps).toHaveLength(2);
+    for (const ms of sleeps) expect(ms).toBeGreaterThanOrEqual(TEST_GAP_MS);
+  });
+
+  it.fails('refuses to start outside 07:00 to 22:00 in Chicago, before any request', async () => {
+    const worker = fakeWorker();
+    const { run, outDir } = captureRun(worker, BEFORE_SERVICE);
+    await expect(run).rejects.toThrow(/07:00 to 22:00/);
+    expect(worker.paths).toEqual([]);
+    expect(filesIn(outDir)).toEqual([]);
+  });
+});

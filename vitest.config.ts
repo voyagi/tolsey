@@ -2,6 +2,9 @@ import { defineConfig } from 'vitest/config';
 
 const E2E_FILES = 'src/server/**/*.e2e.test.ts';
 const CONFORMANCE_FILE = 'src/server/conformance.test.ts';
+// The capture writes examples/ from the deployed Worker in real time, so only its own project, run by
+// hand, ever starts it; npm test names its projects and never this one.
+const CAPTURE_FILES = 'src/capture/**/*.capture.test.ts';
 
 export default defineConfig({
   test: {
@@ -35,7 +38,14 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'unit',
-          include: ['src/domain/**/*.test.ts', 'src/contract/**/*.test.ts', 'src/client/**/*.test.ts', 'src/ui/**/*.test.ts'],
+          include: [
+            'src/domain/**/*.test.ts',
+            'src/contract/**/*.test.ts',
+            'src/client/**/*.test.ts',
+            'src/ui/**/*.test.ts',
+            'src/capture/**/*.test.ts',
+          ],
+          exclude: [CAPTURE_FILES],
         },
       },
       {
@@ -64,6 +74,10 @@ export default defineConfig({
       {
         extends: true,
         test: { name: 'deployed', include: [CONFORMANCE_FILE], provide: { target: 'deployed' } },
+      },
+      {
+        extends: true,
+        test: { name: 'capture', include: [CAPTURE_FILES], testTimeout: 600_000 },
       },
     ],
   },
