@@ -10,10 +10,12 @@ import type { D1Like, StoredLine } from '../store/port';
 import { CAPTURE_FILE, privacyProblems, runCapture } from '../test-support/examples';
 import { builtWorkerHarness, type FetchLike } from '../test-support/target';
 import { WALL_PROFILE } from '../ui/profile';
+import { CHIPS } from '../ui/wall-copy';
 import { createWallSession, type WallSession } from '../ui/wall-session';
 
 const WALK_IN = 'the walk-in reads 38';
 const REACH_IN_TWO = 'reach-in two is fine';
+const SOUP_WELL_OUT = 'the soup well reads 120';
 // 11:01 in Chicago, inside the demo kitchen's schedule, so the capture's own hours check lets it run
 // whenever the suite does. The Worker keeps its real clock.
 const IN_SERVICE = Date.parse('2026-10-19T16:01:00.000Z');
@@ -186,6 +188,28 @@ describe('the wall session against the built Worker in workerd, lines read strai
       const reading = lines.find((line) => line.requestId === calls[1].args.request_id);
       expect(held).toMatchObject({ kind: 'held' });
       expect(reading).toMatchObject({ kind: 'reading', checkPointId: 'walk_in', valueTenths: 150, answersId: held?.id });
+    });
+
+    // The chip a stranger taps to see a reading fail its rule.
+    it('stores "the soup well reads 120" as an out-of-range soup well line under the hot holding rule', async () => {
+      expect(CHIPS).toContain(SOUP_WELL_OUT);
+      const day = chicagoBusinessDay();
+      const calls: ToolCall[] = [];
+      const session = await startedSession(calls);
+      await session.say(SOUP_WELL_OUT);
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0].structuredContent?.outcome).toBe('out_of_range');
+      const lines = await store.linesForDay(session.kitchenId as string, day);
+      const reading = lines.find((line) => line.requestId === calls[0].args.request_id);
+      expect(reading).toMatchObject({
+        kind: 'reading',
+        checkPointId: 'soup_well',
+        valueTenths: 1200,
+        outcome: 'out_of_range',
+        ruleId: 'hot_holding',
+      });
+      expect(session.getState().pass).toMatchObject({ checkPoint: { id: 'soup_well' }, value: 120, outcome: 'out_of_range' });
     });
 
     it('sends "wrong number" after a reading, and the record marks that line and asks for its number again', async () => {

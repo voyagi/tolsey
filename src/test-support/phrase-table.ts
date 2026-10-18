@@ -28,6 +28,7 @@ function noCall(phrase: string): PhraseRow {
 // expected call the intent rule is.
 export const PHRASE_TABLE: readonly PhraseRow[] = [
   call('the walk-in reads 38', { check_point: 'walk_in', value: 38 }),
+  call('the soup well reads 120', { check_point: 'soup_well', value: 120 }),
   call('reach-in two is fine', { check_point: 'reach_in_2' }),
   call('the walk-in is under 41', { check_point: 'walk_in', value: 41 }),
   call('walk-in 15', { check_point: 'walk_in', value: 15 }),
