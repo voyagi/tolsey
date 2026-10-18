@@ -305,12 +305,15 @@ function compacted(exchange: RecordedExchange): RecordedExchange {
 }
 
 // Files outDir's manifest already lists beside the capture (the demo video's transcript) stay
-// listed, and are judged again with the new capture, so a fresh run never unlists one.
-function keptFiles(outDir: string): [string, string][] {
-  if (!existsSync(join(outDir, MANIFEST_FILE))) return [];
-  return listedFiles(outDir)
-    .listed.filter((file) => file !== CAPTURE_FILE && existsSync(join(outDir, file)))
-    .map((file) => [file, readFileSync(join(outDir, file), 'utf8')]);
+// listed, and are judged again with the new capture, so a fresh run never unlists one. A listed file
+// that has gone missing stays listed but is not staged, so the check reports it and nothing is written.
+function keptFiles(outDir: string): { names: string[]; present: [string, string][] } {
+  if (!existsSync(join(outDir, MANIFEST_FILE))) return { names: [], present: [] };
+  const names = listedFiles(outDir).listed.filter((file) => file !== CAPTURE_FILE);
+  const present = names
+    .filter((file) => existsSync(join(outDir, file)))
+    .map((file): [string, string] => [file, readFileSync(join(outDir, file), 'utf8')]);
+  return { names, present };
 }
 
 // The files are judged in a scratch folder first and reach outDir only once they pass, each through
@@ -319,11 +322,11 @@ function writeChecked(capture: unknown, outDir: string, roster: readonly string[
   const kept = keptFiles(outDir);
   const files: [string, string][] = [
     [CAPTURE_FILE, `${JSON.stringify(capture, null, 2)}\n`],
-    [MANIFEST_FILE, `${JSON.stringify({ files: [CAPTURE_FILE, ...kept.map(([name]) => name)] }, null, 2)}\n`],
+    [MANIFEST_FILE, `${JSON.stringify({ files: [CAPTURE_FILE, ...kept.names] }, null, 2)}\n`],
   ];
   const staging = mkdtempSync(join(tmpdir(), 'tolsey-capture-'));
   try {
-    for (const [name, text] of [...files, ...kept]) writeFileSync(join(staging, name), text);
+    for (const [name, text] of [...files, ...kept.present]) writeFileSync(join(staging, name), text);
     const check = privacyProblems(staging, roster);
     const problems = check.status === 'checked' ? check.problems : [{ kind: 'absent', file: '', where: '' }];
     if (problems.length > 0) {

@@ -342,6 +342,17 @@ describe('runCapture writes a run only when the whole run lands and passes PRIV-
     expect(filesIn(outDir)).toEqual([TRANSCRIPT_FILE, 'manifest.json']);
   });
 
+  it('writes nothing when a file the manifest lists has gone missing, rather than unlisting it', async () => {
+    const outDir = join(scratch, `out-${(fixtureCount += 1)}`);
+    mkdirSync(outDir, { recursive: true });
+    const manifest = JSON.stringify({ files: [CAPTURE_FILE, TRANSCRIPT_FILE] });
+    writeFileSync(join(outDir, 'manifest.json'), manifest);
+    const { run } = captureRun(fakeWorker(), IN_SERVICE, [], outDir);
+    await expect(run).rejects.toThrow(/failed PRIV-02 and was not written: missing_file at demo-transcript\.md/);
+    expect(filesIn(outDir)).toEqual(['manifest.json']);
+    expect(readFileSync(join(outDir, 'manifest.json'), 'utf8')).toBe(manifest);
+  });
+
   it('mints a fresh kitchen labelled capture and never calls the demo kitchen at /mcp', async () => {
     const worker = fakeWorker();
     await captureRun(worker, IN_SERVICE).run;
