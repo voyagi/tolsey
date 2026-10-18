@@ -19,6 +19,7 @@
     "**/*.md",
     "**/docs/**",
     "design/mockups/**",
-    "privacy.html"
+    "privacy.html",
+    "examples/**"
   ]
 }
