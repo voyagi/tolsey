@@ -36,6 +36,7 @@ const FORBIDDEN_HEADER_PREFIXES = ['sec-', 'cf-'];
 
 export const CAPTURE_FILE = 'deployed-run.json';
 const MANIFEST_FILE = 'manifest.json';
+const MARKDOWN_FILE = /\.md$/i;
 
 interface PrivacyProblem {
   kind: string;
@@ -149,7 +150,10 @@ export function privacyProblems(dir: string, roster: readonly string[]): Privacy
       continue;
     }
     files.push(file);
-    const content = parseJson(readFileSync(path, 'utf8'));
+    // A listed Markdown file (the demo video's transcript) is prose, not a recorded run: its whole
+    // text is held to the address and host rules as one string, with no JSON to walk.
+    const text = readFileSync(path, 'utf8');
+    const content = MARKDOWN_FILE.test(file) ? text : parseJson(text);
     if (content === undefined) problems.push({ kind: 'unreadable', file, where: '' });
     else problems.push(...problemsInFile(file, content, rosterSet));
   }
@@ -300,16 +304,26 @@ function compacted(exchange: RecordedExchange): RecordedExchange {
   return { ...exchange, response: { ...exchange.response, body: Array.isArray(body) ? body.map(namesOnly) : namesOnly(body) } };
 }
 
+// Files outDir's manifest already lists beside the capture (the demo video's transcript) stay
+// listed, and are judged again with the new capture, so a fresh run never unlists one.
+function keptFiles(outDir: string): [string, string][] {
+  if (!existsSync(join(outDir, MANIFEST_FILE))) return [];
+  return listedFiles(outDir)
+    .listed.filter((file) => file !== CAPTURE_FILE && existsSync(join(outDir, file)))
+    .map((file) => [file, readFileSync(join(outDir, file), 'utf8')]);
+}
+
 // The files are judged in a scratch folder first and reach outDir only once they pass, each through
 // a temporary name and a rename, so a failed or refused run leaves outDir as it was.
 function writeChecked(capture: unknown, outDir: string, roster: readonly string[]): void {
+  const kept = keptFiles(outDir);
   const files: [string, string][] = [
     [CAPTURE_FILE, `${JSON.stringify(capture, null, 2)}\n`],
-    [MANIFEST_FILE, `${JSON.stringify({ files: [CAPTURE_FILE] }, null, 2)}\n`],
+    [MANIFEST_FILE, `${JSON.stringify({ files: [CAPTURE_FILE, ...kept.map(([name]) => name)] }, null, 2)}\n`],
   ];
   const staging = mkdtempSync(join(tmpdir(), 'tolsey-capture-'));
   try {
-    for (const [name, text] of files) writeFileSync(join(staging, name), text);
+    for (const [name, text] of [...files, ...kept]) writeFileSync(join(staging, name), text);
     const check = privacyProblems(staging, roster);
     const problems = check.status === 'checked' ? check.problems : [{ kind: 'absent', file: '', where: '' }];
     if (problems.length > 0) {

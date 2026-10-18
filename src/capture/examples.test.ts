@@ -15,6 +15,7 @@ import { WALL_PROFILE } from '../ui/profile';
 
 const ROSTER = WALL_PROFILE.roster;
 const CAPTURE_FILE = 'deployed-run.json';
+const TRANSCRIPT_FILE = 'demo-transcript.md';
 const KITCHEN = '0123456789abcdef0123456789abcdef';
 // 11:01 in Chicago (CDT, UTC minus 5): inside the demo kitchen's 07:00 to 22:00 schedule.
 const IN_SERVICE = Date.parse('2026-10-19T16:01:00.000Z');
@@ -33,7 +34,8 @@ function fixture(files: Record<string, unknown>, listed: string[] = Object.keys(
   fixtureCount += 1;
   const dir = join(scratch, `fixture-${fixtureCount}`);
   mkdirSync(dir, { recursive: true });
-  for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), JSON.stringify(content, null, 2));
+  // A string is written as it stands (a Markdown file, or a JSON file that does not parse).
+  for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), typeof content === 'string' ? content : JSON.stringify(content, null, 2));
   writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ files: listed }));
   return dir;
 }
@@ -124,6 +126,10 @@ describe('PRIV-02: what a captured run may hold', () => {
     ['a hostname other than the canonical one', 'foreign_host', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (c.source = 'https://example.com/run')) })],
     ['a bare hostname inside prose', 'foreign_host', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (c.note = 'served by example.com today')) })],
     ['a file the capture did not write', 'unlisted_file', () => fixture({ [CAPTURE_FILE]: cleanCapture(), 'notes.json': { said: 'hello' } }, [CAPTURE_FILE])],
+    ['a listed JSON file that does not parse', 'unreadable', () => fixture({ [CAPTURE_FILE]: cleanCapture(), 'notes.json': '# not JSON\n' })],
+    ['an IPv4 literal in a listed Markdown file', 'ip_literal', () => fixture({ [CAPTURE_FILE]: cleanCapture(), [TRANSCRIPT_FILE]: '# Transcript\n\nSeen from 203.0.113.7 today.\n' })],
+    ['a hostname in a listed Markdown file', 'foreign_host', () => fixture({ [CAPTURE_FILE]: cleanCapture(), [TRANSCRIPT_FILE]: '# Transcript\n\nWatch it on example.com today.\n' })],
+    ['a Markdown file the manifest does not list', 'unlisted_file', () => fixture({ [CAPTURE_FILE]: cleanCapture(), [TRANSCRIPT_FILE]: '# Transcript\n' }, [CAPTURE_FILE])],
   ];
 
   it.each(planted)('is red on %s, with exactly one problem of kind %s', (_name, kind, make) => {
@@ -138,6 +144,12 @@ describe('PRIV-02: what a captured run may hold', () => {
   it('stays green on the canonical host, a decimal, a version and "e.g." inside prose', () => {
     const capture = withPlanted((c) => (c.note = `served by ${CANONICAL_HOST}, e.g. at 38.5 on version 0.1.0.`));
     expect(privacyProblems(fixture({ [CAPTURE_FILE]: capture }), ROSTER)).toEqual({ status: 'checked', files: [CAPTURE_FILE], problems: [] });
+  });
+
+  it('reads a listed Markdown file as text, so prose that is not JSON passes when it holds no address or host', () => {
+    const transcript = `# Transcript\n\nA paper log takes "fine." Served by ${CANONICAL_HOST}, e.g. at 38.5.\n`;
+    const check = privacyProblems(fixture({ [CAPTURE_FILE]: cleanCapture(), [TRANSCRIPT_FILE]: transcript }), ROSTER);
+    expect(check).toEqual({ status: 'checked', files: [CAPTURE_FILE, TRANSCRIPT_FILE], problems: [] });
   });
 
   it('is red when the manifest lists no capture file', () => {
@@ -257,8 +269,7 @@ function fakeWorker(failOnLogCall?: number): FakeWorker {
   return { fetch, paths, mintBodies };
 }
 
-function captureRun(worker: FakeWorker, now: number, sleeps: number[] = []) {
-  const outDir = join(scratch, `out-${(fixtureCount += 1)}`);
+function captureRun(worker: FakeWorker, now: number, sleeps: number[] = [], outDir = join(scratch, `out-${(fixtureCount += 1)}`)) {
   const run = runCapture({
     baseUrl: new URL(`https://${CANONICAL_HOST}`),
     fetch: worker.fetch,
@@ -275,6 +286,15 @@ function captureRun(worker: FakeWorker, now: number, sleeps: number[] = []) {
 
 function filesIn(dir: string): string[] {
   return existsSync(dir) ? readdirSync(dir).sort() : [];
+}
+
+// An examples/ folder from an earlier run whose manifest also lists the transcript.
+function folderWithTranscript(transcript: string): string {
+  const outDir = join(scratch, `out-${(fixtureCount += 1)}`);
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(join(outDir, TRANSCRIPT_FILE), transcript);
+  writeFileSync(join(outDir, 'manifest.json'), JSON.stringify({ files: [CAPTURE_FILE, TRANSCRIPT_FILE] }));
+  return outDir;
 }
 
 describe('runCapture writes a run only when the whole run lands and passes PRIV-02', () => {
@@ -303,6 +323,23 @@ describe('runCapture writes a run only when the whole run lands and passes PRIV-
       '2026-10-19T16:02:00.000Z',
       '2026-10-19T16:03:00.000Z',
     ]);
+  });
+
+  it('keeps a file the manifest already lists, such as the transcript, listed and unchanged after a fresh run', async () => {
+    const transcript = '# Transcript\n\nA paper log takes "fine." Tolsey asks for the number.\n';
+    const { run, outDir } = captureRun(fakeWorker(), IN_SERVICE, [], folderWithTranscript(transcript));
+    await run;
+
+    expect(filesIn(outDir)).toEqual([TRANSCRIPT_FILE, CAPTURE_FILE, 'manifest.json']);
+    expect(JSON.parse(readFileSync(join(outDir, 'manifest.json'), 'utf8'))).toEqual({ files: [CAPTURE_FILE, TRANSCRIPT_FILE] });
+    expect(readFileSync(join(outDir, TRANSCRIPT_FILE), 'utf8')).toBe(transcript);
+    expect(privacyProblems(outDir, ROSTER)).toEqual({ status: 'checked', files: [CAPTURE_FILE, TRANSCRIPT_FILE], problems: [] });
+  });
+
+  it('judges a kept file again, and writes nothing when it fails the rule', async () => {
+    const { run, outDir } = captureRun(fakeWorker(), IN_SERVICE, [], folderWithTranscript('# Transcript\n\nSeen from 203.0.113.7 today.\n'));
+    await expect(run).rejects.toThrow(/failed PRIV-02 and was not written: ip_literal at demo-transcript\.md/);
+    expect(filesIn(outDir)).toEqual([TRANSCRIPT_FILE, 'manifest.json']);
   });
 
   it('mints a fresh kitchen labelled capture and never calls the demo kitchen at /mcp', async () => {

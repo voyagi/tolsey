@@ -19,5 +19,6 @@ it(`captures one real run of https://${CANONICAL_HOST} into examples/`, async ()
     outDir: OUT_DIR,
     profile: WALL_PROFILE,
   });
-  expect(privacyProblems(OUT_DIR, WALL_PROFILE.roster)).toEqual({ status: 'checked', files: [CAPTURE_FILE], problems: [] });
+  // The capture, plus any file the manifest already listed (the demo video's transcript).
+  expect(privacyProblems(OUT_DIR, WALL_PROFILE.roster)).toEqual({ status: 'checked', files: expect.arrayContaining([CAPTURE_FILE]), problems: [] });
 });
