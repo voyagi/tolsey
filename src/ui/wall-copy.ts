@@ -2,7 +2,15 @@
 // it is meant to make: a phrase typed into a component could teach words no alias matches.
 export const EXAMPLE_PHRASE = 'the walk-in reads 38';
 
-export const CHIPS: readonly string[] = [EXAMPLE_PHRASE, 'reach-in two is fine', 'the walk-in is under 41', 'walk-in 15'];
+// One phrase per verdict a stranger should see in a few taps: in range, out of range, a check with no
+// number, a hedged number, and a number whose misheard twin would change the verdict.
+export const CHIPS: readonly string[] = [
+  EXAMPLE_PHRASE,
+  'the soup well reads 120',
+  'reach-in two is fine',
+  'the walk-in is under 41',
+  'walk-in 15',
+];
 
 export const HINT = `Type what the cook says, like ${EXAMPLE_PHRASE}, or tap a phrase.`;
 
