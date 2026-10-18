@@ -125,11 +125,22 @@ function problemsInFile(file: string, content: unknown, roster: ReadonlySet<stri
   return problems;
 }
 
+// A listed name is a file directly in the folder. A path such as ../outside.md would have the check
+// read, and the capture copy, a file outside it, and a colon names an NTFS stream rather than a file.
+const PLAIN_NAME = /^[^\\/:]+$/;
+
+function isPlainName(file: string): boolean {
+  return PLAIN_NAME.test(file) && file !== '.' && file !== '..';
+}
+
 function listedFiles(dir: string): { listed: string[]; problems: PrivacyProblem[] } {
   const manifest = parseJson(existsSync(join(dir, MANIFEST_FILE)) ? readFileSync(join(dir, MANIFEST_FILE), 'utf8') : '');
   const files = isPlainObject(manifest) ? manifest.files : undefined;
-  if (Array.isArray(files) && files.every((file) => typeof file === 'string')) return { listed: files, problems: [] };
-  return { listed: [], problems: [{ kind: 'unreadable', file: MANIFEST_FILE, where: 'files' }] };
+  if (!Array.isArray(files) || !files.every((file) => typeof file === 'string')) {
+    return { listed: [], problems: [{ kind: 'unreadable', file: MANIFEST_FILE, where: 'files' }] };
+  }
+  const problems = files.flatMap((file, index) => (isPlainName(file) ? [] : [{ kind: 'not_a_plain_name', file: MANIFEST_FILE, where: `files[${index}]` }]));
+  return { listed: files.filter(isPlainName), problems };
 }
 
 // Absent is its own answer, never "clean": a folder that is not there has been checked for nothing.

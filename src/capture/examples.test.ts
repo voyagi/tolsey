@@ -136,6 +136,21 @@ describe('PRIV-02: what a captured run may hold', () => {
     expect(kindsOf(privacyProblems(make(), ROSTER))).toEqual([kind]);
   });
 
+  // Every shape of a listed name that is not a file directly in the folder. The clean file beside the
+  // folder is what the two parent paths reach, so read as listed they would pass.
+  it.each(['../outside.md', '..\\outside.md', 'sub/outside.md', '..', '.', 'outside.md:stream', ''])(
+    'is red on the listed name %j, which is not a file directly in the folder',
+    (name) => {
+      const dir = fixture({ [CAPTURE_FILE]: cleanCapture() }, [CAPTURE_FILE, name]);
+      writeFileSync(join(dir, '..', 'outside.md'), '# Clean\n');
+      expect(privacyProblems(dir, ROSTER)).toEqual({
+        status: 'checked',
+        files: [CAPTURE_FILE],
+        problems: [{ kind: 'not_a_plain_name', file: 'manifest.json', where: 'files[1]' }],
+      });
+    },
+  );
+
   it('is green on a clean capture-shaped fixture', () => {
     const check = privacyProblems(fixture({ [CAPTURE_FILE]: cleanCapture() }), ROSTER);
     expect(check).toEqual({ status: 'checked', files: [CAPTURE_FILE], problems: [] });
@@ -370,6 +385,25 @@ describe('runCapture writes a run only when the whole run lands and passes PRIV-
     await expect(run).rejects.toThrow(/failed PRIV-02 and was not written: unlisted_file at demo-transcript\.md$/);
     expect(filesIn(outDir)).toEqual([TRANSCRIPT_FILE, 'manifest.json']);
     expect(readFileSync(join(outDir, 'manifest.json'), 'utf8')).toBe(manifest);
+  });
+
+  it('writes nothing, and nothing beside its scratch folder, when the manifest lists a path out of the folder', async () => {
+    const outDir = join(scratch, `out-${(fixtureCount += 1)}`);
+    mkdirSync(outDir, { recursive: true });
+    // Beside outDir, so the listed path finds it; beside the scratch folder is where a copy would land.
+    const escaped = `tolsey-escape-${process.pid}-${fixtureCount}.md`;
+    writeFileSync(join(outDir, '..', escaped), '# Clean\n');
+    const manifest = JSON.stringify({ files: [CAPTURE_FILE, `../${escaped}`] });
+    writeFileSync(join(outDir, 'manifest.json'), manifest);
+    try {
+      const { run } = captureRun(fakeWorker(), IN_SERVICE, [], outDir);
+      await expect(run).rejects.toThrow(/failed PRIV-02 and was not written: not_a_plain_name at manifest\.json files\[1\]$/);
+      expect(existsSync(join(tmpdir(), escaped))).toBe(false);
+      expect(filesIn(outDir)).toEqual(['manifest.json']);
+      expect(readFileSync(join(outDir, 'manifest.json'), 'utf8')).toBe(manifest);
+    } finally {
+      rmSync(join(tmpdir(), escaped), { force: true });
+    }
   });
 
   it('mints a fresh kitchen labelled capture and never calls the demo kitchen at /mcp', async () => {
