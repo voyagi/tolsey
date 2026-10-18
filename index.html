@@ -5,6 +5,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tolsey</title>
     <meta name="description" content="A food safety log for small restaurant kitchens that you fill in by voice." />
+    <script>
+      // The one owner of the theme choice: it runs before first paint, and the switch only dispatches a tolsey-theme
+      // event here. The page's CSP allows this script by the hash of its exact text, so any edit, whitespace included,
+      // needs the CSP's hash changed with it.
+      (function () {
+        const KEY = 'tolsey-theme';
+        const CHOICES = ['light', 'dark', 'device'];
+        const root = document.documentElement;
+        const osDark = window.matchMedia('(prefers-color-scheme: dark)');
+        let choice = 'device';
+        try {
+          const stored = localStorage.getItem(KEY);
+          if (CHOICES.includes(stored)) choice = stored;
+        } catch {
+          // Storage blocked: Device.
+        }
+        const asked = new URLSearchParams(location.search).get('theme');
+        if (CHOICES.includes(asked)) choice = asked;
+        function apply() {
+          root.setAttribute('data-theme', choice === 'device' ? (osDark.matches ? 'dark' : 'light') : choice);
+          root.setAttribute('data-theme-choice', choice);
+        }
+        apply();
+        osDark.addEventListener('change', function () {
+          if (choice === 'device') apply();
+        });
+        document.addEventListener('tolsey-theme', function (event) {
+          if (!CHOICES.includes(event.detail)) return;
+          choice = event.detail;
+          try {
+            localStorage.setItem(KEY, choice);
+          } catch {
+            // Storage blocked: the choice still holds for this page view.
+          }
+          apply();
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

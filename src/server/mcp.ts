@@ -1,4 +1,5 @@
 import { McpServer, preloadSchemas, type CallToolResult } from '@modelcontextprotocol/server';
+import { DUE_NOW, DueNowInputSchema, DueNowOutputSchema, type DueNowOutput } from '../contract/due-now';
 import { frozenSchema } from '../contract/frozen-schema';
 import {
   LOG_READING,
@@ -14,6 +15,7 @@ import {
   type DecisionContext,
   type Rejection,
 } from '../domain/log-reading';
+import { businessDay } from '../domain/business-day';
 import type { KitchenProfile, RuleRow } from '../domain/rule';
 import { saysCorrection } from '../domain/words';
 import {
@@ -52,11 +54,14 @@ export const SERVER_INFO = { name: 'tolsey', version: '0.1.0' };
 // must finish within the platform's 1-second startup limit.
 const LOG_READING_INPUT = frozenSchema(LogReadingInputSchema);
 const LOG_READING_OUTPUT = frozenSchema(LogReadingOutputSchema);
+const DUE_NOW_INPUT = frozenSchema(DueNowInputSchema);
+const DUE_NOW_OUTPUT = frozenSchema(DueNowOutputSchema);
 preloadSchemas();
 
 const SECOND_MS = 1000;
 
 const SERVER_FAULT = 'Tolsey could not log that. Try again.';
+const DUE_NOW_FAULT = 'Tolsey could not read the open checks. Try again.';
 const DEMO_READ_ONLY =
   'This is the demo kitchen, and its record is read only. Start your own kitchen to log readings.';
 const REQUEST_ID_REUSED =
@@ -209,6 +214,31 @@ async function logReading(args: LogReadingInput, deps: ServerDeps): Promise<Call
   return resultFor(await append(reply, hash, deps, now));
 }
 
+function openChecksText(names: readonly string[]): string {
+  return names.length === 0 ? 'No checks are open.' : `Open checks: ${names.join(', ')}.`;
+}
+
+// A read writes nothing, so the demo kitchen answers too: loading the wall against it changes no record.
+// The store orders open ids by id; the answer follows the profile, the order a cook walks the kitchen.
+async function dueNow(deps: ServerDeps): Promise<CallToolResult> {
+  const now = deps.clock.now();
+  const day = businessDay(now, deps.kitchen.timeZone, deps.kitchen.dayStart);
+  const open = new Set(await deps.store.openChecks(deps.kitchen.id, day));
+  const openChecks = deps.profile.checkPoints
+    .filter((point) => open.has(point.id))
+    .map((point) => ({ id: point.id, name: point.name }));
+  const result: DueNowOutput = {
+    contractVersion: 1,
+    businessDay: day,
+    timeZone: deps.kitchen.timeZone,
+    openChecks,
+  };
+  return {
+    content: [{ type: 'text', text: openChecksText(openChecks.map((check) => check.name)) }],
+    structuredContent: result,
+  };
+}
+
 export function createServer(deps: ServerDeps): McpServer {
   const server = new McpServer(SERVER_INFO, {
     capabilities: { tools: { listChanged: false }, resources: { listChanged: false } },
@@ -229,6 +259,23 @@ export function createServer(deps: ServerDeps): McpServer {
         // cook's words and initials, so a fault answers with a fixed sentence instead.
         logFault('[log_reading]', error);
         return errorResult(SERVER_FAULT, 'server_fault');
+      }
+    },
+  );
+  server.registerTool(
+    DUE_NOW,
+    {
+      description: TOOL_DESCRIPTIONS.due_now,
+      inputSchema: DUE_NOW_INPUT,
+      outputSchema: DUE_NOW_OUTPUT,
+      annotations: TOOL_ANNOTATIONS.due_now,
+    },
+    async () => {
+      try {
+        return await dueNow(deps);
+      } catch (error) {
+        logFault('[due_now]', error);
+        return errorResult(DUE_NOW_FAULT, 'server_fault');
       }
     },
   );

@@ -15,6 +15,7 @@ than trust its exit code: a test-count gate, coverage floors and mutation testin
 | `@modelcontextprotocol/client` | `2.2.0` | The reference client the conformance tests connect with |
 | Wrangler | `wrangler` `^4.120.0` | `getPlatformProxy` for a local D1 database in Node, `createTestHarness` for the built Worker in workerd |
 | Stryker | `@stryker-mutator/core` `^10.0.0` | Mutation testing |
+| axe-core | `axe-core` `4.14.0` | The accessibility rules `npm run a11y:live` runs in the browser |
 
 Prerequisites:
 
@@ -34,15 +35,16 @@ Wrangler with `persist: false`, and every test database gets the SQL files in `m
 in order before a test touches it (`openTestD1()` in `src/test-support/d1.ts`). The `e2e` project
 needs a build, which `npm run test:e2e` runs itself.
 
-### The five Vitest projects
+### The six Vitest projects
 
 | Project | Collects | Runs against |
 |---------|----------|--------------|
-| `unit` | `src/domain/**/*.test.ts`, `src/contract/**/*.test.ts` | Pure functions, no storage |
+| `unit` | `src/domain/**/*.test.ts`, `src/contract/**/*.test.ts`, `src/client/**/*.test.ts`, `src/ui/**/*.test.ts`, `src/capture/**/*.test.ts` except `*.capture.test.ts` | Pure functions and fixture folders, no storage |
 | `store` | `src/store/**/*.test.ts` | Both store adapters, D1 from `getPlatformProxy` |
 | `conformance` | `src/server/**/*.test.ts` except `*.e2e.test.ts` | The Worker in process (`target: 'in-process'`) |
 | `e2e` | `src/server/**/*.e2e.test.ts` and `src/server/conformance.test.ts` | The built Worker in workerd (`target: 'workerd'`), 60 second test and hook timeouts |
 | `deployed` | `src/server/conformance.test.ts` | A deployed Worker (`target: 'deployed'`) |
+| `capture` | `src/capture/**/*.capture.test.ts` | The deployed Worker at `tolsey.taranity.com`, run by hand with `npm run test:capture`, never by `npm test` or CI; 10 minute test timeout |
 
 `src/server/conformance.test.ts` is the one file that runs in three projects. It reads its target with
 Vitest's `inject('target')` and gets a `Target` from `resolveTarget()` in `src/test-support/target.ts`:
@@ -82,8 +84,10 @@ npm run test:e2e
 
 This runs `vite build`, then `vitest run --project e2e`. The e2e files cover routing of the built
 Worker (`routing.e2e.test.ts`), the hourly retention sweep (`retention.e2e.test.ts`), the built
-Worker's `/mcp` endpoint, shipped allowlist and D1 binding (`built-worker.e2e.test.ts`), and `Intl` parity between workerd and Node
-(`intl-parity.e2e.test.ts`, which starts a test-only Worker from
+Worker's `/mcp` endpoint, shipped allowlist and D1 binding (`built-worker.e2e.test.ts`), the wall's
+MCP client and session logging and refusing against the built Worker (`wall-client.e2e.test.ts`), the
+static pages' headers, the privacy notice's DEMO-06 elements and the pre-paint script's CSP hash
+recomputed from the built pages (`pages.e2e.test.ts`), and `Intl` parity between workerd and Node (`intl-parity.e2e.test.ts`, which starts a test-only Worker from
 `src/test-support/intl-probe.wrangler.jsonc`).
 
 Conformance against a deployed Worker:
@@ -101,6 +105,31 @@ npm run test:deployed
 
 The project fails at once with a message naming `TOLSEY_MCP_URL` when it is unset. CI does not run
 this project.
+
+One captured run of the deployed Worker, for `examples/`:
+
+```bash
+npm run test:capture
+```
+
+Run it after a deploy, between 07:00 and 22:00 in America/Chicago (the demo kitchen's schedule); it
+refuses to start outside those hours, and writes nothing when its last answer arrives after 22:00
+there, network time included. `src/capture/deployed-run.capture.test.ts` drives the wall's own
+session through `runCapture` in `src/test-support/examples.ts`: it mints a fresh scratch kitchen with
+the label `capture`, never calls the demo kitchen at `/mcp`, and takes three steps a minute apart in
+real time (a logged reading, "reach-in two is fine" refused, then "reach-in two reads 38"). The
+recorder keeps only the `content-type` and `mcp-protocol-version` headers and the server's times as
+given, and a `tools/list` answer as the tool names only. The run writes `deployed-run.json` and
+`manifest.json` into the examples folder only after every step landed and the PRIV-02 check below passed on the
+finished files; a run that fails partway writes nothing.
+
+PRIV-02 runs in `npm test` and CI as `src/capture/examples.test.ts` (`unit` project). Its
+`privacyProblems` is the same function the capture runs before writing. It is red on a planted
+fixture of each kind (initials off the roster, an IPv4 or IPv6 literal with or without a port, a
+request header name, a host other than `tolsey.taranity.com`, a file the manifest does not list)
+and on a manifest that lists nothing, green on a clean capture-shaped fixture, and reports a missing
+`examples/` folder as absent, never as clean. Until the first capture, the real `examples/` is absent; after it, the test
+requires at least one listed file and no problem.
 
 Coverage:
 
@@ -121,6 +150,62 @@ npx vitest run --project store src/store/store.contract.test.ts
 A direct run like this uses the host's own time zone; only `npm test` covers both zones. A single
 `e2e` file needs `npm run build` first, because the harness loads the built config. There is no
 watch-mode script.
+
+The wall's layout, in a real browser (local only, not in CI):
+
+```bash
+npx vite build
+npm run wall:shots
+```
+
+`scripts/wall-shots.mjs` serves the built Worker in workerd on loopback with its D1 migrations
+applied (`scripts/wall-browser.mjs`), drives the page through the dev-browser CLI, logs a reading
+by its chip, then taps "reach-in two is fine" so the open-checks board holds a row, and saves
+screenshots of both states at 1280 by 800 and 1366 by 657 in Light and Dark, plus 390 wide, to
+`reports/wall-shots/` (git-ignored). It exits 1 when the pass, the reply or the text field ends
+below the viewport or the page is scrolled, when the board with its row ends below the viewport or
+was not measured in every judged capture, when a 38.5 reading overflows its box, when the page at
+390 wide is wider than the screen, or when any request leaves the page's origin; it exits 2 when it
+could not look (no build, no dev-browser CLI, a theme that did not take, a page that never became
+ready), and 0 only when every check ran clean.
+
+The wall's accessibility, in a real browser (local only, not in CI; `verify:ship` runs it after the
+build):
+
+```bash
+npx vite build
+npm run a11y:live
+```
+
+`scripts/a11y-live.mjs` uses the same harness and drives the wall in Light and Dark through four
+states: initial, a logged reading, a refused numberless check, and NOT LOGGED (the MCP route blocked
+in the browser), then opens the privacy notice at `/privacy` as a fifth state. Each wall audit waits
+until the open-checks board shows the list the record gives in that state: empty at load and after
+the logged reading, holding reach-in two after the refusal. In each of the ten state and theme pairs
+it runs axe-core (`axe-core` `4.14.0`, a
+devDependency copied into the page with `page.evaluate`, since the page's Content Security Policy
+refuses an injected script tag) over the WCAG 2.0, 2.1 and 2.2 A and AA rules, with `target-size` and
+`label-content-name-mismatch` named so that they run, since axe ships them switched off. Any violation
+fails the run, and so does any result axe could not decide unless the script's `ALLOWED_INCOMPLETE`
+list names its rule, its state and why. It checks that the field's accessible description holds the
+NOT LOGGED text once that panel shows. In the Light run a fresh page is walked by keyboard alone: every chip, the field,
+Send, each cook on the roster, each theme button and the footer's one link, to the privacy notice,
+must take focus with a visible ring of at least 2 px, and Enter on two chips must log a reading and get a refusal. The one status region must be
+empty at load and written exactly three times across a logged reading, a refusal, a held question
+and a theme change (once per answer, never for the theme), and afterwards the browser may hold the `tolsey-theme` key and nothing else (no other
+storage, no cookie). A console message about the Content Security Policy fails the run. The walk is
+written to `reports/a11y-live/keyboard-walk.json` (git-ignored). It exits 1 on any of those failures
+and 2 when it could not audit: no build, no dev-browser CLI, axe-core not installed, a navigation that
+is not a 200, a theme that did not take, a state never reached, or an audit that checked nothing.
+
+The gate has been seen red on a planted fault; to see it again:
+
+```bash
+npm run a11y:live -- --plant-missing-label
+```
+
+The flag removes the text field's label before the first audit, and the run exits 1 on axe's `label`
+rule.
 
 Mutation testing:
 
@@ -196,7 +281,7 @@ projects only; the workerd run adds nothing to it.
 npm run gate:test-count
 ```
 
-The script builds the Worker, then `scripts/check-test-count.mjs --floor 1300` runs the `unit`,
+The script builds the Worker, then `scripts/check-test-count.mjs --floor 1654` runs the `unit`,
 `store`, `conformance` and `e2e` projects with Vitest's JSON reporter, writing the report to a new
 temporary folder each time. The `e2e` project runs the built Worker, as `npm run test:e2e` does. The
 floor is set in the `gate:test-count` script in `package.json`. The gate refuses the run when:
@@ -205,7 +290,8 @@ floor is set in the `gate:test-count` script in `package.json`. The gate refuses
   to collect (each named, before anything is counted);
 - any test is skipped or todo;
 - fewer tests passed than the floor;
-- a tracked test file under `src` is absent from the report.
+- a tracked test file under `src` is absent from the report, except a `*.capture.test.ts` file, which
+  only `npm run test:capture` runs, by hand (the clean line says how many were left out).
 
 Exit codes: 0 clean, 1 findings, 2 unknown (no report, an unparsable or empty report, Vitest not
 installed, or no `--floor`). `node scripts/check-test-count.mjs --selftest` proves each refusal
@@ -268,8 +354,8 @@ npm run verify:ship
 ```
 
 `verify-ship.mjs` runs, stopping at the first failure: `gate:types`, `npm test`, `gate:test-count`,
-`lint`, `gate`, `gate:repo`, the build, `test:coverage`, `a11y:live` (printed as SKIPPED while no
-such script exists in `package.json`), and `npm run mutate`. Each step is killed after 30 minutes
+`lint`, `gate`, `gate:repo`, the build, `test:coverage`, `a11y:live` (an exit 2 fails the run, never
+skips it), and `npm run mutate`. Each step is killed after 30 minutes
 (override with `VERIFY_SHIP_TIMEOUT_MS`); the mutation step gets twice the slowest measured full
 run (`MUTATION_FULL_RUN_MS` in `verify-ship.mjs`). The summary block at the end is the record of
 the run.

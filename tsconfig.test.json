@@ -1,7 +1,9 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
+    "jsx": "react-jsx",
     "types": ["node"]
   },
-  "include": ["src/**/*.test.ts", "src/test-support/**/*.ts"]
+  "include": ["src/**/*.test.ts", "src/test-support/**/*.ts"],
+  "exclude": ["src/ui/**/*.test.ts"]
 }

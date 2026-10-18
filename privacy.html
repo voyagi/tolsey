@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy notice, Tolsey</title>
+    <meta name="description" content="What the Tolsey demo does with data, why, where, for how long, and what you can ask for." />
+    <script>
+      // The one owner of the theme choice: it runs before first paint, and the switch only dispatches a tolsey-theme
+      // event here. The page's CSP allows this script by the hash of its exact text, so any edit, whitespace included,
+      // needs the CSP's hash changed with it.
+      (function () {
+        const KEY = 'tolsey-theme';
+        const CHOICES = ['light', 'dark', 'device'];
+        const root = document.documentElement;
+        const osDark = window.matchMedia('(prefers-color-scheme: dark)');
+        let choice = 'device';
+        try {
+          const stored = localStorage.getItem(KEY);
+          if (CHOICES.includes(stored)) choice = stored;
+        } catch {
+          // Storage blocked: Device.
+        }
+        const asked = new URLSearchParams(location.search).get('theme');
+        if (CHOICES.includes(asked)) choice = asked;
+        function apply() {
+          root.setAttribute('data-theme', choice === 'device' ? (osDark.matches ? 'dark' : 'light') : choice);
+          root.setAttribute('data-theme-choice', choice);
+        }
+        apply();
+        osDark.addEventListener('change', function () {
+          if (choice === 'device') apply();
+        });
+        document.addEventListener('tolsey-theme', function (event) {
+          if (!CHOICES.includes(event.detail)) return;
+          choice = event.detail;
+          try {
+            localStorage.setItem(KEY, choice);
+          } catch {
+            // Storage blocked: the choice still holds for this page view.
+          }
+          apply();
+        });
+      })();
+    </script>
+    <link rel="stylesheet" href="/src/ui/styles/privacy.css" />
+  </head>
+  <body>
+    <header class="top read-top">
+      <p class="wordmark">Tolsey</p>
+      <a class="back" href="/">Back to the wall</a>
+      <div class="theme">
+        <div class="theme-switch" role="group" aria-label="Theme" aria-describedby="theme-kept">
+          <button type="button" data-choice="light" aria-pressed="false">Light</button>
+          <button type="button" data-choice="dark" aria-pressed="false">Dark</button>
+          <button type="button" data-choice="device" aria-pressed="false">Device</button>
+        </div>
+        <span id="theme-kept" class="fine">Kept in this browser</span>
+      </div>
+    </header>
+    <main class="sheet">
+      <h1 class="sheet-title">Privacy notice</h1>
+      <p class="lede">
+        Tolsey is a demo of a food safety log you fill in by voice. This page says what happens to data when you use it,
+        why, where, for how long, and what you can ask for. Updated 17 October 2026.
+      </p>
+
+      <section aria-labelledby="who">
+        <h2 id="who" class="sheet-head">Who is responsible</h2>
+        <p>
+          Taranity is the controller. Write to <a href="mailto:support@taranity.com">support@taranity.com</a> about anything
+          on this page.
+        </p>
+      </section>
+
+      <section aria-labelledby="what">
+        <h2 id="what" class="sheet-head">What is processed, and why</h2>
+        <p>
+          Every use below rests on GDPR Article 6(1)(f), legitimate interests. Nothing asks for consent, and there are no
+          accounts.
+        </p>
+        <table class="facts">
+          <thead>
+            <tr>
+              <th scope="col">What</th>
+              <th scope="col">Why, and the interest it serves</th>
+              <th scope="col">Where</th>
+              <th scope="col">How long</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">IP addresses of visitors</th>
+              <td data-label="Why">
+                Cloudflare needs them to route and protect each request. The interest: delivering and protecting each
+                request.
+              </td>
+              <td data-label="Where">Only in transit, through Cloudflare's network</td>
+              <td data-label="How long">
+                Never stored by Tolsey and never written into its log lines. A log line Cloudflare keeps is dropped after
+                3 days.
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">What you write in the demo: readings, refusals, questions and their answers</th>
+              <td data-label="Why">
+                To show a spoken reading becoming a record line. The interest: showing the product to a visitor who chose
+                to try it.
+              </td>
+              <td data-label="Where">A scratch kitchen in a Cloudflare D1 database, created in EU regions</td>
+              <td data-label="How long">
+                Deleted with the scratch kitchen within 24 hours, while the hourly deletion job runs on time
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">The initials and the words sent with each reading</th>
+              <td data-label="Why">To show who logged a reading and what was heard, for the same interest</td>
+              <td data-label="Where">Stored with the line they belong to</td>
+              <td data-label="How long">As long as that line</td>
+            </tr>
+            <tr>
+              <th scope="row">Screen and request ids</th>
+              <td data-label="Why">To answer a retried call once, with the same line, for the same interest</td>
+              <td data-label="Where">Stored with the line they belong to</td>
+              <td data-label="How long">As long as that line</td>
+            </tr>
+            <tr>
+              <th scope="row">Your theme choice: Light, Dark or Device</th>
+              <td data-label="Why">To show the page the way you picked</td>
+              <td data-label="Where">Only in this browser. It is never sent to Tolsey.</td>
+              <td data-label="How long">Until you clear it from the browser</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          The words come in one way only: typed into the field or picked from a phrase on the wall. Nothing listens to a
+          microphone and no voice is recorded. The initials come from a closed roster of invented initials, and any other
+          initials are refused. Only the words Tolsey recognises are kept (a check point, the number, a few state words);
+          anything else you type is dropped before it is stored.
+        </p>
+      </section>
+
+      <section aria-labelledby="logs">
+        <h2 id="logs" class="sheet-head">Log lines</h2>
+        <p>
+          The Worker writes a log line only when something fails, with the error's name and code, never what was sent.
+          Cloudflare keeps that line for 3 days and stores it with details of the request: its method, URL and path, the
+          request, ray and trace ids, the Worker's name and version, the account id and a time. A line read after the
+          first deploy held no IP address, request header or body. Cloudflare hides a scratch kitchen's id in the URL by a
+          rule it calls a heuristic, so a line may still hold that id for those 3 days. Cloudflare's per-request logs and
+          traces are switched off.
+        </p>
+      </section>
+
+      <section aria-labelledby="where">
+        <h2 id="where" class="sheet-head">Where, and the transfer to the US</h2>
+        <p>
+          Cloudflare, Inc. hosts this page, the Worker and the database, and is the only service Tolsey sends anything to.
+          There is no analytics. Cloudflare acts as processor under its Customer DPA, version 6.4. The database is created
+          in EU regions, but a request can be handled in a Cloudflare data centre outside the EU, and Cloudflare, Inc. is
+          in the US. That transfer is covered by the EU Standard Contractual Clauses (clause 6.2(a) of the DPA), and in
+          clause 6.4 Cloudflare states that it complies with the EU-U.S. Data Privacy Framework.
+        </p>
+      </section>
+
+      <section aria-labelledby="rights">
+        <h2 id="rights" class="sheet-head">What you can ask for</h2>
+        <p>
+          You can ask for access to your data, its rectification, restriction of processing, its portability or its
+          erasure, and you can object to its processing. To ask for deletion, or for any of these, write to
+          <a href="mailto:support@taranity.com">support@taranity.com</a>.
+        </p>
+        <p>
+          Nothing Tolsey stores identifies you: there are no accounts, names or contact details (GDPR Article 11). So a
+          request can be met only for data you can point to, which is a scratch kitchen's id: the 32 characters after
+          /mcp/k/ in the requests your browser sent. Every scratch kitchen is deleted within 24 hours in any case.
+        </p>
+        <p>
+          You can also complain to the Dutch data protection authority, the Autoriteit Persoonsgegevens:
+          <a class="long-link" href="https://www.autoriteitpersoonsgegevens.nl/en/submitting-a-tip-off-or-a-complaint-to-the-ap">https://www.autoriteitpersoonsgegevens.nl/en/submitting-a-tip-off-or-a-complaint-to-the-ap</a>.
+        </p>
+      </section>
+
+      <section aria-labelledby="decisions">
+        <h2 id="decisions" class="sheet-head">No automated decisions</h2>
+        <p>
+          No automated decision is made about a person. A verdict judges a temperature against its rule, never the cook who
+          logged it.
+        </p>
+      </section>
+
+      <section aria-labelledby="browser">
+        <h2 id="browser" class="sheet-head">In this browser</h2>
+        <p>
+          This browser keeps only your theme choice, under the name tolsey-theme. There are no cookies, and nothing else is
+          stored here.
+        </p>
+      </section>
+
+      <section aria-labelledby="access">
+        <h2 id="access" class="sheet-head">Accessibility</h2>
+        <p>
+          Tolsey aims to meet WCAG 2.2 at level AA on this page and on the wall, checked in a browser with axe-core and by
+          keyboard before each release. If anything here is hard to use, write to
+          <a href="mailto:support@taranity.com">support@taranity.com</a> and say where.
+        </p>
+      </section>
+    </main>
+    <script type="module" src="/src/ui/privacy-page.ts"></script>
+  </body>
+</html>

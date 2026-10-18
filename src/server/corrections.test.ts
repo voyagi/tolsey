@@ -741,9 +741,10 @@ describe('two numbers for one correction that both read the prompt before either
 
     const result = await callThrough(depsFor(stub), answer(screen, prompt, 40));
 
+    expect(result.content[0]?.type === 'text' ? result.content[0].text : null).toBe('The demo is full for today. Try again tomorrow.');
     expect(result).toMatchObject({
       isError: true,
-      content: [{ type: 'text', text: 'The demo is full for today. Try the replay.' }],
+      content: [{ type: 'text', text: 'The demo is full for today. Try again tomorrow.' }],
       _meta: { error: 'demo_full' },
     });
     expect(JSON.stringify(result)).not.toMatch(/already corrected/);

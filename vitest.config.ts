@@ -2,6 +2,9 @@ import { defineConfig } from 'vitest/config';
 
 const E2E_FILES = 'src/server/**/*.e2e.test.ts';
 const CONFORMANCE_FILE = 'src/server/conformance.test.ts';
+// The capture writes examples/ from the deployed Worker in real time, so only its own project, run by
+// hand, ever starts it; npm test names its projects and never this one.
+const CAPTURE_FILES = 'src/capture/**/*.capture.test.ts';
 
 export default defineConfig({
   test: {
@@ -11,7 +14,14 @@ export default defineConfig({
     // Stryker's .stryker-tmp, so a coverage run and a mutation run cannot collide.
     coverage: {
       provider: 'v8',
-      include: ['src/contract/**/*.ts', 'src/domain/**/*.ts', 'src/store/**/*.ts', 'src/server/**/*.ts'],
+      include: [
+        'src/contract/**/*.ts',
+        'src/domain/**/*.ts',
+        'src/store/**/*.ts',
+        'src/server/**/*.ts',
+        'src/client/**/*.ts',
+        'src/ui/**/*.ts',
+      ],
       exclude: ['src/**/*.test.ts', 'src/test-support/**'],
       reportsDirectory: 'coverage',
       thresholds: {
@@ -26,7 +36,17 @@ export default defineConfig({
     projects: [
       {
         extends: true,
-        test: { name: 'unit', include: ['src/domain/**/*.test.ts', 'src/contract/**/*.test.ts'] },
+        test: {
+          name: 'unit',
+          include: [
+            'src/domain/**/*.test.ts',
+            'src/contract/**/*.test.ts',
+            'src/client/**/*.test.ts',
+            'src/ui/**/*.test.ts',
+            'src/capture/**/*.test.ts',
+          ],
+          exclude: [CAPTURE_FILES],
+        },
       },
       {
         extends: true,
@@ -54,6 +74,10 @@ export default defineConfig({
       {
         extends: true,
         test: { name: 'deployed', include: [CONFORMANCE_FILE], provide: { target: 'deployed' } },
+      },
+      {
+        extends: true,
+        test: { name: 'capture', include: [CAPTURE_FILES], testTimeout: 600_000 },
       },
     ],
   },

@@ -7,6 +7,6 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["src/ui"],
+  "include": ["src/ui", "src/client"],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

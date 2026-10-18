@@ -1,5 +1,6 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
+import { TOOL_ANNOTATIONS, type ToolName } from '../contract/tools';
 import { byId, errorById, postJsonRpc, sendRaw, type Endpoint } from '../test-support/raw-mcp';
 import { resolveTarget, type Target } from '../test-support/target';
 
@@ -168,35 +169,36 @@ describe(`MCP conformance on the ${inject('target')} target`, () => {
   });
 
   describe('tools/list', () => {
-    it('lists exactly the log_reading tool for a client declaring no capabilities', async () => {
+    it('lists exactly log_reading and due_now for a client declaring no capabilities', async () => {
       const client = await connect(target, `/mcp/k/${kitchenId}`);
       await withClient(client, async () => {
         const listed = await client.listTools();
-        expect(listed.tools.map((tool) => tool.name)).toEqual(['log_reading']);
+        expect(listed.tools.map((tool) => tool.name)).toEqual(['log_reading', 'due_now']);
       });
     });
 
-    it('lists exactly the log_reading tool for a client declaring the MCP Apps UI extension', async () => {
+    it('lists exactly log_reading and due_now for a client declaring the MCP Apps UI extension', async () => {
       const client = await connect(target, `/mcp/k/${kitchenId}`, {
         capabilities: { extensions: { [UI_EXTENSION]: { mimeTypes: ['text/html;profile=mcp-app'] } } },
       } as ClientOptions);
       await withClient(client, async () => {
         const listed = await client.listTools();
-        expect(listed.tools.map((tool) => tool.name)).toEqual(['log_reading']);
+        expect(listed.tools.map((tool) => tool.name)).toEqual(['log_reading', 'due_now']);
       });
     });
 
-    it('lists exactly the log_reading tool for a lone POST with no initialize and no MCP-Protocol-Version', async () => {
+    it('lists exactly log_reading and due_now for a lone POST with no initialize and no MCP-Protocol-Version', async () => {
       const response = await postJsonRpc(endpoint, TOOLS_LIST);
       const { tools } = byId(response, 1) as { tools: ListedTool[] };
-      expect(tools.map((tool) => tool.name)).toEqual(['log_reading']);
+      expect(tools.map((tool) => tool.name)).toEqual(['log_reading', 'due_now']);
     });
 
-    it('gives every listed tool an object outputSchema refusing additional properties and the write annotations', async () => {
+    it('gives every listed tool an object outputSchema refusing additional properties and its own annotations', async () => {
       const { tools } = byId(await postJsonRpc(endpoint, TOOLS_LIST), 1) as { tools: ListedTool[] };
+      expect(tools.length).toBeGreaterThan(1);
       for (const tool of tools) {
         expect(tool.outputSchema).toMatchObject({ type: 'object', additionalProperties: false });
-        expect(tool.annotations).toEqual({ readOnlyHint: false, destructiveHint: false, openWorldHint: false });
+        expect(tool.annotations).toEqual(TOOL_ANNOTATIONS[tool.name as ToolName]);
       }
     });
 

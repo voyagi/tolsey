@@ -330,6 +330,9 @@ Cloudflare itself:
   - `[log_reading]`: a fault inside the `log_reading` tool call, such as a failed store read or
     write (`createServer()` in `src/server/mcp.ts`). The caller gets the fixed server-fault
     sentence, never the error's message.
+  - `[due_now]`: a fault inside the `due_now` tool call, such as a failed store read
+    (`createServer()` in `src/server/mcp.ts`). The caller gets that tool's fixed server-fault
+    sentence, never the error's message.
   - `[retention]`: a failed hourly sweep (`scheduled()` in `src/server/worker.ts`).
   - `[mint-sweep]`: a failed sweep round run by a kitchen mint (`src/server/kitchens.ts`). The mint
     still goes ahead.
@@ -341,11 +344,12 @@ Cloudflare itself:
   and a run that starts more than 15 minutes late pushes it past 24 hours too
   (`docs/adr/0002-storage.md`).
 - **The daily write budget.** Once `dailyRowCap` is spent, minting and writing are refused with
-  "The demo is full for today. Try the replay." until 00:00 UTC.
+  "The demo is full for today. Try again tomorrow." until 00:00 UTC.
 - **The account's D1 limits.** Past them no query runs until 00:00 UTC (`docs/adr/0002-storage.md`).
   A request to a scratch kitchen then fails at its kitchen lookup (`resolveScope` in
   `src/server/scope.ts`), before any tool runs, and answers HTTP 500 with JSON-RPC `-32603`. A mint
   answers 500 `{"error":"server_error"}`. Both write a `[worker]` line, and the hourly run fails with a
-  `[retention]` line. The demo kitchen at `/mcp` still answers, because nothing it does reads storage.
-  Only a store fault that reaches the tool itself answers with the fixed server-fault sentence and a
-  `[log_reading]` line.
+  `[retention]` line. The demo kitchen at `/mcp` still answers `log_reading`, which it refuses before
+  any storage call, but its `due_now` reads storage and answers with that tool's fixed server-fault
+  sentence and a `[due_now]` line. Only a store fault that reaches a tool itself answers with a fixed
+  server-fault sentence and a `[log_reading]` or `[due_now]` line.

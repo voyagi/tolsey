@@ -19,7 +19,7 @@ with single-page-application fallback.
 
 | Method | Path | Description | Auth required |
 |--------|------|-------------|---------------|
-| POST | `/mcp` (or `/mcp/`) | MCP endpoint for the seeded demo kitchen. `initialize`, `tools/list` and `resources/list` answer as usual, and every `log_reading` call is refused with `demo_read_only`. No tool reads the record yet | No |
+| POST | `/mcp` (or `/mcp/`) | MCP endpoint for the seeded demo kitchen. `initialize`, `tools/list` and `resources/list` answer as usual, and every `log_reading` call is refused with `demo_read_only`. `due_now` reads the demo kitchen's open checks, which are always none | No |
 | POST | `/mcp/k/<id>` | MCP endpoint for one scratch kitchen, where `<id>` is exactly 32 lowercase hex characters | No (the id is the only key) |
 | GET, DELETE | `/mcp`, `/mcp/k/<id>` | Refused with 405 and a JSON-RPC `-32000` error (stateless server, no standing stream) | No |
 | POST | `/api/kitchens` | Mints a scratch kitchen and returns its MCP path | No |
@@ -145,7 +145,7 @@ Checks run in this order, so the first one that fails decides the answer:
 | 405 | `{"error":"method_not_allowed"}` plus `allow: POST` | Any method other than POST |
 | 400 | `{"error":"invalid_body"}` | Body is not JSON, not an object, or holds a key other than `label` |
 | 400 | `{"error":"invalid_label"}` | `label` is not `capture` or `conformance` |
-| 503 | `{"error":"demo_full","message":"The demo is full for today. Try the replay."}` | The day's row budget is spent |
+| 503 | `{"error":"demo_full","message":"The demo is full for today. Try again tomorrow."}` | The day's row budget is spent |
 | 500 | `{"error":"server_error"}` | A fault while reading the body or minting |
 
 Only a POST has its body read, so the 413 and 415 checks apply to POST alone. Any other method skips
@@ -190,11 +190,12 @@ Server info reported on initialize: `{"name":"tolsey","version":"0.1.0"}`. Capab
 
 ### Tools
 
-One tool is registered today: `log_reading`.
+Two tools are registered today, listed in this order: `log_reading`, which writes the record, and
+`due_now`, which reads it.
 
-`src/contract/tools.ts` also fixes the names, descriptions and annotations of five planned tools that
+`src/contract/tools.ts` also fixes the names, descriptions and annotations of four planned tools that
 are **not registered yet** and do not appear in `tools/list`: `record_corrective_action`,
-`close_corrective_action`, `due_now`, `shift_handover` and `day_sheet`. The same file fixes four MCP
+`close_corrective_action`, `shift_handover` and `day_sheet`. The same file fixes four MCP
 Apps card resource URIs (`ui://tolsey/reading.html`, `ui://tolsey/due-now.html`,
 `ui://tolsey/open-action.html`, `ui://tolsey/handover.html`); no resource is registered yet.
 
@@ -363,10 +364,65 @@ Refusals are tool results with `isError: true`, a sentence in `content[0].text` 
 | `initials_not_on_roster` | `Those initials are not on this kitchen's roster. Who is logging? Call again with the whole reading and their initials.` | Initials not on the roster; nothing is stored, so send the whole reading again |
 | `kitchen_closed` | `This kitchen has closed. Start a new kitchen to keep logging.` | Past the kitchen's write window (`closesAt`) |
 | `kitchen_full` | `This kitchen is full. Start a new kitchen to keep logging.` | The kitchen holds `kitchenLineCap` (200) stored events |
-| `demo_full` | `The demo is full for today. Try the replay.` | The day's row budget is spent; the same code `POST /api/kitchens` gives |
+| `demo_full` | `The demo is full for today. Try again tomorrow.` | The day's row budget is spent; the same code `POST /api/kitchens` gives |
 | `request_id_reused` | `Tolsey could not log that: this request_id was already used for a different call. Call again with a new request_id.` | See retries |
 | `request_id_expired` | `Tolsey already logged this call earlier, record <code>. Use a new request_id only for a new reading.` | See retries |
 | `server_fault` | `Tolsey could not log that. Try again.` | Any fault inside the tool; the message is never echoed, because it can carry the cook's words and initials |
+
+## Tool: due_now
+
+Says which checks are still open in the kitchen's current business day, in the order the kitchen
+profile lists its check points. It reads the record and writes nothing. Annotations:
+`readOnlyHint: true`, `openWorldHint: false`.
+
+### Input schema
+
+Defined by `DueNowInputSchema` in `src/contract/due-now.ts`: an empty object that refuses any
+property. No argument chooses the kitchen or the day: the path names the kitchen, and the server's
+clock, read once per call, names the day in the kitchen's time zone.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": { "name": "due_now", "arguments": {} }
+}
+```
+
+### Result
+
+`content[0].text` lists the open checks by name, such as `Open checks: Walk-in, Soup well.`, or says
+`No checks are open.` The `structuredContent` object matches `DueNowOutputSchema`, and the listed
+`outputSchema` is an object that refuses additional properties.
+
+```json
+{
+  "content": [{ "type": "text", "text": "Open checks: Reach-in two." }],
+  "structuredContent": {
+    "contractVersion": 1,
+    "businessDay": "2026-10-20",
+    "timeZone": "America/Chicago",
+    "openChecks": [{ "id": "reach_in_2", "name": "Reach-in two" }]
+  }
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `contractVersion` | Always `1` |
+| `businessDay`, `timeZone` | The kitchen's business day (`YYYY-MM-DD`) the answer covers, and its zone |
+| `openChecks` | `{id, name}` of every open check point, in the profile's order; empty when none is open |
+
+A check point is open while its newest line of the day, receipts aside, is a refusal, a held reading
+or a `wrong_number` marker: each of them still needs a number. A reading for the check point closes
+it, and the refusal line stays in the record. `Store.openChecks` (`src/store/port.ts`) decides this
+from the stored lines alone; the tool only orders the answer and adds the names.
+
+The demo kitchen at `/mcp` answers `due_now` too, with an empty list, since nothing can be logged
+there. A fault inside the tool, such as a failed store read, is answered with `isError: true`, the
+text `Tolsey could not read the open checks. Try again.` and `_meta.error` `server_fault`, with the
+error's message never echoed or logged.
 
 ## Rate limits
 

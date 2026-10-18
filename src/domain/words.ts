@@ -255,6 +255,12 @@ function partsOf(tokens: readonly string[], profile: KitchenProfile): string[] {
   return withoutNames(tokens.flatMap(spokenParts), namesOf(profile).parts);
 }
 
+// The wall reads the figure from these same parts, so the page and the server take names out by one
+// rule: a second alias matcher in the page would drift from this one.
+export function partsWithoutNames(tokens: readonly string[], profile: KitchenProfile): string[] {
+  return partsOf(tokens, profile);
+}
+
 function hedgeOrSign(parts: readonly string[], hedges: Hedges): NumberWords | undefined {
   return saysHedge(parts, hedges) ? HEDGE : signedOf(parts, hedges);
 }
@@ -287,8 +293,9 @@ export function namesAFigure(tokens: readonly string[], profile: KitchenProfile)
 const SINGLE_DIGIT = /^\d$/;
 
 // Single digits said one at a time ("1 5", as the digit repeat asks for) spell one number, so a run of
-// them is joined before figures are read. A longer figure never joins a run ("38 5" stays two).
-function joinDigits(parts: readonly string[]): string[] {
+// them is joined before figures are read. A longer figure never joins a run ("38 5" stays two). The wall
+// joins an answer's digits by this same rule, so the page and the server agree on what "1 5" says.
+export function joinDigits(parts: readonly string[]): string[] {
   const joined: string[] = [];
   let inRun = false;
   for (const part of parts) {
@@ -312,10 +319,18 @@ const POINT = 'point';
 // The one fraction read in words. Any other ("38 and a quarter") is the intent layer's to read, so the
 // whole figure before it is compared as said.
 const AND_A_HALF: readonly string[] = ['and', 'a', 'half'];
-// The digits after a point said one word at a time ("point five").
-const DIGIT_OF_WORD: ReadonlyMap<string, string> = new Map(
+// The digits after a point said one word at a time ("point five"), and the digit words the wall reads in
+// an answer to a question ("one five").
+export const DIGIT_OF_WORD: ReadonlyMap<string, string> = new Map(
   ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'].map((word, digit) => [word, String(digit)]),
 );
+
+// Whether the parts hold a number word other than the ten digit words ("twenty", "fifteen",
+// "hundred"). A digit word beside one belongs to that number ("twenty one", "one hundred"), so the wall
+// reads no digit words from such an answer.
+export function saysWholeNumberWord(parts: readonly string[]): boolean {
+  return parts.some((part) => NUMBER_WORDS.has(part) && !DIGIT_OF_WORD.has(part));
+}
 
 // Past the last part the lookup finds nothing, which ends the run.
 function digitWordsAt(parts: readonly string[], at: number): string {

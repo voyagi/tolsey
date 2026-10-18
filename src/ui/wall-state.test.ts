@@ -1,0 +1,451 @@
+import { describe, expect, it } from 'vitest';
+import type { ToolCallResult } from '../client/mcp-client';
+import type { Outcome } from '../contract/log-reading';
+import { WALL_PROFILE } from './profile';
+import { DEMO_FULL_MESSAGE, NEW_KITCHEN_SENTENCE, STOPPED_MESSAGE } from './wall-copy';
+import { controlsEnabled, initialWallState, statusWrites, wallReducer, type WallEvent, type WallState } from './wall-state';
+
+const SAID = 'the walk-in reads 38';
+const RULE_AT_MOST_41 = { id: 'unit_air_cold', comparator: 'at_most', limit: 41, unit: 'F', sourceKind: 'house_rule' } as const;
+
+const VERDICTS: Record<Outcome, string> = {
+  in_range: 'in range',
+  out_of_range: 'out of range',
+  not_covered: 'not covered yet',
+  refused: 'refused',
+  held: 'held',
+  nothing_to_fix: 'nothing to fix',
+};
+
+const REPLIES: Record<Outcome, string> = {
+  in_range: 'Walk-in, 38, in range, AB',
+  out_of_range: 'Walk-in, 45, out of range, AB',
+  not_covered: 'Cooling, 70, logged, not covered yet, AB',
+  refused: 'I need the number on the thermometer. What does reach-in two read?',
+  held: 'Say it one digit at a time. What does the walk-in read?',
+  nothing_to_fix: 'There is nothing to fix.',
+};
+
+const COMMON = { contractVersion: 1, serverTime: '2026-10-16T15:00:00.000Z', businessDay: '2026-10-16', timeZone: 'America/Chicago' };
+
+const LINE = {
+  lineId: 'line-1',
+  recordCode: '261016-001',
+  checkPoint: { id: 'walk_in', name: 'Walk-in' },
+  value: 38,
+  unit: 'F',
+  initials: 'AB',
+};
+
+// Each outcome carries exactly the fields docs/API.md lists for it.
+const STRUCTURED: Record<Outcome, Record<string, unknown>> = {
+  in_range: { ...LINE, rule: RULE_AT_MOST_41 },
+  out_of_range: { ...LINE, lineId: 'line-2', recordCode: '261016-002', value: 45, rule: RULE_AT_MOST_41 },
+  not_covered: { ...LINE, lineId: 'line-3', recordCode: '261016-003', checkPoint: { id: 'cooling', name: 'Cooling' }, value: 70 },
+  refused: { lineId: 'line-4', recordCode: '261016-004', checkPoint: { id: 'reach_in_2', name: 'Reach-in two' }, initials: 'AB', prompt: { kind: 'number', id: 'prompt-1' } },
+  held: { checkPoint: { id: 'walk_in', name: 'Walk-in' }, value: 15, unit: 'F', initials: 'AB', prompt: { kind: 'digit_repeat', id: 'prompt-2' } },
+  nothing_to_fix: {},
+};
+
+function resultOf(outcome: Outcome, overrides: Record<string, unknown> = {}): ToolCallResult {
+  return {
+    content: [{ type: 'text', text: REPLIES[outcome] }],
+    structuredContent: { ...COMMON, outcome, verdict: VERDICTS[outcome], ...STRUCTURED[outcome], ...overrides },
+  };
+}
+
+// The reducer treats a call's key as opaque, so any string that tells two calls apart will do here.
+function callOf(said: string, initials = 'AB'): string {
+  return `${initials}|${said}`;
+}
+
+function reduce(state: WallState, ...events: WallEvent[]): WallState {
+  return events.reduce(wallReducer, state);
+}
+
+const READY = reduce(initialWallState(WALL_PROFILE), { type: 'started' });
+
+function received(state: WallState, result: ToolCallResult, said = SAID): WallState {
+  return reduce(state, { type: 'sent', said }, { type: 'resultReceived', said, result, initials: 'AB', callKey: callOf(said) });
+}
+
+const WITH_PASS = received(READY, resultOf('in_range'));
+
+describe('a result of each outcome', () => {
+  it.each<[Outcome]>([['in_range'], ['out_of_range'], ['not_covered']])(
+    'a %s result sets the exchange to the words and the reply and replaces the pass with its own fields',
+    (outcome) => {
+      const result = resultOf(outcome);
+      const state = received(WITH_PASS, result, 'the words sent');
+      const { lineId, recordCode, checkPoint, value, unit, verdict, rule, initials } = result.structuredContent ?? {};
+      expect(state.exchange).toEqual({ said: 'the words sent', reply: REPLIES[outcome], source: 'server', cook: 'AB' });
+      expect(state.pass).toStrictEqual({ outcome, lineId, recordCode, checkPoint, value, unit, verdict, rule, initials });
+    },
+  );
+
+  it.each<[Outcome]>([['refused'], ['held'], ['nothing_to_fix']])(
+    'a %s result sets the exchange and leaves the pass as it was',
+    (outcome) => {
+      const state = received(WITH_PASS, resultOf(outcome), 'reach-in two is fine');
+      expect(state.exchange).toEqual({ said: 'reach-in two is fine', reply: REPLIES[outcome], source: 'server', cook: 'AB' });
+      expect(state.pass).toBe(WITH_PASS.pass);
+    },
+  );
+
+  it('a not_covered pass carries no rule', () => {
+    expect(received(READY, resultOf('not_covered')).pass?.rule).toBeUndefined();
+  });
+
+  it('an out_of_range pass keeps the server verdict word', () => {
+    expect(received(READY, resultOf('out_of_range')).pass?.verdict).toBe('out of range');
+  });
+
+  it('a correcting line carrying supersedesLineId replaces the pass as the newest reading', () => {
+    const correction = resultOf('in_range', { lineId: 'line-9', recordCode: '261016-009', value: 37, supersedesLineId: 'line-1' });
+    const state = received(WITH_PASS, correction);
+    expect(state.pass).toMatchObject({ lineId: 'line-9', recordCode: '261016-009', value: 37 });
+  });
+});
+
+describe('a value at the rule limit shows the verdict the result carried', () => {
+  it.each(['in range', 'out of range'])('a result at 41 with limit 41 carrying %s shows %s on the pass', (verdict) => {
+    const outcome = verdict === 'in range' ? 'in_range' : 'out_of_range';
+    const state = received(READY, resultOf(outcome, { value: RULE_AT_MOST_41.limit, verdict }));
+    expect(state.pass).toMatchObject({ value: 41, verdict, rule: { limit: 41 } });
+  });
+});
+
+describe('one call in flight at a time', () => {
+  it('a sent event while a call is in flight leaves the state unchanged', () => {
+    const inFlight = reduce(READY, { type: 'sent', said: SAID });
+    expect(inFlight.inFlight).toBe(true);
+    expect(wallReducer(inFlight, { type: 'sent', said: 'walk-in 15' })).toBe(inFlight);
+  });
+
+  it('a resultReceived clears inFlight', () => {
+    expect(received(READY, resultOf('in_range')).inFlight).toBe(false);
+  });
+});
+
+describe('the open question', () => {
+  it('is set from the result prompt and cleared by a result without one', () => {
+    const asked = received(READY, resultOf('held'));
+    expect(asked.openPrompt).toEqual({ kind: 'digit_repeat', id: 'prompt-2' });
+    expect(received(asked, resultOf('in_range')).openPrompt).toBeNull();
+  });
+
+  it('a local reply changes neither the open question nor the pass', () => {
+    const asked = received(WITH_PASS, resultOf('held'));
+    const state = reduce(asked, { type: 'localReplied', said: 'hello', reply: 'Say a check and its number.', initials: 'AB' });
+    expect(state.openPrompt).toBe(asked.openPrompt);
+    expect(state.pass).toBe(asked.pass);
+    expect(state.exchange).toEqual({ said: 'hello', reply: 'Say a check and its number.', source: 'wall', cook: 'AB' });
+  });
+});
+
+describe('the words in the field', () => {
+  it('an edited event sets the draft', () => {
+    expect(reduce(READY, { type: 'edited', text: 'walk-in 1' }).draft).toBe('walk-in 1');
+  });
+
+  it('a result clears the draft', () => {
+    const typed = reduce(READY, { type: 'edited', text: SAID });
+    expect(received(typed, resultOf('in_range')).draft).toBe('');
+  });
+
+  it('a local reply clears the draft', () => {
+    const typed = reduce(READY, { type: 'edited', text: 'hello' });
+    expect(reduce(typed, { type: 'localReplied', said: 'hello', reply: 'Say a check.', initials: 'AB' }).draft).toBe('');
+  });
+
+  it('a call that never answered keeps the draft', () => {
+    const typed = reduce(READY, { type: 'edited', text: SAID }, { type: 'sent', said: SAID });
+    expect(reduce(typed, failed('The words never reached Tolsey.')).draft).toBe(SAID);
+  });
+});
+
+function failed(reason: string, requestId = 'request-1'): WallEvent {
+  return { type: 'callFailed', said: SAID, reason, requestId, initials: 'AB', callKey: callOf(SAID) };
+}
+
+// Other words typed, sent and lost after an earlier call was lost too.
+function failedAgain(said: string, requestId: string): WallEvent[] {
+  return [
+    { type: 'edited', text: said },
+    { type: 'sent', said },
+    { type: 'callFailed', said, reason: 'Tolsey answered with an error (status 500).', requestId, initials: 'AB', callKey: callOf(said) },
+  ];
+}
+
+describe('a call that did not land', () => {
+  const sentWithPass = reduce(WITH_PASS, { type: 'edited', text: SAID }, { type: 'sent', said: SAID });
+
+  it('callFailed shows NOT LOGGED with the reason, keeps the words and leaves the pass as it was', () => {
+    const state = reduce(sentWithPass, failed('Tolsey did not answer in time.'));
+    expect(state.notLogged).toEqual({ reason: 'Tolsey did not answer in time.' });
+    expect(state.draft).toBe(SAID);
+    expect(state.pass).toBe(WITH_PASS.pass);
+    expect(state.inFlight).toBe(false);
+  });
+
+  it('callFailed keeps the words and request_id for a retry of the same words', () => {
+    const state = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
+    expect(state.pendingRetries).toEqual([{ words: SAID, requestId: 'request-7', callKey: callOf(SAID) }]);
+  });
+
+  it('a second call that did not land keeps the retry of the first, newest last', () => {
+    const first = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
+    const second = reduce(first, ...failedAgain('walk-in 45', 'request-8'));
+    expect(second.pendingRetries).toEqual([
+      { words: SAID, requestId: 'request-7', callKey: callOf(SAID) },
+      { words: 'walk-in 45', requestId: 'request-8', callKey: callOf('walk-in 45') },
+    ]);
+  });
+
+  it('the same words failing again keep one retry for them', () => {
+    const once = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
+    const twice = reduce(once, { type: 'sent', said: SAID }, failed('Tolsey answered with an error (status 500).', 'request-7'));
+    expect(twice.pendingRetries).toEqual([{ words: SAID, requestId: 'request-7', callKey: callOf(SAID) }]);
+  });
+
+  it('after two calls that did not land, NOT LOGGED stays only while the field holds the newest words', () => {
+    const first = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
+    const second = reduce(first, ...failedAgain('walk-in 45', 'request-8'));
+    expect(reduce(second, { type: 'edited', text: 'walk-in 45' }).notLogged).toEqual({ reason: 'Tolsey answered with an error (status 500).' });
+    expect(reduce(second, { type: 'edited', text: SAID }).notLogged).toBeNull();
+  });
+
+  it('callFailed never sets a pass, even from an empty one', () => {
+    const fromEmpty = reduce(READY, { type: 'sent', said: SAID }, failed('Tolsey answered with an error (status 500).'));
+    expect(fromEmpty.pass).toBeNull();
+  });
+
+  it('a result for the same words from the same cook clears NOT LOGGED and their pending retry', () => {
+    const notLogged = reduce(sentWithPass, failed('Tolsey did not answer in time.'));
+    const state = received(notLogged, resultOf('in_range'));
+    expect(state.notLogged).toBeNull();
+    expect(state.pendingRetries).toEqual([]);
+  });
+
+  it('a result for other words clears NOT LOGGED and keeps the pending retry for the words that did not land', () => {
+    const notLogged = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
+    const state = received(notLogged, resultOf('in_range'), 'the walk-in reads 39');
+    expect(state.notLogged).toBeNull();
+    expect(state.pendingRetries).toEqual([{ words: SAID, requestId: 'request-7', callKey: callOf(SAID) }]);
+  });
+
+  it('a result for the same words from another cook keeps the pending retry of the cook whose call did not land', () => {
+    const notLogged = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
+    const state = reduce(notLogged, { type: 'sent', said: SAID }, { type: 'resultReceived', said: SAID, result: resultOf('in_range'), initials: 'MR', callKey: callOf(SAID, 'MR') });
+    expect(state.pendingRetries).toEqual([{ words: SAID, requestId: 'request-7', callKey: callOf(SAID) }]);
+  });
+
+  it('a local reply clears NOT LOGGED and keeps the pending retry for the words that did not land', () => {
+    const notLogged = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
+    const state = reduce(notLogged, { type: 'localReplied', said: 'hello', reply: 'Say a check and its number.', initials: 'AB' });
+    expect(state.notLogged).toBeNull();
+    expect(state.pendingRetries).toEqual([{ words: SAID, requestId: 'request-7', callKey: callOf(SAID) }]);
+  });
+
+  it('an edit into other words clears NOT LOGGED and keeps the pending retry for the words that did not land', () => {
+    const notLogged = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
+    const state = reduce(notLogged, { type: 'edited', text: 'the walk-in reads 39' });
+    expect(state.notLogged).toBeNull();
+    expect(state.pendingRetries).toEqual([{ words: SAID, requestId: 'request-7', callKey: callOf(SAID) }]);
+  });
+
+  it('an edit that leaves the words that did not land keeps NOT LOGGED', () => {
+    const notLogged = reduce(sentWithPass, failed('Tolsey did not answer in time.'));
+    expect(reduce(notLogged, { type: 'edited', text: SAID }).notLogged).toEqual({ reason: 'Tolsey did not answer in time.' });
+  });
+
+  it('kitchenReplaced says the new kitchen in the exchange, keeps the words and drops the retry and the open question', () => {
+    const asked = received(WITH_PASS, resultOf('held'));
+    const notLogged = reduce(asked, { type: 'edited', text: SAID }, { type: 'sent', said: SAID }, failed('x'));
+    const state = reduce(notLogged, { type: 'kitchenReplaced', said: SAID, initials: 'AB' });
+    expect(state.exchange).toEqual({ said: SAID, reply: NEW_KITCHEN_SENTENCE, source: 'wall', cook: 'AB' });
+    expect(state.draft).toBe(SAID);
+    expect(state.pendingRetries).toEqual([]);
+    expect(state.openPrompt).toBeNull();
+    expect(state.inFlight).toBe(false);
+    expect(state.pass).toBe(WITH_PASS.pass);
+  });
+
+  it('stopped ends the wall with its message and keeps every control off', () => {
+    const state = reduce(sentWithPass, { type: 'stopped', message: STOPPED_MESSAGE });
+    expect(state.phase).toBe('stopped');
+    expect(state.stopMessage).toBe(STOPPED_MESSAGE);
+    expect(state.inFlight).toBe(false);
+    expect(state.pass).toBe(WITH_PASS.pass);
+    expect(controlsEnabled(state)).toBe(false);
+  });
+
+  // The wall refuses every send once stopped, so a notice telling the cook to send the words again
+  // would describe a field that can no longer send.
+  it('stopped after a call that did not land drops NOT LOGGED and every pending retry', () => {
+    const notLogged = reduce(sentWithPass, failed('Tolsey did not answer in time.', 'request-7'));
+    const state = reduce(notLogged, { type: 'sent', said: SAID }, { type: 'stopped', message: DEMO_FULL_MESSAGE });
+    expect(state.notLogged).toBeNull();
+    expect(state.pendingRetries).toEqual([]);
+    expect(state.stopMessage).toBe(DEMO_FULL_MESSAGE);
+  });
+});
+
+describe('who is logging', () => {
+  it('starts on the first cook on the roster', () => {
+    expect(initialWallState(WALL_PROFILE).cook).toBe(WALL_PROFILE.roster[0]);
+    expect(WALL_PROFILE.roster[0]).toBe('AB');
+  });
+
+  it('cookSelected with a roster entry makes that cook the one logging', () => {
+    expect(reduce(READY, { type: 'cookSelected', initials: 'MR' }).cook).toBe('MR');
+  });
+
+  it.each(['ZZ', '', 'mr'])('cookSelected with %j, which is not on the roster, keeps the cook', (initials) => {
+    const state = reduce(READY, { type: 'cookSelected', initials: 'MR' }, { type: 'cookSelected', initials });
+    expect(state.cook).toBe('MR');
+  });
+
+  // Each event that writes the exchange is sent with AB's initials after the roster has moved to MR,
+  // as when the cook is switched while the call is out, so the exchange can only say AB by taking the
+  // event's own initials.
+  it.each<[string, WallEvent[]]>([
+    ['a server result', [{ type: 'sent', said: SAID }, { type: 'resultReceived', said: SAID, result: resultOf('in_range'), initials: 'AB', callKey: callOf(SAID) }]],
+    ['a local reply', [{ type: 'localReplied', said: 'hello', reply: 'Say a check and its number.', initials: 'AB' }]],
+    ['a replaced kitchen', [{ type: 'sent', said: SAID }, { type: 'kitchenReplaced', said: SAID, initials: 'AB' }]],
+  ])('%s names the cook who said the words, not the cook selected since', (_event, events) => {
+    const state = reduce(READY, { type: 'cookSelected', initials: 'MR' }, ...events, { type: 'cookSelected', initials: 'JT' });
+    expect(state.cook).toBe('JT');
+    expect(state.exchange?.cook).toBe('AB');
+  });
+});
+
+describe('the status region speaks each answer to a send once, and nothing else', () => {
+  const sentAndReceived = (result: ToolCallResult, said = SAID): WallEvent[] => [
+    { type: 'sent', said },
+    { type: 'resultReceived', said, result, initials: 'AB', callKey: callOf(said) },
+  ];
+
+  it('is empty at load', () => {
+    expect(initialWallState(WALL_PROFILE).announcement).toBe('');
+  });
+
+  it('counts exactly 3 writes across a logged reading, a refusal and a held question', () => {
+    const events = [...sentAndReceived(resultOf('in_range')), ...sentAndReceived(resultOf('refused')), ...sentAndReceived(resultOf('held'))];
+    expect(statusWrites(events, READY)).toBe(3);
+  });
+
+  it.each<[Outcome]>([['in_range'], ['out_of_range'], ['not_covered'], ['refused'], ['held'], ['nothing_to_fix']])(
+    'writes the server reply of a %s result once',
+    (outcome) => {
+      const state = received(WITH_PASS, resultOf(outcome));
+      expect(state.announcement).toBe(REPLIES[outcome]);
+      expect(state.announcementSeq - WITH_PASS.announcementSeq).toBe(1);
+    },
+  );
+
+  it('a result with no reply text writes nothing', () => {
+    const silent: ToolCallResult = { content: [], structuredContent: { ...COMMON, outcome: 'in_range', ...STRUCTURED.in_range } };
+    expect(statusWrites(sentAndReceived(silent), WITH_PASS)).toBe(0);
+  });
+
+  it.each<[string, WallEvent[], string]>([
+    ['NOT LOGGED with its reason', [{ type: 'sent', said: SAID }, failed('Tolsey did not answer in time.')], 'NOT LOGGED. Tolsey did not answer in time.'],
+    ['a local reply', [{ type: 'localReplied', said: 'hello', reply: 'Say a check and its number.', initials: 'AB' }], 'Say a check and its number.'],
+    ['a replaced kitchen', [{ type: 'sent', said: SAID }, { type: 'kitchenReplaced', said: SAID, initials: 'AB' }], NEW_KITCHEN_SENTENCE],
+    ['a stopped wall', [{ type: 'sent', said: SAID }, { type: 'stopped', message: STOPPED_MESSAGE }], STOPPED_MESSAGE],
+  ])('speaks %s once', (_event, events, sentence) => {
+    expect(statusWrites(events, WITH_PASS)).toBe(1);
+    expect(events.reduce(wallReducer, WITH_PASS).announcement).toBe(sentence);
+  });
+
+  it.each<[string, WallEvent[]]>([
+    ['a cook switch', [{ type: 'cookSelected', initials: 'MR' }]],
+    ['an edit', [{ type: 'edited', text: 'walk-in 1' }]],
+    ['a send still out', [{ type: 'sent', said: SAID }]],
+    ['a restart', [{ type: 'starting' }, { type: 'started' }]],
+  ])('%s adds no write', (_event, events) => {
+    expect(statusWrites(events, WITH_PASS)).toBe(0);
+    expect(events.reduce(wallReducer, WITH_PASS).announcement).toBe(WITH_PASS.announcement);
+  });
+
+  it('two logged results with the same reply text still count as two writes', () => {
+    const events = [...sentAndReceived(resultOf('in_range')), ...sentAndReceived(resultOf('in_range'))];
+    expect(statusWrites(events, READY)).toBe(2);
+  });
+
+  it('gives each record event its own write while one call is in flight at a time', () => {
+    const results = [resultOf('in_range'), resultOf('refused'), resultOf('out_of_range')];
+    let state = READY;
+    for (const result of results) {
+      const before = state.announcementSeq;
+      state = reduce(state, ...sentAndReceived(result));
+      expect(state.announcementSeq - before).toBe(1);
+    }
+  });
+});
+
+describe('the open checks, as the record lists them', () => {
+  const REACH_IN_TWO = [{ id: 'reach_in_2', name: 'Reach-in two' }];
+  const loaded = (openChecks: readonly { id: string; name: string }[]): WallEvent => ({ type: 'openChecksLoaded', openChecks });
+
+  it('is null until the first answer, so no list is shown before the record says anything', () => {
+    expect(initialWallState(WALL_PROFILE).openChecks).toBeNull();
+    expect(READY.openChecks).toBeNull();
+  });
+
+  it('takes the list exactly as given, in its order', () => {
+    const list = [
+      { id: 'walk_in', name: 'Walk-in' },
+      { id: 'soup_well', name: 'Soup well' },
+    ];
+    expect(reduce(READY, loaded(list)).openChecks).toEqual(list);
+    expect(reduce(READY, loaded(list), loaded([])).openChecks).toEqual([]);
+  });
+
+  it('openChecksLoaded adds 0 status writes and leaves the announcement as it was', () => {
+    const after = reduce(WITH_PASS, loaded(REACH_IN_TWO));
+    expect(statusWrites([loaded(REACH_IN_TWO)], WITH_PASS)).toBe(0);
+    expect(after.announcement).toBe(WITH_PASS.announcement);
+  });
+
+  it('across a refusal and the list refresh after it, the status count rises by exactly 1', () => {
+    const events: WallEvent[] = [
+      { type: 'sent', said: 'reach-in two is fine' },
+      { type: 'resultReceived', said: 'reach-in two is fine', result: resultOf('refused'), initials: 'AB', callKey: callOf('reach-in two is fine') },
+      loaded(REACH_IN_TWO),
+    ];
+    expect(statusWrites(events, READY)).toBe(1);
+    expect(reduce(READY, ...events).openChecks).toEqual(REACH_IN_TWO);
+  });
+
+  it('a call that did not land leaves the list unchanged', () => {
+    const listed = reduce(READY, loaded(REACH_IN_TWO));
+    const after = reduce(listed, { type: 'sent', said: SAID }, failed('Tolsey did not answer in time.'));
+    expect(after.openChecks).toBe(listed.openChecks);
+  });
+
+  it("kitchenReplaced drops the closed kitchen's list, so no list shows until the new record answers", () => {
+    const listed = reduce(READY, loaded(REACH_IN_TWO));
+    const after = reduce(listed, { type: 'sent', said: SAID }, { type: 'kitchenReplaced', said: SAID, initials: 'AB' });
+    expect(after.openChecks).toBeNull();
+  });
+});
+
+describe('controlsEnabled', () => {
+  it('is false while starting', () => {
+    expect(controlsEnabled(initialWallState(WALL_PROFILE))).toBe(false);
+  });
+
+  it('is true once ready with nothing in flight', () => {
+    expect(controlsEnabled(READY)).toBe(true);
+  });
+
+  it('is false while a call is in flight', () => {
+    expect(controlsEnabled(reduce(READY, { type: 'sent', said: SAID }))).toBe(false);
+  });
+
+  it('is false after a failed start', () => {
+    expect(controlsEnabled(reduce(initialWallState(WALL_PROFILE), { type: 'startFailed', error: 'Could not create a kitchen.' }))).toBe(false);
+  });
+});
