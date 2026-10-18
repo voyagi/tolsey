@@ -1,0 +1,547 @@
+{
+  "where": "deployed",
+  "canonicalHost": "tolsey.taranity.com",
+  "startedAt": "2026-10-18T12:02:13.603Z",
+  "steps": [
+    {
+      "said": "the walk-in reads 38",
+      "outcome": "in_range",
+      "reply": "Walk-in, 38, in range, AB",
+      "serverTime": "2026-10-18T12:02:14.575Z"
+    },
+    {
+      "said": "reach-in two is fine",
+      "outcome": "refused",
+      "reply": "I need the number on the thermometer. What does reach-in two read?",
+      "serverTime": "2026-10-18T12:03:15.200Z"
+    },
+    {
+      "said": "reach-in two reads 38",
+      "outcome": "in_range",
+      "reply": "Reach-in two, 38, in range, AB",
+      "serverTime": "2026-10-18T12:04:16.229Z"
+    }
+  ],
+  "exchanges": [
+    {
+      "method": "POST",
+      "path": "/api/kitchens",
+      "status": 201,
+      "request": {
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "label": "capture"
+        }
+      },
+      "response": {
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "id": "023d24670271ff8c34f281a6ae82206a",
+          "mcpPath": "/mcp/k/023d24670271ff8c34f281a6ae82206a",
+          "expiresAt": "2026-10-19T12:02:13.813Z",
+          "closesAt": "2026-10-19T10:45:13.813Z"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/mcp/k/023d24670271ff8c34f281a6ae82206a",
+      "status": 200,
+      "request": {
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 1,
+          "method": "initialize",
+          "params": {
+            "protocolVersion": "2025-11-25",
+            "capabilities": {},
+            "clientInfo": {
+              "name": "tolsey-wall",
+              "version": "0.1.0"
+            }
+          }
+        }
+      },
+      "response": {
+        "headers": {
+          "content-type": "text/event-stream"
+        },
+        "body": [
+          {
+            "result": {
+              "protocolVersion": "2025-11-25",
+              "capabilities": {
+                "tools": {
+                  "listChanged": false
+                },
+                "resources": {
+                  "listChanged": false
+                }
+              },
+              "serverInfo": {
+                "name": "tolsey",
+                "version": "0.1.0"
+              }
+            },
+            "jsonrpc": "2.0",
+            "id": 1
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/mcp/k/023d24670271ff8c34f281a6ae82206a",
+      "status": 202,
+      "request": {
+        "headers": {
+          "content-type": "application/json",
+          "mcp-protocol-version": "2025-11-25"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "method": "notifications/initialized"
+        }
+      },
+      "response": {
+        "headers": {},
+        "body": null
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/mcp/k/023d24670271ff8c34f281a6ae82206a",
+      "status": 200,
+      "request": {
+        "headers": {
+          "content-type": "application/json",
+          "mcp-protocol-version": "2025-11-25"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 2,
+          "method": "tools/list",
+          "params": {}
+        }
+      },
+      "response": {
+        "headers": {
+          "content-type": "text/event-stream"
+        },
+        "body": [
+          {
+            "result": {
+              "tools": [
+                {
+                  "name": "log_reading"
+                },
+                {
+                  "name": "due_now"
+                }
+              ]
+            },
+            "jsonrpc": "2.0",
+            "id": 2
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/mcp/k/023d24670271ff8c34f281a6ae82206a",
+      "status": 200,
+      "request": {
+        "headers": {
+          "content-type": "application/json",
+          "mcp-protocol-version": "2025-11-25"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 3,
+          "method": "tools/call",
+          "params": {
+            "name": "due_now",
+            "arguments": {}
+          }
+        }
+      },
+      "response": {
+        "headers": {
+          "content-type": "text/event-stream"
+        },
+        "body": [
+          {
+            "result": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "No checks are open."
+                }
+              ],
+              "structuredContent": {
+                "contractVersion": 1,
+                "businessDay": "2026-10-18",
+                "timeZone": "America/Chicago",
+                "openChecks": []
+              }
+            },
+            "jsonrpc": "2.0",
+            "id": 3
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/mcp/k/023d24670271ff8c34f281a6ae82206a",
+      "status": 200,
+      "request": {
+        "headers": {
+          "content-type": "application/json",
+          "mcp-protocol-version": "2025-11-25"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 4,
+          "method": "tools/call",
+          "params": {
+            "name": "log_reading",
+            "arguments": {
+              "check_point": "walk_in",
+              "value": 38,
+              "words": "the walk-in reads 38",
+              "initials": "AB",
+              "screen_id": "wall-8f9249c5-7f99-4301-b0fa-454d1c0ddf15",
+              "request_id": "9b68326d-61a3-439f-920a-772ddfd9e3aa"
+            }
+          }
+        }
+      },
+      "response": {
+        "headers": {
+          "content-type": "text/event-stream"
+        },
+        "body": [
+          {
+            "result": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Walk-in, 38, in range, AB"
+                }
+              ],
+              "structuredContent": {
+                "contractVersion": 1,
+                "outcome": "in_range",
+                "checkPoint": {
+                  "id": "walk_in",
+                  "name": "Walk-in"
+                },
+                "verdict": "in range",
+                "serverTime": "2026-10-18T12:02:14.575Z",
+                "businessDay": "2026-10-18",
+                "timeZone": "America/Chicago",
+                "initials": "AB",
+                "lineId": "962a696d-7bff-4216-91dc-0aacf84c33be",
+                "value": 38,
+                "unit": "F",
+                "rule": {
+                  "id": "unit_air_cold",
+                  "comparator": "at_most",
+                  "limit": 41,
+                  "unit": "F",
+                  "sourceKind": "house_rule"
+                },
+                "recordCode": "261018-001"
+              }
+            },
+            "jsonrpc": "2.0",
+            "id": 4
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/mcp/k/023d24670271ff8c34f281a6ae82206a",
+      "status": 200,
+      "request": {
+        "headers": {
+          "content-type": "application/json",
+          "mcp-protocol-version": "2025-11-25"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 5,
+          "method": "tools/call",
+          "params": {
+            "name": "due_now",
+            "arguments": {}
+          }
+        }
+      },
+      "response": {
+        "headers": {
+          "content-type": "text/event-stream"
+        },
+        "body": [
+          {
+            "result": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "No checks are open."
+                }
+              ],
+              "structuredContent": {
+                "contractVersion": 1,
+                "businessDay": "2026-10-18",
+                "timeZone": "America/Chicago",
+                "openChecks": []
+              }
+            },
+            "jsonrpc": "2.0",
+            "id": 5
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/mcp/k/023d24670271ff8c34f281a6ae82206a",
+      "status": 200,
+      "request": {
+        "headers": {
+          "content-type": "application/json",
+          "mcp-protocol-version": "2025-11-25"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 6,
+          "method": "tools/call",
+          "params": {
+            "name": "log_reading",
+            "arguments": {
+              "check_point": "reach_in_2",
+              "words": "reach-in two is fine",
+              "initials": "AB",
+              "screen_id": "wall-8f9249c5-7f99-4301-b0fa-454d1c0ddf15",
+              "request_id": "ee7a4b2e-549c-4b41-973b-ff559a8594b7"
+            }
+          }
+        }
+      },
+      "response": {
+        "headers": {
+          "content-type": "text/event-stream"
+        },
+        "body": [
+          {
+            "result": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I need the number on the thermometer. What does reach-in two read?"
+                }
+              ],
+              "structuredContent": {
+                "contractVersion": 1,
+                "outcome": "refused",
+                "checkPoint": {
+                  "id": "reach_in_2",
+                  "name": "Reach-in two"
+                },
+                "verdict": "refused",
+                "serverTime": "2026-10-18T12:03:15.200Z",
+                "businessDay": "2026-10-18",
+                "timeZone": "America/Chicago",
+                "initials": "AB",
+                "lineId": "32958a30-38ac-4526-a904-03b91f977ed3",
+                "prompt": {
+                  "kind": "number",
+                  "id": "32958a30-38ac-4526-a904-03b91f977ed3"
+                },
+                "recordCode": "261018-002"
+              }
+            },
+            "jsonrpc": "2.0",
+            "id": 6
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/mcp/k/023d24670271ff8c34f281a6ae82206a",
+      "status": 200,
+      "request": {
+        "headers": {
+          "content-type": "application/json",
+          "mcp-protocol-version": "2025-11-25"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 7,
+          "method": "tools/call",
+          "params": {
+            "name": "due_now",
+            "arguments": {}
+          }
+        }
+      },
+      "response": {
+        "headers": {
+          "content-type": "text/event-stream"
+        },
+        "body": [
+          {
+            "result": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Open checks: Reach-in two."
+                }
+              ],
+              "structuredContent": {
+                "contractVersion": 1,
+                "businessDay": "2026-10-18",
+                "timeZone": "America/Chicago",
+                "openChecks": [
+                  {
+                    "id": "reach_in_2",
+                    "name": "Reach-in two"
+                  }
+                ]
+              }
+            },
+            "jsonrpc": "2.0",
+            "id": 7
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/mcp/k/023d24670271ff8c34f281a6ae82206a",
+      "status": 200,
+      "request": {
+        "headers": {
+          "content-type": "application/json",
+          "mcp-protocol-version": "2025-11-25"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 8,
+          "method": "tools/call",
+          "params": {
+            "name": "log_reading",
+            "arguments": {
+              "check_point": "reach_in_2",
+              "value": 38,
+              "words": "reach-in two reads 38",
+              "pending_prompt_id": "32958a30-38ac-4526-a904-03b91f977ed3",
+              "initials": "AB",
+              "screen_id": "wall-8f9249c5-7f99-4301-b0fa-454d1c0ddf15",
+              "request_id": "17f3990b-ffed-4d3d-a2bf-6571643b9d4b"
+            }
+          }
+        }
+      },
+      "response": {
+        "headers": {
+          "content-type": "text/event-stream"
+        },
+        "body": [
+          {
+            "result": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Reach-in two, 38, in range, AB"
+                }
+              ],
+              "structuredContent": {
+                "contractVersion": 1,
+                "outcome": "in_range",
+                "checkPoint": {
+                  "id": "reach_in_2",
+                  "name": "Reach-in two"
+                },
+                "verdict": "in range",
+                "serverTime": "2026-10-18T12:04:16.229Z",
+                "businessDay": "2026-10-18",
+                "timeZone": "America/Chicago",
+                "initials": "AB",
+                "lineId": "58975373-8d88-487d-b4b2-a51dc6b4092b",
+                "value": 38,
+                "unit": "F",
+                "rule": {
+                  "id": "unit_air_cold",
+                  "comparator": "at_most",
+                  "limit": 41,
+                  "unit": "F",
+                  "sourceKind": "house_rule"
+                },
+                "recordCode": "261018-003"
+              }
+            },
+            "jsonrpc": "2.0",
+            "id": 8
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/mcp/k/023d24670271ff8c34f281a6ae82206a",
+      "status": 200,
+      "request": {
+        "headers": {
+          "content-type": "application/json",
+          "mcp-protocol-version": "2025-11-25"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 9,
+          "method": "tools/call",
+          "params": {
+            "name": "due_now",
+            "arguments": {}
+          }
+        }
+      },
+      "response": {
+        "headers": {
+          "content-type": "text/event-stream"
+        },
+        "body": [
+          {
+            "result": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "No checks are open."
+                }
+              ],
+              "structuredContent": {
+                "contractVersion": 1,
+                "businessDay": "2026-10-18",
+                "timeZone": "America/Chicago",
+                "openChecks": []
+              }
+            },
+            "jsonrpc": "2.0",
+            "id": 9
+          }
+        ]
+      }
+    }
+  ]
+}
