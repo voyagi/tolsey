@@ -307,19 +307,34 @@ function compacted(exchange: RecordedExchange): RecordedExchange {
 // Files outDir's manifest already lists beside the capture (the demo video's transcript) stay
 // listed, and are judged again with the new capture, so a fresh run never unlists one. A listed file
 // that has gone missing stays listed but is not staged, so the check reports it and nothing is written.
-function keptFiles(outDir: string): { names: string[]; present: [string, string][] } {
-  if (!existsSync(join(outDir, MANIFEST_FILE))) return { names: [], present: [] };
-  const names = listedFiles(outDir).listed.filter((file) => file !== CAPTURE_FILE);
+// A manifest that cannot be read, or a file in outDir it does not list, is reported here instead:
+// the rewritten manifest would hide either one from the check in the scratch folder.
+function keptFiles(outDir: string): { names: string[]; present: [string, string][]; problems: PrivacyProblem[] } {
+  if (!existsSync(outDir)) return { names: [], present: [], problems: [] };
+  const { listed, problems }: ReturnType<typeof listedFiles> = existsSync(join(outDir, MANIFEST_FILE))
+    ? listedFiles(outDir)
+    : { listed: [], problems: [] };
+  const known = new Set([MANIFEST_FILE, CAPTURE_FILE, ...listed]);
+  for (const entry of readdirSync(outDir)) {
+    if (!known.has(entry)) problems.push({ kind: 'unlisted_file', file: entry, where: '' });
+  }
+  const names = listed.filter((file) => file !== CAPTURE_FILE);
   const present = names
     .filter((file) => existsSync(join(outDir, file)))
     .map((file): [string, string] => [file, readFileSync(join(outDir, file), 'utf8')]);
-  return { names, present };
+  return { names, present, problems };
+}
+
+function refusal(problems: readonly PrivacyProblem[]): Error {
+  const listed = problems.map((problem) => `${problem.kind} at ${problem.file} ${problem.where}`.trim()).join('; ');
+  return new Error(`the capture failed PRIV-02 and was not written: ${listed}`);
 }
 
 // The files are judged in a scratch folder first and reach outDir only once they pass, each through
 // a temporary name and a rename, so a failed or refused run leaves outDir as it was.
 function writeChecked(capture: unknown, outDir: string, roster: readonly string[]): void {
   const kept = keptFiles(outDir);
+  if (kept.problems.length > 0) throw refusal(kept.problems);
   const files: [string, string][] = [
     [CAPTURE_FILE, `${JSON.stringify(capture, null, 2)}\n`],
     [MANIFEST_FILE, `${JSON.stringify({ files: [CAPTURE_FILE, ...kept.names] }, null, 2)}\n`],
@@ -329,10 +344,7 @@ function writeChecked(capture: unknown, outDir: string, roster: readonly string[
     for (const [name, text] of [...files, ...kept.present]) writeFileSync(join(staging, name), text);
     const check = privacyProblems(staging, roster);
     const problems = check.status === 'checked' ? check.problems : [{ kind: 'absent', file: '', where: '' }];
-    if (problems.length > 0) {
-      const listed = problems.map((problem) => `${problem.kind} at ${problem.file} ${problem.where}`.trim()).join('; ');
-      throw new Error(`the capture failed PRIV-02 and was not written: ${listed}`);
-    }
+    if (problems.length > 0) throw refusal(problems);
     mkdirSync(outDir, { recursive: true });
     for (const [name, text] of files) {
       const partial = join(outDir, `${name}.partial`);

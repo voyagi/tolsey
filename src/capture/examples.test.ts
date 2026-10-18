@@ -353,6 +353,25 @@ describe('runCapture writes a run only when the whole run lands and passes PRIV-
     expect(readFileSync(join(outDir, 'manifest.json'), 'utf8')).toBe(manifest);
   });
 
+  it('writes nothing when the manifest already there cannot be read, rather than replacing it', async () => {
+    const outDir = folderWithTranscript('# Transcript\n\nA paper log takes "fine."\n');
+    writeFileSync(join(outDir, 'manifest.json'), '{ "files": [');
+    const { run } = captureRun(fakeWorker(), IN_SERVICE, [], outDir);
+    await expect(run).rejects.toThrow(/failed PRIV-02 and was not written: unreadable at manifest\.json files/);
+    expect(filesIn(outDir)).toEqual([TRANSCRIPT_FILE, 'manifest.json']);
+    expect(readFileSync(join(outDir, 'manifest.json'), 'utf8')).toBe('{ "files": [');
+  });
+
+  it('writes nothing when a file in the folder is not in its manifest, rather than writing past it', async () => {
+    const outDir = folderWithTranscript('# Transcript\n\nA paper log takes "fine."\n');
+    const manifest = JSON.stringify({ files: [CAPTURE_FILE] });
+    writeFileSync(join(outDir, 'manifest.json'), manifest);
+    const { run } = captureRun(fakeWorker(), IN_SERVICE, [], outDir);
+    await expect(run).rejects.toThrow(/failed PRIV-02 and was not written: unlisted_file at demo-transcript\.md$/);
+    expect(filesIn(outDir)).toEqual([TRANSCRIPT_FILE, 'manifest.json']);
+    expect(readFileSync(join(outDir, 'manifest.json'), 'utf8')).toBe(manifest);
+  });
+
   it('mints a fresh kitchen labelled capture and never calls the demo kitchen at /mcp', async () => {
     const worker = fakeWorker();
     await captureRun(worker, IN_SERVICE).run;
