@@ -15,6 +15,7 @@ import { WALL_PROFILE } from '../ui/profile';
 
 const ROSTER = WALL_PROFILE.roster;
 const CAPTURE_FILE = 'deployed-run.json';
+const TRANSCRIPT_FILE = 'demo-transcript.md';
 const KITCHEN = '0123456789abcdef0123456789abcdef';
 // 11:01 in Chicago (CDT, UTC minus 5): inside the demo kitchen's 07:00 to 22:00 schedule.
 const IN_SERVICE = Date.parse('2026-10-19T16:01:00.000Z');
@@ -33,7 +34,8 @@ function fixture(files: Record<string, unknown>, listed: string[] = Object.keys(
   fixtureCount += 1;
   const dir = join(scratch, `fixture-${fixtureCount}`);
   mkdirSync(dir, { recursive: true });
-  for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), JSON.stringify(content, null, 2));
+  // A string is written as it stands (a Markdown file, or a JSON file that does not parse).
+  for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), typeof content === 'string' ? content : JSON.stringify(content, null, 2));
   writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ files: listed }));
   return dir;
 }
@@ -124,11 +126,30 @@ describe('PRIV-02: what a captured run may hold', () => {
     ['a hostname other than the canonical one', 'foreign_host', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (c.source = 'https://example.com/run')) })],
     ['a bare hostname inside prose', 'foreign_host', () => fixture({ [CAPTURE_FILE]: withPlanted((c) => (c.note = 'served by example.com today')) })],
     ['a file the capture did not write', 'unlisted_file', () => fixture({ [CAPTURE_FILE]: cleanCapture(), 'notes.json': { said: 'hello' } }, [CAPTURE_FILE])],
+    ['a listed JSON file that does not parse', 'unreadable', () => fixture({ [CAPTURE_FILE]: cleanCapture(), 'notes.json': '# not JSON\n' })],
+    ['an IPv4 literal in a listed Markdown file', 'ip_literal', () => fixture({ [CAPTURE_FILE]: cleanCapture(), [TRANSCRIPT_FILE]: '# Transcript\n\nSeen from 203.0.113.7 today.\n' })],
+    ['a hostname in a listed Markdown file', 'foreign_host', () => fixture({ [CAPTURE_FILE]: cleanCapture(), [TRANSCRIPT_FILE]: '# Transcript\n\nWatch it on example.com today.\n' })],
+    ['a Markdown file the manifest does not list', 'unlisted_file', () => fixture({ [CAPTURE_FILE]: cleanCapture(), [TRANSCRIPT_FILE]: '# Transcript\n' }, [CAPTURE_FILE])],
   ];
 
   it.each(planted)('is red on %s, with exactly one problem of kind %s', (_name, kind, make) => {
     expect(kindsOf(privacyProblems(make(), ROSTER))).toEqual([kind]);
   });
+
+  // Every shape of a listed name that is not a file directly in the folder. The clean file beside the
+  // folder is what the two parent paths reach, so read as listed they would pass.
+  it.each(['../outside.md', '..\\outside.md', 'sub/outside.md', '..', '.', 'outside.md:stream', ''])(
+    'is red on the listed name %j, which is not a file directly in the folder',
+    (name) => {
+      const dir = fixture({ [CAPTURE_FILE]: cleanCapture() }, [CAPTURE_FILE, name]);
+      writeFileSync(join(dir, '..', 'outside.md'), '# Clean\n');
+      expect(privacyProblems(dir, ROSTER)).toEqual({
+        status: 'checked',
+        files: [CAPTURE_FILE],
+        problems: [{ kind: 'not_a_plain_name', file: 'manifest.json', where: 'files[1]' }],
+      });
+    },
+  );
 
   it('is green on a clean capture-shaped fixture', () => {
     const check = privacyProblems(fixture({ [CAPTURE_FILE]: cleanCapture() }), ROSTER);
@@ -138,6 +159,12 @@ describe('PRIV-02: what a captured run may hold', () => {
   it('stays green on the canonical host, a decimal, a version and "e.g." inside prose', () => {
     const capture = withPlanted((c) => (c.note = `served by ${CANONICAL_HOST}, e.g. at 38.5 on version 0.1.0.`));
     expect(privacyProblems(fixture({ [CAPTURE_FILE]: capture }), ROSTER)).toEqual({ status: 'checked', files: [CAPTURE_FILE], problems: [] });
+  });
+
+  it('reads a listed Markdown file as text, so prose that is not JSON passes when it holds no address or host', () => {
+    const transcript = `# Transcript\n\nA paper log takes "fine." Served by ${CANONICAL_HOST}, e.g. at 38.5.\n`;
+    const check = privacyProblems(fixture({ [CAPTURE_FILE]: cleanCapture(), [TRANSCRIPT_FILE]: transcript }), ROSTER);
+    expect(check).toEqual({ status: 'checked', files: [CAPTURE_FILE, TRANSCRIPT_FILE], problems: [] });
   });
 
   it('is red when the manifest lists no capture file', () => {
@@ -257,8 +284,7 @@ function fakeWorker(failOnLogCall?: number): FakeWorker {
   return { fetch, paths, mintBodies };
 }
 
-function captureRun(worker: FakeWorker, now: number, sleeps: number[] = []) {
-  const outDir = join(scratch, `out-${(fixtureCount += 1)}`);
+function captureRun(worker: FakeWorker, now: number, sleeps: number[] = [], outDir = join(scratch, `out-${(fixtureCount += 1)}`)) {
   const run = runCapture({
     baseUrl: new URL(`https://${CANONICAL_HOST}`),
     fetch: worker.fetch,
@@ -275,6 +301,15 @@ function captureRun(worker: FakeWorker, now: number, sleeps: number[] = []) {
 
 function filesIn(dir: string): string[] {
   return existsSync(dir) ? readdirSync(dir).sort() : [];
+}
+
+// An examples/ folder from an earlier run whose manifest also lists the transcript.
+function folderWithTranscript(transcript: string): string {
+  const outDir = join(scratch, `out-${(fixtureCount += 1)}`);
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(join(outDir, TRANSCRIPT_FILE), transcript);
+  writeFileSync(join(outDir, 'manifest.json'), JSON.stringify({ files: [CAPTURE_FILE, TRANSCRIPT_FILE] }));
+  return outDir;
 }
 
 describe('runCapture writes a run only when the whole run lands and passes PRIV-02', () => {
@@ -303,6 +338,117 @@ describe('runCapture writes a run only when the whole run lands and passes PRIV-
       '2026-10-19T16:02:00.000Z',
       '2026-10-19T16:03:00.000Z',
     ]);
+  });
+
+  it('keeps a file the manifest already lists, such as the transcript, listed and unchanged after a fresh run', async () => {
+    const transcript = '# Transcript\n\nA paper log takes "fine." Tolsey asks for the number.\n';
+    const { run, outDir } = captureRun(fakeWorker(), IN_SERVICE, [], folderWithTranscript(transcript));
+    await run;
+
+    expect(filesIn(outDir)).toEqual([TRANSCRIPT_FILE, CAPTURE_FILE, 'manifest.json']);
+    expect(JSON.parse(readFileSync(join(outDir, 'manifest.json'), 'utf8'))).toEqual({ files: [CAPTURE_FILE, TRANSCRIPT_FILE] });
+    expect(readFileSync(join(outDir, TRANSCRIPT_FILE), 'utf8')).toBe(transcript);
+    expect(privacyProblems(outDir, ROSTER)).toEqual({ status: 'checked', files: [CAPTURE_FILE, TRANSCRIPT_FILE], problems: [] });
+  });
+
+  // The writer's temporary copies once took these names beside the kept files, so a listed file
+  // with one of them was overwritten and renamed away by the run that meant to keep it.
+  it.each(['deployed-run.json.partial', 'manifest.json.partial'])('keeps a listed file named %s unchanged after a fresh run', async (name) => {
+    const outDir = join(scratch, `out-${(fixtureCount += 1)}`);
+    mkdirSync(outDir, { recursive: true });
+    const kept = '{\n  "note": "kept from an earlier run"\n}\n';
+    writeFileSync(join(outDir, name), kept);
+    writeFileSync(join(outDir, 'manifest.json'), JSON.stringify({ files: [CAPTURE_FILE, name] }));
+    await captureRun(fakeWorker(), IN_SERVICE, [], outDir).run;
+
+    expect(filesIn(outDir)).toEqual([CAPTURE_FILE, name, 'manifest.json'].sort());
+    expect(readFileSync(join(outDir, name), 'utf8')).toBe(kept);
+    expect(privacyProblems(outDir, ROSTER)).toEqual({ status: 'checked', files: [CAPTURE_FILE, name], problems: [] });
+  });
+
+  // A manifest that lists itself once had its old copy replace the new manifest in the scratch folder,
+  // so the check judged a listing other than the one written.
+  it('lists each kept file once, and never the manifest itself, after a run over a manifest that lists both', async () => {
+    const transcript = '# Transcript\n\nA paper log takes "fine."\n';
+    const outDir = folderWithTranscript(transcript);
+    writeFileSync(join(outDir, 'manifest.json'), JSON.stringify({ files: [CAPTURE_FILE, 'manifest.json', TRANSCRIPT_FILE, TRANSCRIPT_FILE] }));
+    await captureRun(fakeWorker(), IN_SERVICE, [], outDir).run;
+
+    expect(JSON.parse(readFileSync(join(outDir, 'manifest.json'), 'utf8'))).toEqual({ files: [CAPTURE_FILE, TRANSCRIPT_FILE] });
+    expect(readFileSync(join(outDir, TRANSCRIPT_FILE), 'utf8')).toBe(transcript);
+    expect(privacyProblems(outDir, ROSTER)).toEqual({ status: 'checked', files: [CAPTURE_FILE, TRANSCRIPT_FILE], problems: [] });
+  });
+
+  // On a disk that ignores case, MANIFEST.JSON is the manifest and DEPLOYED-RUN.JSON the capture, and an
+  // exact-case filter kept them, so the old manifest replaced the new one in the scratch folder. On a
+  // disk that keeps case they are separate files, and dropping either spelling would leave one unlisted
+  // and unchecked, so the run refuses instead.
+  it.each(['MANIFEST.JSON', CAPTURE_FILE.toUpperCase(), TRANSCRIPT_FILE.toUpperCase()])(
+    'writes nothing when the manifest lists %s, a name that differs only in case from another',
+    async (alias) => {
+      const outDir = folderWithTranscript('# Transcript\n\nA paper log takes "fine."\n');
+      const manifest = JSON.stringify({ files: [CAPTURE_FILE, TRANSCRIPT_FILE, alias] });
+      writeFileSync(join(outDir, 'manifest.json'), manifest);
+      const { run } = captureRun(fakeWorker(), IN_SERVICE, [], outDir);
+      await expect(run).rejects.toThrow(`failed PRIV-02 and was not written: case_collision at ${alias}`);
+      expect(filesIn(outDir)).toEqual([TRANSCRIPT_FILE, 'manifest.json']);
+      expect(readFileSync(join(outDir, 'manifest.json'), 'utf8')).toBe(manifest);
+    },
+  );
+
+  it('judges a kept file again, and writes nothing when it fails the rule', async () => {
+    const { run, outDir } = captureRun(fakeWorker(), IN_SERVICE, [], folderWithTranscript('# Transcript\n\nSeen from 203.0.113.7 today.\n'));
+    await expect(run).rejects.toThrow(/failed PRIV-02 and was not written: ip_literal at demo-transcript\.md/);
+    expect(filesIn(outDir)).toEqual([TRANSCRIPT_FILE, 'manifest.json']);
+  });
+
+  it('writes nothing when a file the manifest lists has gone missing, rather than unlisting it', async () => {
+    const outDir = join(scratch, `out-${(fixtureCount += 1)}`);
+    mkdirSync(outDir, { recursive: true });
+    const manifest = JSON.stringify({ files: [CAPTURE_FILE, TRANSCRIPT_FILE] });
+    writeFileSync(join(outDir, 'manifest.json'), manifest);
+    const { run } = captureRun(fakeWorker(), IN_SERVICE, [], outDir);
+    await expect(run).rejects.toThrow(/failed PRIV-02 and was not written: missing_file at demo-transcript\.md/);
+    expect(filesIn(outDir)).toEqual(['manifest.json']);
+    expect(readFileSync(join(outDir, 'manifest.json'), 'utf8')).toBe(manifest);
+  });
+
+  it('writes nothing when the manifest already there cannot be read, rather than replacing it', async () => {
+    const outDir = folderWithTranscript('# Transcript\n\nA paper log takes "fine."\n');
+    writeFileSync(join(outDir, 'manifest.json'), '{ "files": [');
+    const { run } = captureRun(fakeWorker(), IN_SERVICE, [], outDir);
+    await expect(run).rejects.toThrow(/failed PRIV-02 and was not written: unreadable at manifest\.json files/);
+    expect(filesIn(outDir)).toEqual([TRANSCRIPT_FILE, 'manifest.json']);
+    expect(readFileSync(join(outDir, 'manifest.json'), 'utf8')).toBe('{ "files": [');
+  });
+
+  it('writes nothing when a file in the folder is not in its manifest, rather than writing past it', async () => {
+    const outDir = folderWithTranscript('# Transcript\n\nA paper log takes "fine."\n');
+    const manifest = JSON.stringify({ files: [CAPTURE_FILE] });
+    writeFileSync(join(outDir, 'manifest.json'), manifest);
+    const { run } = captureRun(fakeWorker(), IN_SERVICE, [], outDir);
+    await expect(run).rejects.toThrow(/failed PRIV-02 and was not written: unlisted_file at demo-transcript\.md$/);
+    expect(filesIn(outDir)).toEqual([TRANSCRIPT_FILE, 'manifest.json']);
+    expect(readFileSync(join(outDir, 'manifest.json'), 'utf8')).toBe(manifest);
+  });
+
+  it('writes nothing, and nothing beside its scratch folder, when the manifest lists a path out of the folder', async () => {
+    const outDir = join(scratch, `out-${(fixtureCount += 1)}`);
+    mkdirSync(outDir, { recursive: true });
+    // Beside outDir, so the listed path finds it; beside the scratch folder is where a copy would land.
+    const escaped = `tolsey-escape-${process.pid}-${fixtureCount}.md`;
+    writeFileSync(join(outDir, '..', escaped), '# Clean\n');
+    const manifest = JSON.stringify({ files: [CAPTURE_FILE, `../${escaped}`] });
+    writeFileSync(join(outDir, 'manifest.json'), manifest);
+    try {
+      const { run } = captureRun(fakeWorker(), IN_SERVICE, [], outDir);
+      await expect(run).rejects.toThrow(/failed PRIV-02 and was not written: not_a_plain_name at manifest\.json files\[1\]$/);
+      expect(existsSync(join(tmpdir(), escaped))).toBe(false);
+      expect(filesIn(outDir)).toEqual(['manifest.json']);
+      expect(readFileSync(join(outDir, 'manifest.json'), 'utf8')).toBe(manifest);
+    } finally {
+      rmSync(join(tmpdir(), escaped), { force: true });
+    }
   });
 
   it('mints a fresh kitchen labelled capture and never calls the demo kitchen at /mcp', async () => {

@@ -36,6 +36,7 @@ const FORBIDDEN_HEADER_PREFIXES = ['sec-', 'cf-'];
 
 export const CAPTURE_FILE = 'deployed-run.json';
 const MANIFEST_FILE = 'manifest.json';
+const MARKDOWN_FILE = /\.md$/i;
 
 interface PrivacyProblem {
   kind: string;
@@ -124,11 +125,22 @@ function problemsInFile(file: string, content: unknown, roster: ReadonlySet<stri
   return problems;
 }
 
+// A listed name is a file directly in the folder. A path such as ../outside.md would have the check
+// read, and the capture copy, a file outside it, and a colon names an NTFS stream rather than a file.
+const PLAIN_NAME = /^[^\\/:]+$/;
+
+function isPlainName(file: string): boolean {
+  return PLAIN_NAME.test(file) && file !== '.' && file !== '..';
+}
+
 function listedFiles(dir: string): { listed: string[]; problems: PrivacyProblem[] } {
   const manifest = parseJson(existsSync(join(dir, MANIFEST_FILE)) ? readFileSync(join(dir, MANIFEST_FILE), 'utf8') : '');
   const files = isPlainObject(manifest) ? manifest.files : undefined;
-  if (Array.isArray(files) && files.every((file) => typeof file === 'string')) return { listed: files, problems: [] };
-  return { listed: [], problems: [{ kind: 'unreadable', file: MANIFEST_FILE, where: 'files' }] };
+  if (!Array.isArray(files) || !files.every((file) => typeof file === 'string')) {
+    return { listed: [], problems: [{ kind: 'unreadable', file: MANIFEST_FILE, where: 'files' }] };
+  }
+  const problems = files.flatMap((file, index) => (isPlainName(file) ? [] : [{ kind: 'not_a_plain_name', file: MANIFEST_FILE, where: `files[${index}]` }]));
+  return { listed: files.filter(isPlainName), problems };
 }
 
 // Absent is its own answer, never "clean": a folder that is not there has been checked for nothing.
@@ -149,7 +161,10 @@ export function privacyProblems(dir: string, roster: readonly string[]): Privacy
       continue;
     }
     files.push(file);
-    const content = parseJson(readFileSync(path, 'utf8'));
+    // A listed Markdown file (the demo video's transcript) is prose, not a recorded run: its whole
+    // text is held to the address and host rules as one string, with no JSON to walk.
+    const text = readFileSync(path, 'utf8');
+    const content = MARKDOWN_FILE.test(file) ? text : parseJson(text);
     if (content === undefined) problems.push({ kind: 'unreadable', file, where: '' });
     else problems.push(...problemsInFile(file, content, rosterSet));
   }
@@ -300,27 +315,82 @@ function compacted(exchange: RecordedExchange): RecordedExchange {
   return { ...exchange, response: { ...exchange.response, body: Array.isArray(body) ? body.map(namesOnly) : namesOnly(body) } };
 }
 
-// The files are judged in a scratch folder first and reach outDir only once they pass, each through
-// a temporary name and a rename, so a failed or refused run leaves outDir as it was.
+// A name listed twice is kept once, and the capture and the manifest are never kept: the run writes
+// both, and an old manifest copied into the scratch folder would replace the new one there. A name
+// that differs from another only in case is refused: a disk that ignores case reads MANIFEST.JSON as
+// the manifest, one that keeps case holds two files, and dropping either spelling would leave a file
+// unlisted and unchecked.
+function keptNames(listed: readonly string[]): { names: string[]; problems: PrivacyProblem[] } {
+  const seen = new Set([CAPTURE_FILE, MANIFEST_FILE]);
+  const folded = new Set([...seen].map((file) => file.toLowerCase()));
+  const names: string[] = [];
+  const problems: PrivacyProblem[] = [];
+  for (const file of listed) {
+    if (seen.has(file)) continue;
+    if (folded.has(file.toLowerCase())) {
+      problems.push({ kind: 'case_collision', file, where: '' });
+      continue;
+    }
+    seen.add(file);
+    folded.add(file.toLowerCase());
+    names.push(file);
+  }
+  return { names, problems };
+}
+
+// Files outDir's manifest already lists beside the capture (the demo video's transcript) stay
+// listed, and are judged again with the new capture, so a fresh run never unlists one. A listed file
+// that has gone missing stays listed but is not staged, so the check reports it and nothing is written.
+// A manifest that cannot be read, or a file in outDir it does not list, is reported here instead:
+// the rewritten manifest would hide either one from the check in the scratch folder.
+function keptFiles(outDir: string): { names: string[]; present: [string, string][]; problems: PrivacyProblem[] } {
+  if (!existsSync(outDir)) return { names: [], present: [], problems: [] };
+  const { listed, problems }: ReturnType<typeof listedFiles> = existsSync(join(outDir, MANIFEST_FILE))
+    ? listedFiles(outDir)
+    : { listed: [], problems: [] };
+  const known = new Set([MANIFEST_FILE, CAPTURE_FILE, ...listed]);
+  for (const entry of readdirSync(outDir)) {
+    if (!known.has(entry)) problems.push({ kind: 'unlisted_file', file: entry, where: '' });
+  }
+  const { names, problems: clashes } = keptNames(listed);
+  problems.push(...clashes);
+  const present = names
+    .filter((file) => existsSync(join(outDir, file)))
+    .map((file): [string, string] => [file, readFileSync(join(outDir, file), 'utf8')]);
+  return { names, present, problems };
+}
+
+function refusal(problems: readonly PrivacyProblem[]): Error {
+  const listed = problems.map((problem) => `${problem.kind} at ${problem.file} ${problem.where}`.trim()).join('; ');
+  return new Error(`the capture failed PRIV-02 and was not written: ${listed}`);
+}
+
+// The files are judged in a scratch folder first and reach outDir only once they pass, each written
+// in a fresh folder inside outDir and renamed into place, so a failed or refused run leaves outDir as
+// it was. A listed name is a plain file name, so no listed file can be inside that folder, and the
+// rename stays on outDir's own volume.
 function writeChecked(capture: unknown, outDir: string, roster: readonly string[]): void {
+  const kept = keptFiles(outDir);
+  if (kept.problems.length > 0) throw refusal(kept.problems);
   const files: [string, string][] = [
     [CAPTURE_FILE, `${JSON.stringify(capture, null, 2)}\n`],
-    [MANIFEST_FILE, `${JSON.stringify({ files: [CAPTURE_FILE] }, null, 2)}\n`],
+    [MANIFEST_FILE, `${JSON.stringify({ files: [CAPTURE_FILE, ...kept.names] }, null, 2)}\n`],
   ];
   const staging = mkdtempSync(join(tmpdir(), 'tolsey-capture-'));
   try {
-    for (const [name, text] of files) writeFileSync(join(staging, name), text);
+    for (const [name, text] of [...files, ...kept.present]) writeFileSync(join(staging, name), text);
     const check = privacyProblems(staging, roster);
     const problems = check.status === 'checked' ? check.problems : [{ kind: 'absent', file: '', where: '' }];
-    if (problems.length > 0) {
-      const listed = problems.map((problem) => `${problem.kind} at ${problem.file} ${problem.where}`.trim()).join('; ');
-      throw new Error(`the capture failed PRIV-02 and was not written: ${listed}`);
-    }
+    if (problems.length > 0) throw refusal(problems);
     mkdirSync(outDir, { recursive: true });
-    for (const [name, text] of files) {
-      const partial = join(outDir, `${name}.partial`);
-      writeFileSync(partial, text);
-      renameSync(partial, join(outDir, name));
+    const partial = mkdtempSync(join(outDir, '.capture-partial-'));
+    try {
+      for (const [name, text] of files) {
+        writeFileSync(join(partial, name), text);
+        renameSync(join(partial, name), join(outDir, name));
+      }
+    } finally {
+      rmSync(partial, { recursive: true, force: true });
     }
   } finally {
     rmSync(staging, { recursive: true, force: true });
