@@ -366,6 +366,19 @@ describe('runCapture writes a run only when the whole run lands and passes PRIV-
     expect(privacyProblems(outDir, ROSTER)).toEqual({ status: 'checked', files: [CAPTURE_FILE, name], problems: [] });
   });
 
+  // A manifest that lists itself once had its old copy replace the new manifest in the scratch folder,
+  // so the check judged a listing other than the one written.
+  it('lists each kept file once, and never the manifest itself, after a run over a manifest that lists both', async () => {
+    const transcript = '# Transcript\n\nA paper log takes "fine."\n';
+    const outDir = folderWithTranscript(transcript);
+    writeFileSync(join(outDir, 'manifest.json'), JSON.stringify({ files: [CAPTURE_FILE, 'manifest.json', TRANSCRIPT_FILE, TRANSCRIPT_FILE] }));
+    await captureRun(fakeWorker(), IN_SERVICE, [], outDir).run;
+
+    expect(JSON.parse(readFileSync(join(outDir, 'manifest.json'), 'utf8'))).toEqual({ files: [CAPTURE_FILE, TRANSCRIPT_FILE] });
+    expect(readFileSync(join(outDir, TRANSCRIPT_FILE), 'utf8')).toBe(transcript);
+    expect(privacyProblems(outDir, ROSTER)).toEqual({ status: 'checked', files: [CAPTURE_FILE, TRANSCRIPT_FILE], problems: [] });
+  });
+
   it('judges a kept file again, and writes nothing when it fails the rule', async () => {
     const { run, outDir } = captureRun(fakeWorker(), IN_SERVICE, [], folderWithTranscript('# Transcript\n\nSeen from 203.0.113.7 today.\n'));
     await expect(run).rejects.toThrow(/failed PRIV-02 and was not written: ip_literal at demo-transcript\.md/);

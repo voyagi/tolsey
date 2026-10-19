@@ -329,7 +329,9 @@ function keptFiles(outDir: string): { names: string[]; present: [string, string]
   for (const entry of readdirSync(outDir)) {
     if (!known.has(entry)) problems.push({ kind: 'unlisted_file', file: entry, where: '' });
   }
-  const names = listed.filter((file) => file !== CAPTURE_FILE);
+  // The run writes the capture and the manifest itself, so neither is kept: an old manifest copied into
+  // the scratch folder would replace the new one there, and the check would judge the wrong listing.
+  const names = [...new Set(listed)].filter((file) => file !== CAPTURE_FILE && file !== MANIFEST_FILE);
   const present = names
     .filter((file) => existsSync(join(outDir, file)))
     .map((file): [string, string] => [file, readFileSync(join(outDir, file), 'utf8')]);
