@@ -351,6 +351,21 @@ describe('runCapture writes a run only when the whole run lands and passes PRIV-
     expect(privacyProblems(outDir, ROSTER)).toEqual({ status: 'checked', files: [CAPTURE_FILE, TRANSCRIPT_FILE], problems: [] });
   });
 
+  // The writer's temporary copies once took these names beside the kept files, so a listed file
+  // with one of them was overwritten and renamed away by the run that meant to keep it.
+  it.each(['deployed-run.json.partial', 'manifest.json.partial'])('keeps a listed file named %s unchanged after a fresh run', async (name) => {
+    const outDir = join(scratch, `out-${(fixtureCount += 1)}`);
+    mkdirSync(outDir, { recursive: true });
+    const kept = '{\n  "note": "kept from an earlier run"\n}\n';
+    writeFileSync(join(outDir, name), kept);
+    writeFileSync(join(outDir, 'manifest.json'), JSON.stringify({ files: [CAPTURE_FILE, name] }));
+    await captureRun(fakeWorker(), IN_SERVICE, [], outDir).run;
+
+    expect(filesIn(outDir)).toEqual([CAPTURE_FILE, name, 'manifest.json'].sort());
+    expect(readFileSync(join(outDir, name), 'utf8')).toBe(kept);
+    expect(privacyProblems(outDir, ROSTER)).toEqual({ status: 'checked', files: [CAPTURE_FILE, name], problems: [] });
+  });
+
   it('judges a kept file again, and writes nothing when it fails the rule', async () => {
     const { run, outDir } = captureRun(fakeWorker(), IN_SERVICE, [], folderWithTranscript('# Transcript\n\nSeen from 203.0.113.7 today.\n'));
     await expect(run).rejects.toThrow(/failed PRIV-02 and was not written: ip_literal at demo-transcript\.md/);

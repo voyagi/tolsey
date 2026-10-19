@@ -341,8 +341,10 @@ function refusal(problems: readonly PrivacyProblem[]): Error {
   return new Error(`the capture failed PRIV-02 and was not written: ${listed}`);
 }
 
-// The files are judged in a scratch folder first and reach outDir only once they pass, each through
-// a temporary name and a rename, so a failed or refused run leaves outDir as it was.
+// The files are judged in a scratch folder first and reach outDir only once they pass, each written
+// in a fresh folder inside outDir and renamed into place, so a failed or refused run leaves outDir as
+// it was. A listed name is a plain file name, so no listed file can be inside that folder, and the
+// rename stays on outDir's own volume.
 function writeChecked(capture: unknown, outDir: string, roster: readonly string[]): void {
   const kept = keptFiles(outDir);
   if (kept.problems.length > 0) throw refusal(kept.problems);
@@ -357,10 +359,14 @@ function writeChecked(capture: unknown, outDir: string, roster: readonly string[
     const problems = check.status === 'checked' ? check.problems : [{ kind: 'absent', file: '', where: '' }];
     if (problems.length > 0) throw refusal(problems);
     mkdirSync(outDir, { recursive: true });
-    for (const [name, text] of files) {
-      const partial = join(outDir, `${name}.partial`);
-      writeFileSync(partial, text);
-      renameSync(partial, join(outDir, name));
+    const partial = mkdtempSync(join(outDir, '.capture-partial-'));
+    try {
+      for (const [name, text] of files) {
+        writeFileSync(join(partial, name), text);
+        renameSync(join(partial, name), join(outDir, name));
+      }
+    } finally {
+      rmSync(partial, { recursive: true, force: true });
     }
   } finally {
     rmSync(staging, { recursive: true, force: true });
