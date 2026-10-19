@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The pass's verdict tile as a split flap: two flat halves, the inset edge, a square hinge pin at each end of the
+       split, and Mona Sans's T at weight 900 and 75 percent width (cap 24, bar 5, stem 6, as measured from the face).
+       Dark is the tile as it stands on the dark pass: a white frame round the pass stock. No yellow: the alert colour
+       is never a brand mark. -->
+  <style>
+    .tile { fill: #0b0d10; }
+    .flap { fill: #ffffff; fill-opacity: 0.16; }
+    .edge { fill: none; stroke: #0b0d10; stroke-width: 2; }
+    .pin { fill: #f4f5f7; }
+    .letter { fill: #ffffff; }
+    @media (prefers-color-scheme: dark) {
+      .tile { fill: #1c2127; }
+      .flap { fill-opacity: 0.12; }
+      .edge { stroke: #f4f6f8; }
+      .pin { fill: #f4f6f8; }
+      .letter { fill: #f4f6f8; }
+    }
+  </style>
+  <rect class="tile" width="32" height="32"/>
+  <rect class="flap" width="32" height="16"/>
+  <rect class="edge" x="1" y="1" width="30" height="30"/>
+  <rect class="pin" x="2" y="15" width="2" height="2"/>
+  <rect class="pin" x="28" y="15" width="2" height="2"/>
+  <path class="letter" d="M10 4h12v5h-3v19h-6V9h-3z"/>
+</svg>
