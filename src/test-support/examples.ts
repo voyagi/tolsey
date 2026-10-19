@@ -315,6 +315,29 @@ function compacted(exchange: RecordedExchange): RecordedExchange {
   return { ...exchange, response: { ...exchange.response, body: Array.isArray(body) ? body.map(namesOnly) : namesOnly(body) } };
 }
 
+// A name listed twice is kept once, and the capture and the manifest are never kept: the run writes
+// both, and an old manifest copied into the scratch folder would replace the new one there. A name
+// that differs from another only in case is refused: a disk that ignores case reads MANIFEST.JSON as
+// the manifest, one that keeps case holds two files, and dropping either spelling would leave a file
+// unlisted and unchecked.
+function keptNames(listed: readonly string[]): { names: string[]; problems: PrivacyProblem[] } {
+  const seen = new Set([CAPTURE_FILE, MANIFEST_FILE]);
+  const folded = new Set([...seen].map((file) => file.toLowerCase()));
+  const names: string[] = [];
+  const problems: PrivacyProblem[] = [];
+  for (const file of listed) {
+    if (seen.has(file)) continue;
+    if (folded.has(file.toLowerCase())) {
+      problems.push({ kind: 'case_collision', file, where: '' });
+      continue;
+    }
+    seen.add(file);
+    folded.add(file.toLowerCase());
+    names.push(file);
+  }
+  return { names, problems };
+}
+
 // Files outDir's manifest already lists beside the capture (the demo video's transcript) stay
 // listed, and are judged again with the new capture, so a fresh run never unlists one. A listed file
 // that has gone missing stays listed but is not staged, so the check reports it and nothing is written.
@@ -329,17 +352,8 @@ function keptFiles(outDir: string): { names: string[]; present: [string, string]
   for (const entry of readdirSync(outDir)) {
     if (!known.has(entry)) problems.push({ kind: 'unlisted_file', file: entry, where: '' });
   }
-  // The run writes the capture and the manifest itself, so neither is kept: an old manifest copied into
-  // the scratch folder would replace the new one there, and the check would judge the wrong listing.
-  // Names are compared without case, because a disk that ignores case reads MANIFEST.JSON as the
-  // manifest and two spellings of one name as one file.
-  const taken = new Set([CAPTURE_FILE, MANIFEST_FILE].map((file) => file.toLowerCase()));
-  const names = listed.filter((file) => {
-    const key = file.toLowerCase();
-    if (taken.has(key)) return false;
-    taken.add(key);
-    return true;
-  });
+  const { names, problems: clashes } = keptNames(listed);
+  problems.push(...clashes);
   const present = names
     .filter((file) => existsSync(join(outDir, file)))
     .map((file): [string, string] => [file, readFileSync(join(outDir, file), 'utf8')]);
