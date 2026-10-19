@@ -331,7 +331,15 @@ function keptFiles(outDir: string): { names: string[]; present: [string, string]
   }
   // The run writes the capture and the manifest itself, so neither is kept: an old manifest copied into
   // the scratch folder would replace the new one there, and the check would judge the wrong listing.
-  const names = [...new Set(listed)].filter((file) => file !== CAPTURE_FILE && file !== MANIFEST_FILE);
+  // Names are compared without case, because a disk that ignores case reads MANIFEST.JSON as the
+  // manifest and two spellings of one name as one file.
+  const taken = new Set([CAPTURE_FILE, MANIFEST_FILE].map((file) => file.toLowerCase()));
+  const names = listed.filter((file) => {
+    const key = file.toLowerCase();
+    if (taken.has(key)) return false;
+    taken.add(key);
+    return true;
+  });
   const present = names
     .filter((file) => existsSync(join(outDir, file)))
     .map((file): [string, string] => [file, readFileSync(join(outDir, file), 'utf8')]);

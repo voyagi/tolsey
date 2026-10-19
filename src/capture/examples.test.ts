@@ -379,6 +379,21 @@ describe('runCapture writes a run only when the whole run lands and passes PRIV-
     expect(privacyProblems(outDir, ROSTER)).toEqual({ status: 'checked', files: [CAPTURE_FILE, TRANSCRIPT_FILE], problems: [] });
   });
 
+  // On a disk that ignores case, MANIFEST.JSON is the manifest and DEPLOYED-RUN.JSON the capture, so
+  // an exact-case filter kept them: the old manifest replaced the new one in the scratch folder, and
+  // the rewritten listing carried names that are missing once the folder reaches a case-sensitive disk.
+  it('drops a listed name that differs only in case from a written file or an earlier listed name', async () => {
+    const transcript = '# Transcript\n\nA paper log takes "fine."\n';
+    const outDir = folderWithTranscript(transcript);
+    const aliases = ['MANIFEST.JSON', CAPTURE_FILE.toUpperCase(), TRANSCRIPT_FILE.toUpperCase()];
+    writeFileSync(join(outDir, 'manifest.json'), JSON.stringify({ files: [CAPTURE_FILE, TRANSCRIPT_FILE, ...aliases] }));
+    await captureRun(fakeWorker(), IN_SERVICE, [], outDir).run;
+
+    expect(JSON.parse(readFileSync(join(outDir, 'manifest.json'), 'utf8'))).toEqual({ files: [CAPTURE_FILE, TRANSCRIPT_FILE] });
+    expect(readFileSync(join(outDir, TRANSCRIPT_FILE), 'utf8')).toBe(transcript);
+    expect(privacyProblems(outDir, ROSTER)).toEqual({ status: 'checked', files: [CAPTURE_FILE, TRANSCRIPT_FILE], problems: [] });
+  });
+
   it('judges a kept file again, and writes nothing when it fails the rule', async () => {
     const { run, outDir } = captureRun(fakeWorker(), IN_SERVICE, [], folderWithTranscript('# Transcript\n\nSeen from 203.0.113.7 today.\n'));
     await expect(run).rejects.toThrow(/failed PRIV-02 and was not written: ip_literal at demo-transcript\.md/);
