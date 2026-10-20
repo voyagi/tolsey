@@ -245,10 +245,11 @@ them can be filled in faithfully later:
 
 ## Due slot rule
 
-This version has no check schedule, so no reading satisfies a slot and both columns stay null. The
-columns hold the rule a schedule would apply: a reading satisfies the earliest open slot of its check
-point whose window contains it, and that slot is written into `due_slot_id` and `due_at` when the
-line is appended, so a later change of the schedule never moves an old reading to another slot.
+The kitchen profile defines a check schedule, but this version does not apply it to readings, so no
+reading is matched to a slot and both columns stay null. The columns hold the rule a schedule would
+apply: a reading satisfies the earliest open slot of its check point whose window contains it, and
+that slot is written into `due_slot_id` and `due_at` when the line is appended, so a later change of
+the schedule never moves an old reading to another slot.
 
 ## Key shape
 
