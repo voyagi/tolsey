@@ -794,3 +794,20 @@
     }
   }
 }
+
+/* On a phone the label takes its own line and the four cooks share one row the width of the screen, each tile wider
+   for a gloved thumb: the group split part-way across two lines read as broken. 500px covers the presets (at Very
+   large text, 24px, the inline group is 441px plus the screen's 48px of padding) and 20.5em covers larger text, where
+   the group grows past it. At the presets 20.5em adds nothing, so a tablet at large text keeps the inline group. */
+@media (max-width: 500px), (max-width: 20.5em) {
+  .roster {
+    flex-basis: 100%;
+  }
+  .roster legend {
+    flex-basis: 100%;
+    margin: 0 0 3px;
+  }
+  .roster label {
+    flex: 1 1 0;
+  }
+}

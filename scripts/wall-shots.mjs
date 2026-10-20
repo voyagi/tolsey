@@ -6,8 +6,13 @@
 // the real Worker, and checks what a screenshot alone cannot: at 1280 by 800 and 1366 by 657, in Light and Dark, the
 // pass, the reply and the text field sit inside the viewport with the page unscrolled, and stay there with a row on
 // the open-checks board, which then ends inside the viewport too; a reading with a tenth (38.5)
-// fits its box; at 390 wide the page is no wider than the screen; and every request the page makes stays on its own
-// origin, since the privacy notice names Cloudflare as the only processor.
+// fits its box; at 390 wide the page is no wider than the screen; at 320, 375, 501 and 720 wide, at the browser's
+// Medium, Large and Very large text and at 28px, each group of controls (who is logging, the theme switch on the wall and on the
+// privacy page) stays whole on one line (or, for the theme switch, one column), its label beside it or on a line of
+// its own, since a group split part-way
+// across lines reads as broken on a phone, and past the phone rule the roster's label sits beside its tiles as before;
+// and every request the page makes stays on its own origin, since the privacy notice names Cloudflare as the only
+// processor.
 //
 // The screenshots land in reports/wall-shots/ (git-ignored) to be compared with design/mockups/shots/ by eye.
 //
@@ -28,7 +33,15 @@ const JUDGED_SIZES = [
 ];
 const THEMES = ['light', 'dark'];
 const PHONE_WIDTH = 390;
-const TIMEOUT_SECONDS = 240;
+// The browser's own text size (Chrome's Medium, Large and Very large, and 28px on its custom slider past them), set the
+// way its settings page sets it. A root font-size style would not move an em media query, so it cannot stand in for
+// the setting.
+const ROW_WIDTHS = [320, 375, 501, 720];
+const TEXT_SIZES = [16, 20, 24, 28];
+// wall.css stacks the roster's label above its tiles up to 500px or 20.5em, whichever is wider. Past that the group
+// fits inline, so there its label must sit beside it, the layout wider screens had before the phone rule.
+const rosterStacksTo = (px) => Math.max(500, 20.5 * px);
+const TIMEOUT_SECONDS = 300;
 
 // The script dev-browser runs, in its QuickJS sandbox. The base URL is written in as a literal.
 function captureScript(base) {
@@ -37,7 +50,9 @@ const BASE = ${JSON.stringify(base)};
 const SIZES = ${JSON.stringify(JUDGED_SIZES)};
 const THEMES = ${JSON.stringify(THEMES)};
 const PHONE = ${PHONE_WIDTH};
-const result = { shots: [], fit: [], tenth: null, phone: [], requests: [], errors: [] };
+const ROW_WIDTHS = ${JSON.stringify(ROW_WIDTHS)};
+const TEXT_SIZES = ${JSON.stringify(TEXT_SIZES)};
+const result = { shots: [], fit: [], tenth: null, phone: [], rows: [], requests: [], errors: [] };
 const page = await browser.newPage();
 page.on('request', (request) => result.requests.push(request.url()));
 await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -152,6 +167,58 @@ for (const theme of THEMES) {
   }
 }
 
+// Where each control group sits, read from the page. mediaPx is the text size an em media query sees, the control
+// that the setting took: each width and size pair puts the viewport at its own em width. A group marked column may
+// also stand as one column, the theme switch's layout on the narrowest screens.
+function groupsOf(selectors) {
+  return page.evaluate((groups) => {
+    const box = (element) => {
+      const rect = element.getBoundingClientRect();
+      return { top: Math.round(rect.top), bottom: Math.round(rect.bottom), left: Math.round(rect.left), text: element.textContent.trim() };
+    };
+    const ems = (px) => window.innerWidth / px;
+    const mediaPx = [16, 20, 24, 28].find((px) => matchMedia('(min-width: ' + (ems(px) - 0.05) + 'em) and (max-width: ' + (ems(px) + 0.05) + 'em)').matches);
+    return {
+      mediaPx: mediaPx === undefined ? null : mediaPx,
+      groups: groups.map((group) => {
+        const label = group.label === null ? null : document.querySelector(group.label);
+        return {
+          name: group.name,
+          column: group.column === true,
+          label: label === null ? null : box(label),
+          items: [...document.querySelectorAll(group.items)].map(box),
+        };
+      }),
+    };
+  }, selectors);
+}
+
+const cdp = await page.context().newCDPSession(page);
+for (const width of ROW_WIDTHS) {
+  for (const px of TEXT_SIZES) {
+    const name = width + ' wide at ' + px + 'px text';
+    try {
+      await cdp.send('Page.setFontSizes', { fontSizes: { standard: px, fixed: Math.round((px * 13) / 16) } });
+      await page.setViewportSize({ width: width, height: 800 });
+      await openWall('light');
+      await page.evaluate(() => document.fonts.ready);
+      result.rows.push(Object.assign({ name: name, width: width, px: px, page: 'wall' }, await groupsOf([
+        { name: 'who is logging', label: '.roster legend', items: '.roster label' },
+        { name: 'the theme switch', label: null, items: '.theme-switch button', column: true },
+      ])));
+      await page.goto(BASE + '/privacy?theme=light');
+      await page.waitForSelector('.theme-switch button', { timeout: 30000 });
+      await page.evaluate(() => document.fonts.ready);
+      result.rows.push(Object.assign({ name: name, width: width, px: px, page: 'privacy' }, await groupsOf([
+        { name: 'the theme switch', label: null, items: '.theme-switch button', column: true },
+      ])));
+    } catch (error) {
+      result.errors.push(name + ': ' + String(error && error.message ? error.message : error));
+    }
+  }
+}
+await cdp.send('Page.setFontSizes', { fontSizes: { standard: 16, fixed: 13 } });
+
 console.log(JSON.stringify(result));
 `;
 }
@@ -191,6 +258,49 @@ function phoneFailures(phone) {
     .map((row) => `${row.name}: the page is ${row.scrollWidth} wide in a ${row.innerWidth} viewport`);
 }
 
+// Items one line apart sit at least a tile's height apart; a pixel or two is rounding inside one line.
+const SAME_LINE_PX = 2;
+
+function linesOf(items) {
+  const lines = [];
+  for (const item of items) {
+    const line = lines.find((candidate) => Math.abs(candidate.top - item.top) <= SAME_LINE_PX);
+    if (line === undefined) lines.push({ top: item.top, texts: [item.text] });
+    else line.texts.push(item.text);
+  }
+  return lines;
+}
+
+// One item to a line, every item on the same left edge: a stack, not a row that ran out of room.
+function isOneColumn(items, lines) {
+  return lines.length === items.length && items.length > 1 && items.every((item) => Math.abs(item.left - items[0].left) <= SAME_LINE_PX);
+}
+
+function groupFailures(where, group, labelBesideOnly) {
+  if (group.items.length === 0) return [`${where}: no ${group.name} on the page`];
+  const lines = linesOf(group.items);
+  if (group.column && isOneColumn(group.items, lines)) return [];
+  if (lines.length > 1) return [`${where}: ${group.name} splits across ${lines.length} lines (${lines.map((line) => line.texts.join(' ')).join(' / ')})`];
+  if (group.label === null) return [];
+  const top = Math.min(...group.items.map((item) => item.top));
+  const bottom = Math.max(...group.items.map((item) => item.bottom));
+  const beside = group.label.top >= top - SAME_LINE_PX && group.label.bottom <= bottom + SAME_LINE_PX;
+  const above = group.label.bottom <= top + SAME_LINE_PX;
+  if (labelBesideOnly && !beside) return [`${where}: the "${group.label.text}" label is not beside ${group.name}, past the phone rule`];
+  return beside || above ? [] : [`${where}: the "${group.label.text}" label sits neither beside ${group.name} nor on its own line above it`];
+}
+
+function rowFailures(rows) {
+  const expected = ROW_WIDTHS.length * TEXT_SIZES.length * 2;
+  if (rows.length !== expected) return [`control rows: ${rows.length} of ${expected} pages measured`];
+  return rows.flatMap((row) => row.groups.flatMap((group) => groupFailures(`${row.name}, ${row.page}`, group, row.width > rosterStacksTo(row.px))));
+}
+
+// A text size that did not take would measure the default size six times over and pass, so it stops the run.
+function textSizeProblems(rows) {
+  return rows.filter((row) => row.mediaPx !== row.px).map((row) => `${row.name}, ${row.page}: an em media query saw ${row.mediaPx}px text`);
+}
+
 function themeProblems(result) {
   const rows = [...result.shots, ...result.phone];
   return rows.filter((row) => !row.name.endsWith(`-${row.theme}`)).map((row) => `${row.name}: the theme applied was ${row.theme}`);
@@ -220,11 +330,14 @@ async function main() {
     if (result.errors.length > 0) throw new CannotRun(`the page never became ready: ${result.errors.join('; ')}`);
     const themes = themeProblems(result);
     if (themes.length > 0) throw new CannotRun(themes.join('; '));
+    const textSizes = textSizeProblems(result.rows);
+    if (textSizes.length > 0) throw new CannotRun(`the browser's text size did not take: ${textSizes.join('; ')}`);
     const offOrigin = [...new Set(result.requests.filter((url) => new URL(url).origin !== baseUrl.origin))];
     const failures = [
       ...fitFailures(result.fit),
       ...tenthFailures(result.tenth),
       ...phoneFailures(result.phone),
+      ...rowFailures(result.rows),
       ...offOrigin.map((url) => `a request left the page's origin: ${url}`),
     ];
     const screenshots = copyShots(result);
@@ -234,6 +347,7 @@ async function main() {
         fit: result.fit,
         tenth: result.tenth,
         phone: result.phone,
+        rows: result.rows,
         requests: result.requests.length,
         offOrigin,
         failures,
