@@ -97,7 +97,7 @@ held in `data/store/limits.json`. The line cap is 200 because a demo shift holds
 
 The budget protects the account's write allowance, not the demo from one visitor: a single client that keeps minting
 can spend the day's 40,000 rows, and every visitor after it is told the demo is full until 00:00 UTC.
-Phase 1 has no per-client limit. Cloudflare's rate limiting binding counts per location over 10 or
+This version has no per-client limit. Cloudflare's rate limiting binding counts per location over 10 or
 60 seconds and its documentation advises against IP keys, so it cannot cap one client's day, and a
 daily per-client count would need its own store. The zero-install replay is the fallback, and the
 pass that attacks the running service measures a mint flood against the deployed Worker.
@@ -351,16 +351,16 @@ every business day already written. Local D1 accepts and enforces all three thro
 `wrangler d1 migrations apply DB --local`, which applied 0001 and 0002 on its first run and reported
 no migrations to apply on its second.
 
-Remote D1 accepted 0002 at the owner's first deploy (2026-10-16, Worker version `3312102a`): `wrangler
+Remote D1 accepted 0002 at the first deploy (2026-10-16, Worker version `3312102a`): `wrangler
 d1 migrations apply DB --remote` applied 0001 to 0004 with status ok for each and no refusal. No
 UPDATE or DELETE has been tried against the remote record, so remote enforcement rests on D1 running
 the triggers it accepted. The guard sits alone in 0002 so a remote refusal could never block the
-schema in 0001, and the phase 1 test that reads the adapter's SQL for any UPDATE or DELETE against the
+schema in 0001, and the test that reads the adapter's SQL for any UPDATE or DELETE against the
 record holds either way.
 
 The deploy preflight cannot see a remote refusal, and the deploy script runs the remote apply before
 `wrangler deploy`, chained with `&&`, so a refusal of 0002 stops the deploy after 0001 has applied,
-and every rerun meets the same refusal. The recovery is a code change the owner then deploys: 0002 keeps its
+and every rerun meets the same refusal. The recovery is a code change the operator then deploys: 0002 keeps its
 number and file name, its body becomes a statement that changes nothing, this record gains the
 refusal text and its date, and append-only rests on the port and the SQL-text test alone.
 `wrangler d1 migrations apply` applies the unapplied migrations and rolls back one that fails
@@ -377,11 +377,11 @@ phase 2. The drift test for captured runs (DEMO-03) validates tool presence, `ou
 
 ## Location and jurisdiction
 
-The owner creates the database with `wrangler d1 create tolsey --jurisdiction=eu --binding DB`
+The operator creates the database with `wrangler d1 create tolsey --jurisdiction=eu --binding DB`
 (`--binding DB` writes the id into the existing `DB` entry rather than a second one). The jurisdiction
 is set only at creation, cannot be changed afterwards, and takes precedence over any location hint.
 EU is chosen because data stays in EU regions wherever a service offers one. The trade-off is added
-round-trip latency for requests from the US, which is I/O wait and not Worker CPU time. The owner
+round-trip latency for requests from the US, which is I/O wait and not Worker CPU time. The operator
 confirms the jurisdiction at creation. The database was created on 2026-09-27 with jurisdiction
 `eu` (read back with `wrangler d1 list` on 2026-10-16), and `wrangler.jsonc` carries its id on the
 `DB` binding since 2026-10-16. Local D1, `getPlatformProxy`, `createTestHarness` and `wrangler d1

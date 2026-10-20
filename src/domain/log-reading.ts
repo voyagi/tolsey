@@ -47,7 +47,7 @@ const ALREADY_CORRECTED_REPLY = 'That reading was already corrected. Say the che
 // READ-07: a different number is asked back once more, and the third miss in a row ends the chain.
 const MISSES_BEFORE_LOG_BY_HAND = 3;
 
-/** @public The read-back sentence of a judged reading, which the simulated wall speaks from phase 2. */
+/** @public The read-back sentence of a judged reading: the reply a voice host speaks and the simulated wall shows. */
 export function spokenReadback(outcome: LogReadingOutput): string {
   const parts = [outcome.checkPoint?.name, outcome.value === undefined ? undefined : formatValue(outcome.value)];
   return [...parts, outcome.verdict, outcome.initials].filter((part) => part !== undefined).join(', ');
@@ -69,7 +69,7 @@ function ruleResult(rule: TemperatureRow): RuleResult {
   };
 }
 
-// Phase 1 has no judging path for these kinds, so their readings are kept unjudged rather than
+// This version has no judging path for these kinds, so their readings are kept unjudged rather than
 // measured against a neighbouring row (D-06).
 const UNJUDGED_KINDS: ReadonlySet<CheckPointKind> = new Set(['cooling', 'reheat']);
 
@@ -303,7 +303,7 @@ function namesOtherThan(named: ReadonlySet<string>, id: string): boolean {
 // rule, and "the chicken soup" at the carving station, with no food given, by the roast rule of its
 // default. Any other one named disputes the call, even beside the call's own ("not the soup well, the
 // walk-in reads 38"). A food named where none was given or defaults would leave the reading unjudged,
-// so a failing delivery would open no fix; only a kind phase 1 never judges keeps it.
+// so a failing delivery would open no fix; only a kind this version never judges keeps it.
 function wordsDispute(facts: Facts, checkPoint: CheckPoint, profile: KitchenProfile): boolean {
   const named = namedInWords(tokensOf(facts.words ?? ''), profile);
   if (namesOtherThan(named.checkPoints, checkPoint.id)) return true;

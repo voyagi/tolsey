@@ -430,7 +430,7 @@ There is no per-client rate limiter. Writes are bounded by storage budgets from
 `data/store/limits.json`, all UTC-day or per-kitchen. The daily budget protects the Cloudflare
 account's write allowance, not the demo from one visitor: a single client that keeps minting can spend
 the whole day's budget, and every visitor after it gets `demo_full` until 00:00 UTC. ADR 0002 records
-why phase 1 has no per-client limit and names the replay as the fallback.
+why this version has no per-client limit and names the replay as the fallback.
 
 | Limit | Value | Effect |
 |-------|-------|--------|

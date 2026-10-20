@@ -507,7 +507,7 @@ function storedTokens(tokens: readonly string[], profile: KitchenProfile, value:
 }
 
 // Only recognised tokens and the number itself persist, so no visitor free text or markup reaches
-// the record (BUILD-SPEC A7). A token naming the value in another spelling ("38.0") is written the
+// the record. A token naming the value in another spelling ("38.0") is written the
 // way the value is stored. Words that never name the value ("minus five", "38 and a half") are
 // replaced by the check point and the number, so a stored line never reads as a reading without one.
 // With no value, as on a refused line, the recognised words are quoted as said.

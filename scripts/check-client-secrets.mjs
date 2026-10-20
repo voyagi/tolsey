@@ -6,7 +6,7 @@
 // are PUBLIC by design - a generic secret scanner false-flags them - while a Supabase service_role
 // key or a metered provider key (OpenAI/Anthropic/Stripe secret) in the client is a real, billable
 // breach. The r/vibecoding "I hacked vibe coded websites" thread and its top comments turned on
-// exactly this distinction. A prompt line telling the model "do not ship secrets" cannot fail a
+// exactly this distinction. A written rule saying "do not ship secrets" cannot fail a
 // build; this can, and it only fires on the keys that actually matter.
 //
 // A ZERO-FINDING RESULT IS ONLY MEANINGFUL IF THE SCAN ACTUALLY RAN. If no built client bundle

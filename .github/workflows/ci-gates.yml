@@ -83,7 +83,7 @@ jobs:
       # bundle, and `gate` also runs in the pre-commit hook where none exists - there it would
       # correctly report UNKNOWN (exit 2) and fail every commit, so it would be deleted within a
       # day. Here a build always precedes it (the step above). This is the mechanical wiring: a
-      # prompt line telling a model to run the gate is the thing the gate itself argues against.
+      # written reminder to run the gate is the thing the gate itself argues against.
       # If this exits 2 saying no bundle was found, the fix is almost never to delete the step. The
       # gate auto-detects the common layouts, and a monorepo (packages/web/dist) or a custom outDir
       # is found by NO fixed list, so PASS THE DIRECTORY: `node scripts/check-client-secrets.mjs

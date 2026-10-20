@@ -144,7 +144,7 @@ export const RuleTableSchema = z
   });
 export type RuleTable = z.infer<typeof RuleTableSchema>;
 
-// Cooling and reheat readings are kept but not judged in phase 1, so those kinds carry no rules.
+// Cooling and reheat readings are kept but not judged in this version, so those kinds carry no rules.
 const CheckPointKindSchema = z.enum(['cold', 'hot', 'receiving', 'freezer', 'cooling', 'reheat']);
 export type CheckPointKind = z.infer<typeof CheckPointKindSchema>;
 

@@ -15,7 +15,7 @@ which Amazon provides and which calls Tolsey's tool with structured arguments. P
 duty on the providers of AI systems intended to interact directly with people, so informing the cook
 there falls to the provider of Alexa+, not to the tool Alexa+ calls.
 
-A live model may only ever sit behind one switch that the owner flips, and that switch is not built
+A live model may only ever sit behind one switch that the operator flips, and that switch is not built
 yet. Its disclosure is already written: `src/contract/live-model.ts` holds the sentence the switch
 must show and speak first, and `src/contract/live-model.test.ts` pins it. Nothing reads that sentence
 yet. If the switch is built, it shows the sentence and this paragraph is decided again. The same test

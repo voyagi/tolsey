@@ -317,7 +317,7 @@ describe('wrong number through MCP, each step its own request', () => {
 
   // RECD-05 puts every line on the business day of its own write, so a correction said just after the
   // day starts lands on the new day while the line it supersedes stays on the old one. The day sheet
-  // must follow supersedes_id across days to show that line said wrong (ROADMAP phase 3, criterion 2).
+  // must follow supersedes_id across days to show that line said wrong.
   it('lands a correction said just after the day start on the new day, superseding the line left on the old one', async () => {
     const kitchenId = await kitchen();
     worker.clock.set(Date.parse('2026-10-21T08:59:30Z'));
@@ -524,7 +524,7 @@ describe('two numbers for one correction that both read the prompt before either
     expect(receipts).toEqual([expect.objectContaining({ answersId: null, supersedesId: null })]);
   });
 
-  // Review WR-02: whichever call wins, the loser's reply names what the store holds after the race,
+  // Whichever call wins, the loser's reply names what the store holds after the race,
   // the reply the same call would get sent a moment later.
   it('tells the loser of a hold and a superseding number racing on one correction what the store then holds', async () => {
     const screen = crypto.randomUUID();
