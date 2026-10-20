@@ -31,7 +31,7 @@ be missing, and it has no queries.
 ## Write model
 
 The bare `/mcp` serves the demo kitchen, which is read-only: it is the seeded `kitchens` row of kind
-`demo`, and in phase 2 its day becomes an overlay computed at read time. A visitor's writes land in
+`demo`. A visitor's writes land in
 a scratch kitchen minted by `POST /api/kitchens`, which generates a 128-bit id on the server. A
 scratch kitchen is addressed only through the path `/mcp/k/<id>` and never through a tool
 argument. A named kitchen is a scratch kitchen minted with a label from the closed list `capture`
@@ -97,7 +97,7 @@ held in `data/store/limits.json`. The line cap is 200 because a demo shift holds
 
 The budget protects the account's write allowance, not the demo from one visitor: a single client that keeps minting
 can spend the day's 40,000 rows, and every visitor after it is told the demo is full until 00:00 UTC.
-Phase 1 has no per-client limit. Cloudflare's rate limiting binding counts per location over 10 or
+This version has no per-client limit. Cloudflare's rate limiting binding counts per location over 10 or
 60 seconds and its documentation advises against IP keys, so it cannot cap one client's day, and a
 daily per-client count would need its own store. The zero-install replay is the fallback, and the
 pass that attacks the running service measures a mint flood against the deployed Worker.
@@ -238,15 +238,18 @@ them can be filled in faithfully later:
 - `supersedes_id`, `root_id`: the correction chain.
 - `ref_id`, `answers_id`, `prompt_kind`, `expires_at`: the questions the record asks and the lines
   that answer them.
-- `due_slot_id`, `due_at`: nullable snapshot of the due slot a reading satisfied, filled from phase 2.
+- `due_slot_id`, `due_at`: nullable snapshot of the due slot a reading satisfied. This version writes
+  null to both (see the due slot rule below).
 - `result_json`, `args_hash`: the stored tool result and the hash of the call's arguments, for
   idempotency.
 
 ## Due slot rule
 
-A reading satisfies the earliest open slot of its check point whose window contains it (SCHED-03,
-applied in phase 2). The slot it satisfied is written into `due_slot_id` and `due_at` when the line
-is appended, so a later change of the schedule never moves an old reading to another slot.
+The kitchen profile defines a check schedule, but this version does not apply it to readings, so no
+reading is matched to a slot and both columns stay null. The columns hold the rule a schedule would
+apply: a reading satisfies the earliest open slot of its check point whose window contains it, and
+that slot is written into `due_slot_id` and `due_at` when the line is appended, so a later change of
+the schedule never moves an old reading to another slot.
 
 ## Key shape
 
@@ -351,16 +354,16 @@ every business day already written. Local D1 accepts and enforces all three thro
 `wrangler d1 migrations apply DB --local`, which applied 0001 and 0002 on its first run and reported
 no migrations to apply on its second.
 
-Remote D1 accepted 0002 at the owner's first deploy (2026-10-16, Worker version `3312102a`): `wrangler
+Remote D1 accepted 0002 at the first deploy (2026-10-16, Worker version `3312102a`): `wrangler
 d1 migrations apply DB --remote` applied 0001 to 0004 with status ok for each and no refusal. No
 UPDATE or DELETE has been tried against the remote record, so remote enforcement rests on D1 running
 the triggers it accepted. The guard sits alone in 0002 so a remote refusal could never block the
-schema in 0001, and the phase 1 test that reads the adapter's SQL for any UPDATE or DELETE against the
+schema in 0001, and the test that reads the adapter's SQL for any UPDATE or DELETE against the
 record holds either way.
 
 The deploy preflight cannot see a remote refusal, and the deploy script runs the remote apply before
 `wrangler deploy`, chained with `&&`, so a refusal of 0002 stops the deploy after 0001 has applied,
-and every rerun meets the same refusal. The recovery is a code change the owner then deploys: 0002 keeps its
+and every rerun meets the same refusal. The recovery is a code change the operator then deploys: 0002 keeps its
 number and file name, its body becomes a statement that changes nothing, this record gains the
 refusal text and its date, and append-only rests on the port and the SQL-text test alone.
 `wrangler d1 migrations apply` applies the unapplied migrations and rolls back one that fails
@@ -371,17 +374,15 @@ rewritten one applies on the next run.
 
 The card resources are `ui://tolsey/reading.html`, `ui://tolsey/due-now.html`,
 `ui://tolsey/open-action.html` and `ui://tolsey/handover.html`. They are fixed as constants in
-`src/contract` from the first tool on and attached to the tool definitions when the cards arrive in
-phase 2. The drift test for captured runs (DEMO-03) validates tool presence, `outputSchema` and
-`structuredContent`, not `_meta`, so attaching the URI later does not break a capture.
+`src/contract`, and this version attaches none of them to a tool.
 
 ## Location and jurisdiction
 
-The owner creates the database with `wrangler d1 create tolsey --jurisdiction=eu --binding DB`
+The operator creates the database with `wrangler d1 create tolsey --jurisdiction=eu --binding DB`
 (`--binding DB` writes the id into the existing `DB` entry rather than a second one). The jurisdiction
 is set only at creation, cannot be changed afterwards, and takes precedence over any location hint.
 EU is chosen because data stays in EU regions wherever a service offers one. The trade-off is added
-round-trip latency for requests from the US, which is I/O wait and not Worker CPU time. The owner
+round-trip latency for requests from the US, which is I/O wait and not Worker CPU time. The operator
 confirms the jurisdiction at creation. The database was created on 2026-09-27 with jurisdiction
 `eu` (read back with `wrangler d1 list` on 2026-10-16), and `wrangler.jsonc` carries its id on the
 `DB` binding since 2026-10-16. Local D1, `getPlatformProxy`, `createTestHarness` and `wrangler d1

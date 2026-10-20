@@ -8,10 +8,10 @@ export type ToolName =
   | 'shift_handover'
   | 'day_sheet';
 
-// Captured runs and the drift test pin every name and description from phase 2, so all six are
-// fixed here even though only log_reading and due_now are registered; the other four arrive later.
+// The six tools the design names, fixed here with their descriptions. This version registers only
+// log_reading and due_now. The other four are designed and not built.
 
-/** @public The full v1 tool set; log_reading and due_now are registered, the other four come later. */
+/** @public The designed tool set. This version registers only log_reading and due_now. */
 export const TOOL_NAMES: readonly ToolName[] = [
   'log_reading',
   'record_corrective_action',
@@ -55,7 +55,7 @@ export const TOOL_ANNOTATIONS: Record<ToolName, ToolAnnotations> = {
   day_sheet: READS,
 };
 
-/** @public The card resources, attached to their tools when the cards arrive in phase 2. */
+/** @public The designed MCP Apps card resources. This version attaches none of them to a tool. */
 export const UI_RESOURCE_URIS = {
   reading: 'ui://tolsey/reading.html',
   dueNow: 'ui://tolsey/due-now.html',

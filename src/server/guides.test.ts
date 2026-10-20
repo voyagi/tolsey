@@ -6,7 +6,7 @@ import { byId, postJsonRpc, type Endpoint } from '../test-support/raw-mcp';
 import { openInProcessWorker, type InProcessWorker } from '../test-support/target';
 import { DEMO_PROFILE } from './data';
 
-// The guides describe what the server registers today and quote the data files. When a later phase
+// The guides describe what the server registers today and quote the data files. When a later version
 // registers another tool, attaches the card resources, or measures a figure again, the conformance and
 // storage pins change with it; these tests make the guides change in the same commit, because they read
 // the registered set from the running Worker and the figures from the Worker's own validated data.

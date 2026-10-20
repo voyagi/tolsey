@@ -295,6 +295,9 @@ Device is not a third palette. It resolves to Light or Dark from `prefers-color-
 ### Print (the day sheet)
 Printing overrides the tokens to black on white: `print-paper` for ground, stock and change tint, `print-ink` for ink, `print-steel` for steel, `print-hair` for rules, and the alert becomes white with a black edge, so an exception prints as an outlined block. The lifted shadow is removed. The day sheet must read in black and white.
 
+### Measured contrast
+WCAG contrast ratios, computed with the WCAG formula over the hex values above. Light: ink on stock 19.46, ink on ground 15.53, ink on pass stock 17.84, steel on stock 5.82, steel on change tint 5.29, steel on pass stock 5.34, steel on ground 4.65, black on alert 13.59, white on the verdict block 19.46. Dark: ink on stock 16.29, ink on ground 17.96, ink on pass stock 14.95, steel on stock 7.79, steel on change tint 7.23, steel on pass stock 7.15, black on alert 13.59. Yellow alone is only 1.43 against white, which is why a yellow block carries a 2px ink edge in light. The stock to ground step is only 1.25 in light and 1.10 in dark, which is why every panel carries a soft lifted shadow instead of a border.
+
 ### Named Rules
 **The Held Colour Rule.** Yellow appears only where something needs a hand, and on a live board it stays until a number is logged or the fix closes. The day sheet is history, not a live board: a line that needed a hand (out of range, refused, late) keeps its yellow block after it is dealt with, because an inspector reads the exceptions first, and the fix line or the retaken reading under it shows how it was dealt with (in print the block is outlined in black). Never on a heading, a button, a brand mark or an illustration.
 

@@ -12,9 +12,10 @@
   // Reference mockups are loaded by HTML pages, which knip does not follow.
   "ignoreFiles": ["design/mockups/**"],
   "ignoreDependencies": [
-    // The launch page's structured-data types arrive in phase 3.
+    // Not imported: kept for the launch page's structured data, which this version does not build.
     "schema-dts",
-    // The cards register through it in phase 2; pinned now in lockstep with server and client.
+    // Not imported: kept for the MCP Apps cards, which this version does not build, and pinned in
+    // lockstep with server and client.
     "@modelcontextprotocol/ext-apps",
     // knip reads "testRunner": "command" as a package, but the command runner ships inside
     // @stryker-mutator/core.

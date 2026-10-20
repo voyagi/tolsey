@@ -174,7 +174,7 @@ async function decisionContext(args: LogReadingInput, deps: ServerDeps, now: num
 // sent a moment later would: it is decided again from what the store now holds, so a "wrong number"
 // whose hold a racing answer logged says that line wrong. A decision that still answers a prompt
 // could meet the same race again, so that loser is answered from the prompt its event answered, read
-// again, whichever index SQLite named and whatever the winner stored (review WR-02). That receipt
+// again, whichever index SQLite named and whatever the winner stored. That receipt
 // answers nothing. When the winner took the line rather than the question (two questions about one
 // line), the loser's question stays open, which reopens nothing: the winner's line is newer, so the
 // check reads closed, and the question's own next answer closes it.

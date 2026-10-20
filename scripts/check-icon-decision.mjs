@@ -5,7 +5,7 @@
 // products shipped lucide and zero recorded choosing it (a review on 2026-08-22). Lucide is
 // not banned - it is a fine set - but an UNRECORDED lucide is
 // the machine default wearing the product's clothes. This gate forces the one-line record: if
-// any lucide package is a dependency, design/ART-DIRECTION.md must name it with a reason, or the
+// any lucide package is a dependency, DESIGN.md must name it with a reason, or the
 // build swaps to an icon set chosen for this audience (Iconify carries many).
 //
 // WHAT IT DELIBERATELY DOES NOT DO: judge the reason. A reason's quality is the eyeball's job;
@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', '.stryker-tmp', 'coverage']);
 const LUCIDE_DEP_RE = /(^|\/)lucide(-|_|$)|^@lucide\//;
-const ART_DIRECTION = process.env.ART_DIRECTION_FILE || join('design', 'ART-DIRECTION.md');
+const ART_DIRECTION = process.env.ART_DIRECTION_FILE || 'DESIGN.md';
 
 function collectManifests(root) {
   const out = [];
@@ -144,11 +144,11 @@ function selftest() {
     check('no lucide dependency passes', runCli(fixture({ 'package.json': '{"name":"fx","dependencies":{"react":"19"}}' })), 0, /nothing to decide/);
     check('no package.json at all passes', runCli(fixture({ 'README.md': '# x\n' })), 0, /nothing to decide/);
     check('lucide with no art-direction file fails', runCli(fixture({ 'package.json': PKG_LUCIDE })), 1, /does not exist at all/);
-    check('lucide with a recorded decision passes', runCli(fixture({ 'package.json': PKG_LUCIDE, 'design/ART-DIRECTION.md': ART_OK })), 0, /decision recorded/);
+    check('lucide with a recorded decision passes', runCli(fixture({ 'package.json': PKG_LUCIDE, 'DESIGN.md': ART_OK })), 0, /decision recorded/);
     check('an art-direction file that never names lucide fails',
-      runCli(fixture({ 'package.json': PKG_LUCIDE, 'design/ART-DIRECTION.md': '# Art direction\n\nIcons: the house set.\n' })), 1, /no line names lucide/);
+      runCli(fixture({ 'package.json': PKG_LUCIDE, 'DESIGN.md': '# Art direction\n\nIcons: the house set.\n' })), 1, /no line names lucide/);
     check('a bare "lucide" token is not a decision',
-      runCli(fixture({ 'package.json': PKG_LUCIDE, 'design/ART-DIRECTION.md': '# Art direction\n\nlucide\n' })), 1, /no line names lucide with at least four words/);
+      runCli(fixture({ 'package.json': PKG_LUCIDE, 'DESIGN.md': '# Art direction\n\nlucide\n' })), 1, /no line names lucide with at least four words/);
     check('a monorepo lucide in apps/web is caught, not only the root',
       runCli(fixture({ 'package.json': '{"name":"root"}', 'apps/web/package.json': PKG_LUCIDE })), 1, /apps\/web\/package\.json dependencies/);
     check('a devDependency counts too',

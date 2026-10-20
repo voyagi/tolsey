@@ -22,10 +22,9 @@ What exists today: `log_reading` and `due_now` are the registered tools. The wal
 (`src/ui/WallView.tsx`, driven by `src/ui/wall-session.ts` through the MCP client in
 `src/client/mcp-client.ts`) mints a scratch kitchen and calls `log_reading` with the words typed or
 tapped, then shows the reply and the logged line exactly as the result gives them. The other four
-tool names and descriptions are fixed in `src/contract/tools.ts`, which notes that they arrive
-later. The card
-resources (`ui://tolsey/reading.html` and three others) are fixed as constants in the same file;
-ADR 0002 records that they are attached to tool definitions in phase 2.
+tool names and descriptions are designed and fixed in `src/contract/tools.ts`, and this version does
+not register them. The card resources (`ui://tolsey/reading.html` and three others) are fixed as
+constants in the same file, and this version attaches none of them to a tool.
 
 ## Component diagram
 

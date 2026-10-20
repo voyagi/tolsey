@@ -18,7 +18,7 @@ export const LOCAL_REPLY = `Say a check and its number, like: ${EXAMPLE_PHRASE}.
 
 export const TAUGHT_PHRASES: readonly string[] = [...new Set([...CHIPS, EXAMPLE_PHRASE])];
 
-// One constant, so the owner's choice of "Tolsey" or "Alexa" is a one-line change. On a real Echo Show
+// One constant, so a choice between "Tolsey" and "Alexa" is a one-line change. On a real Echo Show
 // the cook talks to Alexa, and Alexa answers using Tolsey.
 export const SPEAKER_LABEL = 'Alexa';
 

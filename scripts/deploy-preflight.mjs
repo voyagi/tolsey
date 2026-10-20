@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // deploy-preflight.mjs - the first step of `npm run deploy`, after the build.
 //
-// WHY. The owner deploys a public Worker by hand, once per save point. A wrong key in the config
+// WHY. The operator deploys a public Worker by hand, once per save point. A wrong key in the config
 // does not fail loudly at deploy time: with no database_id, wrangler deploy binds whatever database
 // on the account is named tolsey, or creates one under that name outside the EU jurisdiction and
 // with none of the tables, a missing hostname in ALLOWED_HOSTNAMES makes the Host check refuse
@@ -327,7 +327,7 @@ function selftest() {
   try {
     check('a complete built config and deploy script clear, exit 0',
       runCli(fixture()), 0, /cleared/);
-    check('no built config is exit 2 telling the owner to build first, never a pass',
+    check('no built config is exit 2 telling the operator to build first, never a pass',
       runCli(fixture({ built: false })), 2, /npm run build/);
     check('an unparsable built config is exit 2',
       runCli(fixture({ rawConfig: '{ not json' })), 2, /did not parse/);

@@ -170,7 +170,7 @@ describe('the log_reading input contract', () => {
   });
 
   // An empty id stays accepted on purpose: a host model may fill an optional field with "", and
-  // refusing the whole call would lose the cook's reading over an argument phase 1 never reads.
+  // refusing the whole call would lose the cook's reading over an empty optional argument.
   it('caps pending_prompt_id at 64 characters like the other ids, and still accepts an empty one', () => {
     expect(LogReadingInputSchema.safeParse({ ...base, pending_prompt_id: 'p'.repeat(64) }).success).toBe(true);
     expect(LogReadingInputSchema.safeParse({ ...base, pending_prompt_id: 'p'.repeat(65) }).success).toBe(false);

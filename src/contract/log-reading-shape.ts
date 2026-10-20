@@ -2,7 +2,7 @@
 // can check an answer against them: log-reading.ts builds its schema and its per-outcome check from
 // these same values, and the page bundle stays free of both.
 
-/** @public The version every log_reading result carries, for the cards and captures of phase 2 to check. */
+/** @public The version every log_reading result carries, which the page checks before it shows an answer. */
 export const CONTRACT_VERSION = 1;
 
 export const OUTCOMES = ['in_range', 'out_of_range', 'refused', 'held', 'not_covered', 'nothing_to_fix'] as const;

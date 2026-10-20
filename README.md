@@ -1,14 +1,43 @@
 # Tolsey
 
+![Tolsey, a food safety log that won't take "fine". "The walk-in reads 38" is in range against at most 41°F, and "reach-in two is fine" needs a number.](public/card.png)
+
 A food safety log for small restaurant kitchens that you fill in by voice. Say the reading, and it
 lands in the day's record, judged against the rule that applies. A reading outside its rule is
 marked out of range. A check with no number is refused and stays open until a number is logged
-for it.
+for it. One recorded run against the deployed server, with every request and answer:
+[`examples/deployed-run.json`](examples/deployed-run.json).
+
+![The wall refuses "reach-in two is fine" and lists reach-in two under Open checks. The cook types 38, Alexa answers "Reach-in two, 38, in range, AB", and no check is open.](docs/images/refusal.gif)
+
+"Reach-in two is fine" is refused and the check stays open, until the cook gives the number: 38, in range.
+
+## See it run
 
 Try it with no install at [tolsey.taranity.com](https://tolsey.taranity.com), a simulated Alexa+
-screen that is a real MCP client of the deployed server.
-[`examples/deployed-run.json`](examples/deployed-run.json) is one recorded run against that server,
-with every request and answer.
+screen that is a real MCP client of the deployed server. Tap a phrase or type what a cook would say,
+with the number in digits. The demo video, 2:45:
+[youtu.be/zx2u-TCy7jI](https://youtu.be/zx2u-TCy7jI).
+
+![The wall after "the walk-in reads 38": the last reading is walk-in, 38°F, in range, rule at most 41°F, record 261018-001.](docs/images/reading.png)
+
+A reading, judged as it is taken: the walk-in at 38 is in range, with its rule and a record code.
+
+![A paper log ticks "reach-in two is fine". Tolsey answers "I need the number on the thermometer. What does reach-in two read?" and lists reach-in two as open.](docs/images/same-words.png)
+
+The same words in two logs: the paper log ticks the line, Tolsey asks for the number.
+
+![The wall in dark mode after "the soup well reads 120": out of range, rule at least 135°F, source Food Code.](docs/images/out-of-range.png)
+
+A reading outside its rule: hot holding is at least 135°F, so the soup well at 120 is out of range,
+with the Food Code named as the source.
+
+What Tolsey will not log as said:
+
+- A check with no number, like "reach-in two is fine". It asks what the thermometer reads.
+- A limit or a guess, like "the walk-in is under 41". It asks for the reading.
+- A number that could be heard two ways, when that would change the verdict. "Walk-in 15" gets
+  "Say it one digit at a time", because fifteen and fifty sound alike across a loud kitchen.
 
 ## Why
 

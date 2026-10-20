@@ -179,7 +179,8 @@
       td { padding-top: 5px; padding-bottom: 5px; }
       tr, .cooling { break-inside: avoid; }
       /* A fix line prints under the reading that opened it, not alone at the top of a page. Only Chrome and Edge honour
-         avoid on a row; Firefox and Safari accept it and still break there (ART-DIRECTION section 11). */
+         avoid on a row; Firefox and Safari accept it and still break there (Firefox bug 1972340, WebKit bug 294559), so
+         the fix line names its own check and reading and still reads whole at the top of a page. */
       tr.fix { break-before: avoid; }
       .cooling { grid-template-columns: minmax(0, 1fr) 15rem; margin-top: 18px; }
       @page { size: letter; margin: 0.5in; }
