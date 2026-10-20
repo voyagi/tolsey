@@ -5,6 +5,19 @@ import { builtWorkerHarness } from '../test-support/target';
 
 const AP_COMPLAINT_URL = 'https://www.autoriteitpersoonsgegevens.nl/en/submitting-a-tip-off-or-a-complaint-to-the-ap';
 const BUILT_PAGES = ['dist/client/index.html', 'dist/client/privacy.html'];
+const SITE = 'https://tolsey.taranity.com';
+const BUILT_CARD = 'dist/client/card.png';
+
+// The three icon links as Evil Martians' favicon guide gives them, in this order on both pages.
+const ICON_LINKS = [
+  { rel: 'icon', href: '/favicon.ico', sizes: '32x32' },
+  { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
+  { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
+];
+
+// Every file a link preview or a browser tab fetches. With the single-page fallback a missing one
+// still answers 200, with the wall's HTML, so the content type is what proves the file is there.
+const PREVIEW_FILES = ['/card.png', '/favicon.svg', '/favicon.ico', '/apple-touch-icon.png'];
 
 // Each GDPR Article 13 element DEMO-06 names, with the words the notice must carry for it. The logs
 // line follows docs/privacy-accountability.md, which keeps "may still hold" for the kitchen id.
@@ -64,6 +77,25 @@ function sha256Source(text: string): string {
 
 function directive(csp: string, name: string): string {
   return csp.split(';').map((part) => part.trim()).find((part) => part.startsWith(`${name} `)) ?? '';
+}
+
+// Each <meta> or <link> tag of a page as its attributes, so a check reads one tag whatever the
+// attribute order.
+function tagsOf(html: string, tag: 'meta' | 'link'): Record<string, string>[] {
+  return [...html.matchAll(new RegExp(`<${tag}\\b([^>]*)>`, 'g'))].map((match) =>
+    Object.fromEntries([...match[1].matchAll(/([\w:-]+)="([^"]*)"/g)].map((attribute) => [attribute[1], attribute[2]])),
+  );
+}
+
+function metaContents(html: string, key: 'property' | 'name', value: string): string[] {
+  return tagsOf(html, 'meta').filter((tag) => tag[key] === value).map((tag) => tag.content);
+}
+
+// A PNG's width and height sit in its IHDR chunk, right after the 8-byte signature and the chunk's
+// length and type.
+function pngSize(path: string): { width: number; height: number } {
+  const bytes = readFileSync(path);
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
 }
 
 describe('the static pages and their headers (built Worker in workerd)', () => {
@@ -140,6 +172,34 @@ describe('the static pages and their headers (built Worker in workerd)', () => {
       expect(sources.length).toBeGreaterThan(0);
       for (const source of sources) expect(source).toMatch(/^\/(?!\/)/);
     }
+  });
+
+  it('gives the wall a link preview whose image is the card at its full address and real size', () => {
+    const html = readFileSync(BUILT_PAGES[0], 'utf8');
+    expect(metaContents(html, 'property', 'og:type')).toEqual(['website']);
+    expect(metaContents(html, 'property', 'og:url')).toEqual([`${SITE}/`]);
+    expect(metaContents(html, 'property', 'og:image')).toEqual([`${SITE}/card.png`]);
+    const card = pngSize(BUILT_CARD);
+    expect(metaContents(html, 'property', 'og:image:width')).toEqual([String(card.width)]);
+    expect(metaContents(html, 'property', 'og:image:height')).toEqual([String(card.height)]);
+    expect(card).toEqual({ width: 1600, height: 900 });
+    expect(metaContents(html, 'name', 'twitter:card')).toEqual(['summary_large_image']);
+    for (const property of ['og:title', 'og:description', 'og:image:alt']) {
+      const found = metaContents(html, 'property', property);
+      expect(found).toHaveLength(1);
+      expect(found[0]).toMatch(/\S/);
+    }
+  });
+
+  it.each(BUILT_PAGES)('links the three site icons from %s', (page) => {
+    const links = tagsOf(readFileSync(page, 'utf8'), 'link').filter((tag) => tag.rel === 'icon' || tag.rel === 'apple-touch-icon');
+    expect(links).toEqual(ICON_LINKS);
+  });
+
+  it.each(PREVIEW_FILES)('serves %s as an image, never the wall', async (path) => {
+    const response = await headersOf(path);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toMatch(/^image\//);
   });
 
   it('leaves the Worker its own headers on /api and /mcp answers', async () => {

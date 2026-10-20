@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The pass's verdict tile as a split flap: two flat halves, the inset edge, a square hinge pin at each end of the
+       split, and Mona Sans's T at weight 900 and 75 percent width (cap 24, bar 5, stem 6, as measured from the face).
+       Dark is the tile as it stands on the dark pass: a white frame round the pass stock. No yellow: the alert colour
+       is never a brand mark.
+       The light tile is drawn with attributes, not the style block: this file is served under the site's CSP
+       (style-src 'self'), so an engine that applies it here drops the style block, and the icon still draws the
+       light tile instead of a black square. Where the style block runs, its dark scheme overrides the attributes. -->
+  <style>
+    @media (prefers-color-scheme: dark) {
+      .tile { fill: #1c2127; }
+      .flap { fill-opacity: 0.12; }
+      .edge { stroke: #f4f6f8; }
+      .pin { fill: #f4f6f8; }
+      .letter { fill: #f4f6f8; }
+    }
+  </style>
+  <rect class="tile" fill="#0b0d10" width="32" height="32"/>
+  <rect class="flap" fill="#ffffff" fill-opacity="0.16" width="32" height="16"/>
+  <rect class="edge" fill="none" stroke="#0b0d10" stroke-width="2" x="1" y="1" width="30" height="30"/>
+  <rect class="pin" fill="#f4f5f7" x="2" y="15" width="2" height="2"/>
+  <rect class="pin" fill="#f4f5f7" x="28" y="15" width="2" height="2"/>
+  <path class="letter" fill="#ffffff" d="M10 4h12v5h-3v19h-6V9h-3z"/>
+</svg>
