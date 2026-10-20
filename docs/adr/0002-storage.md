@@ -31,7 +31,7 @@ be missing, and it has no queries.
 ## Write model
 
 The bare `/mcp` serves the demo kitchen, which is read-only: it is the seeded `kitchens` row of kind
-`demo`, and in phase 2 its day becomes an overlay computed at read time. A visitor's writes land in
+`demo`. A visitor's writes land in
 a scratch kitchen minted by `POST /api/kitchens`, which generates a 128-bit id on the server. A
 scratch kitchen is addressed only through the path `/mcp/k/<id>` and never through a tool
 argument. A named kitchen is a scratch kitchen minted with a label from the closed list `capture`
@@ -238,15 +238,17 @@ them can be filled in faithfully later:
 - `supersedes_id`, `root_id`: the correction chain.
 - `ref_id`, `answers_id`, `prompt_kind`, `expires_at`: the questions the record asks and the lines
   that answer them.
-- `due_slot_id`, `due_at`: nullable snapshot of the due slot a reading satisfied, filled from phase 2.
+- `due_slot_id`, `due_at`: nullable snapshot of the due slot a reading satisfied. This version writes
+  null to both (see the due slot rule below).
 - `result_json`, `args_hash`: the stored tool result and the hash of the call's arguments, for
   idempotency.
 
 ## Due slot rule
 
-A reading satisfies the earliest open slot of its check point whose window contains it (SCHED-03,
-applied in phase 2). The slot it satisfied is written into `due_slot_id` and `due_at` when the line
-is appended, so a later change of the schedule never moves an old reading to another slot.
+This version has no check schedule, so no reading satisfies a slot and both columns stay null. The
+columns hold the rule a schedule would apply: a reading satisfies the earliest open slot of its check
+point whose window contains it, and that slot is written into `due_slot_id` and `due_at` when the
+line is appended, so a later change of the schedule never moves an old reading to another slot.
 
 ## Key shape
 
@@ -371,9 +373,7 @@ rewritten one applies on the next run.
 
 The card resources are `ui://tolsey/reading.html`, `ui://tolsey/due-now.html`,
 `ui://tolsey/open-action.html` and `ui://tolsey/handover.html`. They are fixed as constants in
-`src/contract` from the first tool on and attached to the tool definitions when the cards arrive in
-phase 2. The drift test for captured runs (DEMO-03) validates tool presence, `outputSchema` and
-`structuredContent`, not `_meta`, so attaching the URI later does not break a capture.
+`src/contract`, and this version attaches none of them to a tool.
 
 ## Location and jurisdiction
 
