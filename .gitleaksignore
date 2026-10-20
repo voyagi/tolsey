@@ -1,0 +1,5 @@
+# Planted test values in the self-tests of two check scripts, not credentials.
+# check-client-secrets.mjs builds a fake key shape from 0123456789abcdefghijklmnop, and
+# check-env-example.mjs feeds a value that opens with "fixture_" to prove the gate still refuses it.
+2b2d1b083f95d22a228afa8c4e2e4222d2b9092d:scripts/check-client-secrets.mjs:generic-api-key:609
+2b2d1b083f95d22a228afa8c4e2e4222d2b9092d:scripts/check-env-example.mjs:generic-api-key:1249
