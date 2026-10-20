@@ -794,3 +794,19 @@
     }
   }
 }
+
+/* On a phone the label takes its own line and the four cooks share one row the width of the screen, each tile wider
+   for a gloved thumb: the group split part-way across two lines read as broken. The query is in em, so Large and
+   Very large browser text bring it in on a wider screen. */
+@media (max-width: 30em) {
+  .roster {
+    flex-basis: 100%;
+  }
+  .roster legend {
+    flex-basis: 100%;
+    margin: 0 0 3px;
+  }
+  .roster label {
+    flex: 1 1 0;
+  }
+}

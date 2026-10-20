@@ -160,8 +160,9 @@ a {
   color: var(--steel);
 }
 
-/* Theme switch: Light, Dark, Device. A setting, so it sits quieter than any status or the main control. On a narrow
-   screen at large browser text its three buttons wrap inside the frame rather than running past the screen's edge. */
+/* Theme switch: Light, Dark, Device. A setting, so it sits quieter than any status or the main control. On a phone at
+   the largest browser text its buttons tighten their sides to keep one line (below); past that they wrap inside the
+   frame rather than running past the screen's edge. */
 .theme {
   display: inline-flex;
   flex-wrap: wrap;
@@ -197,6 +198,12 @@ a {
   background: var(--row-alt);
   color: var(--ink);
   box-shadow: inset 0 -3px 0 var(--ink);
+}
+/* 15em is a 320 wide phone at Very large text (24px) and a 360 one; at Medium text no phone is that narrow. */
+@media (max-width: 15em) {
+  .theme-switch button {
+    padding: 0 0.5rem;
+  }
 }
 .theme .fine {
   font-family: var(--mono);
