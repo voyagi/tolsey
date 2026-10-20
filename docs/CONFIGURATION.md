@@ -40,7 +40,7 @@ have a fallback, and reads inside test files, are not listed there.
 | `TOLSEY_MCP_URL` | Required for `npm run test:deployed` | none | `src/server/conformance.test.ts` | Base URL of a deployed Worker. The `deployed` Vitest project fails at once without it. |
 | `GIT_IDENTITY_ALLOW` | Optional | empty | `scripts/check-git-identity.mjs` | Extra allowed commit emails, comma-separated. Each entry is a full address or an `@suffix`. `@users.noreply.github.com` and `noreply@github.com` are always allowed. |
 | `ARTIFACT_METADATA_MARKERS` | Optional | empty | `scripts/check-artifact-metadata.mjs` | Extra literals (comma-separated, case-insensitive) that must not appear in the metadata of tracked PNG, JPEG, PDF or Office files. |
-| `ART_DIRECTION_FILE` | Optional | `design/ART-DIRECTION.md` | `scripts/check-icon-decision.mjs` | Path of the design file the icon check reads. |
+| `ART_DIRECTION_FILE` | Optional | `design/ART-DIRECTION.md` | `scripts/check-icon-decision.mjs` | Path of the design file the icon check reads. It is read only when a lucide package is a dependency, and this repository has none. |
 | `VERIFY_SHIP_TIMEOUT_MS` | Optional | `1800000` (30 minutes) | `verify-ship.mjs` | Time limit per step of `npm run verify:ship`. A value that is not a positive number falls back to the default. |
 | `TSCONFIG_COVERAGE_TS` | Optional, test use only | the repository's own `typescript` | `scripts/check-tsconfig-coverage.mjs` | Directory of a `typescript` package to use in place of the installed one. |
 
