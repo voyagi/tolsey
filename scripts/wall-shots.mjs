@@ -6,11 +6,12 @@
 // the real Worker, and checks what a screenshot alone cannot: at 1280 by 800 and 1366 by 657, in Light and Dark, the
 // pass, the reply and the text field sit inside the viewport with the page unscrolled, and stay there with a row on
 // the open-checks board, which then ends inside the viewport too; a reading with a tenth (38.5)
-// fits its box; at 390 wide the page is no wider than the screen; at 320 and 375 wide, at the browser's Medium, Large
-// and Very large text, each group of controls (who is logging, the theme switch on the wall and on the privacy page)
-// stays whole on one line, its label beside it or on a line of its own, since a group split part-way across lines
-// reads as broken on a phone; and every request the page makes stays on its own origin, since the privacy notice names
-// Cloudflare as the only processor.
+// fits its box; at 390 wide the page is no wider than the screen; at 320, 375, 501 and 720 wide, at the browser's
+// Medium, Large and Very large text, each group of controls (who is logging, the theme switch on the wall and on the
+// privacy page) stays whole on one line, its label beside it or on a line of its own, since a group split part-way
+// across lines reads as broken on a phone, and past the phone rule the roster's label sits beside its tiles as before;
+// and every request the page makes stays on its own origin, since the privacy notice names Cloudflare as the only
+// processor.
 //
 // The screenshots land in reports/wall-shots/ (git-ignored) to be compared with design/mockups/shots/ by eye.
 //
@@ -33,8 +34,11 @@ const THEMES = ['light', 'dark'];
 const PHONE_WIDTH = 390;
 // The browser's own text size (Chrome's Medium, Large and Very large), set the way its settings page sets it. A root
 // font-size style would not move an em media query, so it cannot stand in for the setting.
-const ROW_WIDTHS = [320, 375];
+const ROW_WIDTHS = [320, 375, 501, 720];
 const TEXT_SIZES = [16, 20, 24];
+// wall.css stacks the roster's label above its tiles up to this width. Past it the group fits inline at each size above,
+// so there its label must sit beside it, the layout wider screens had before the phone rule.
+const ROSTER_STACKS_TO = 500;
 const TIMEOUT_SECONDS = 300;
 
 // The script dev-browser runs, in its QuickJS sandbox. The base URL is written in as a literal.
@@ -190,14 +194,14 @@ for (const width of ROW_WIDTHS) {
       await page.setViewportSize({ width: width, height: 800 });
       await openWall('light');
       await page.evaluate(() => document.fonts.ready);
-      result.rows.push(Object.assign({ name: name, px: px, page: 'wall' }, await groupsOf([
+      result.rows.push(Object.assign({ name: name, width: width, px: px, page: 'wall' }, await groupsOf([
         { name: 'who is logging', label: '.roster legend', items: '.roster label' },
         { name: 'the theme switch', label: null, items: '.theme-switch button' },
       ])));
       await page.goto(BASE + '/privacy?theme=light');
       await page.waitForSelector('.theme-switch button', { timeout: 30000 });
       await page.evaluate(() => document.fonts.ready);
-      result.rows.push(Object.assign({ name: name, px: px, page: 'privacy' }, await groupsOf([
+      result.rows.push(Object.assign({ name: name, width: width, px: px, page: 'privacy' }, await groupsOf([
         { name: 'the theme switch', label: null, items: '.theme-switch button' },
       ])));
     } catch (error) {
@@ -259,7 +263,7 @@ function linesOf(items) {
   return lines;
 }
 
-function groupFailures(where, group) {
+function groupFailures(where, group, labelBesideOnly) {
   if (group.items.length === 0) return [`${where}: no ${group.name} on the page`];
   const lines = linesOf(group.items);
   if (lines.length > 1) return [`${where}: ${group.name} splits across ${lines.length} lines (${lines.map((line) => line.texts.join(' ')).join(' / ')})`];
@@ -268,13 +272,14 @@ function groupFailures(where, group) {
   const bottom = Math.max(...group.items.map((item) => item.bottom));
   const beside = group.label.top >= top - SAME_LINE_PX && group.label.bottom <= bottom + SAME_LINE_PX;
   const above = group.label.bottom <= top + SAME_LINE_PX;
+  if (labelBesideOnly && !beside) return [`${where}: the "${group.label.text}" label is not beside ${group.name}, past the phone rule`];
   return beside || above ? [] : [`${where}: the "${group.label.text}" label sits neither beside ${group.name} nor on its own line above it`];
 }
 
 function rowFailures(rows) {
   const expected = ROW_WIDTHS.length * TEXT_SIZES.length * 2;
   if (rows.length !== expected) return [`control rows: ${rows.length} of ${expected} pages measured`];
-  return rows.flatMap((row) => row.groups.flatMap((group) => groupFailures(`${row.name}, ${row.page}`, group)));
+  return rows.flatMap((row) => row.groups.flatMap((group) => groupFailures(`${row.name}, ${row.page}`, group, row.width > ROSTER_STACKS_TO)));
 }
 
 // A text size that did not take would measure the default size six times over and pass, so it stops the run.

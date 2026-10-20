@@ -796,9 +796,10 @@
 }
 
 /* On a phone the label takes its own line and the four cooks share one row the width of the screen, each tile wider
-   for a gloved thumb: the group split part-way across two lines read as broken. The query is in em, so Large and
-   Very large browser text bring it in on a wider screen. */
-@media (max-width: 30em) {
+   for a gloved thumb: the group split part-way across two lines read as broken. The bound is in px, not em: at Very
+   large text (24px) the inline group is 441px plus the screen's 48px of padding, so it fits whole on anything wider
+   than 500px, and an em bound would also stack it on a tablet at large text, where it already fits. */
+@media (max-width: 500px) {
   .roster {
     flex-basis: 100%;
   }
